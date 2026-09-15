@@ -119,9 +119,21 @@ function estado(
   return { texto, color: texto ? (estructura[columna]?.colores[texto] ?? '') : '' }
 }
 
+/**
+ * Texto de una columna, ya limpio.
+ *
+ * Las columnas FÓRMULA y ESPEJO devuelven a veces la cadena literal `"null"` —cuando el cálculo
+ * todavía no está resuelto del lado de Monday—. Eso no es un valor: mostrarlo pondría "null" en
+ * pantalla donde corresponde decir que el dato falta. Se trata como vacío.
+ */
+const limpiar = (bruto: string): string => {
+  const t = bruto.trim()
+  return t === 'null' || t === 'undefined' ? '' : t
+}
+
 function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Record<string, ColumnaBoard>): Obra {
   const c = byId(item)
-  const txt = (id: string) => (valor(c[id]) ?? '').trim()
+  const txt = (id: string) => limpiar(valor(c[id]) ?? '')
 
   return {
     id: item.id,
@@ -188,9 +200,9 @@ function aFila(item: MondayItem): ObraFila {
   return {
     id: item.id,
     nombre: item.name,
-    cliente: (valor(c[COL.ctaCteCliente]) ?? '').trim(),
-    tipo: (c[COL.tipo]?.text ?? '').trim(),
-    etapaProduccion: (c[COL.etapaProduccion]?.text ?? '').trim(),
+    cliente: limpiar(valor(c[COL.ctaCteCliente]) ?? ''),
+    tipo: limpiar(c[COL.tipo]?.text ?? ''),
+    etapaProduccion: limpiar(c[COL.etapaProduccion]?.text ?? ''),
   }
 }
 

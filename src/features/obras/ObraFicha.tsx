@@ -1,4 +1,5 @@
 import { EstadoBadge } from '@/components/ui/Aviso'
+import { importe } from '@/lib/format'
 import { useApp } from '@/state/hooks'
 import type { Obra } from '@/types'
 
@@ -88,8 +89,8 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
         <Dato label="Ubicación de la obra" valor={obra.ubicacion} />
         <Dato label="Fecha pactada de colocación" valor={obra.fechaColocacion} />
         <Dato label="Coordinar entrega con" valor={obra.coordinarEntrega.texto} />
-        <Dato label="Total obra pactado" valor={obra.totalPactado} />
-        <Dato label="Saldo" valor={obra.saldo} />
+        <Dato label="Total obra pactado" valor={importe(obra.totalPactado)} />
+        <Dato label="Saldo" valor={importe(obra.saldo)} />
         <Dato label="% cancelado" valor={obra.pctCancelado} />
         <Dato label="Registración en cta cte" valor={obra.validacionCtaCte.texto} />
         <Dato label="Creación" valor={obra.creacion} />
