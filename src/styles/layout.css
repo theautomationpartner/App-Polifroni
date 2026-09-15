@@ -1,0 +1,44 @@
+/*
+ * Contenedor de la app. El prototipo ya no simula el shell de monday (cabecera global, rail
+ * de productos y panel de workspace): la app ocupa la ventana entera y es la única que
+ * scrollea, así el layout de cada paso —con su barra de contexto sticky— sigue funcionando.
+ */
+
+/* Sin padding ARRIBA: la barra de contexto (`.paso-header`, que llega de borde a borde con su
+   propio padding) arranca pegada al tope del panel, sin una franja muerta por encima. Los
+   laterales y el pie se mantienen. */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* La canaleta de la barra de scroll se reserva SIEMPRE, haya o no desborde. Sin esto, cualquier
+     cosa que cambie el alto del contenido —desplegar una card de comprobante, agregar un producto,
+     abrir un aviso— hace aparecer o desaparecer la barra: el ancho útil salta 8px y TODOS los pasos,
+     que son cajas centradas (`max-width: 1480px; margin: 0 auto`), se corren 4px de costado. Con la
+     animación de las cards ese salto quedaba a la vista a mitad del despliegue.
+     `stable` (y no `both-edges`) porque la canaleta va del lado del scroll: las barras a sangre
+     —la de contexto sticky, que se estira con márgenes negativos— siguen llegando al borde
+     izquierdo, y por la derecha terminan donde termina la barra, que es lo que ya pasaba al
+     scrollear. */
+  scrollbar-gutter: stable;
+  padding: 0 24px 20px;
+  background: #ffffff;
+}
+.view {
+  width: 100%;
+}
+/* El paso inicial es el único sin barra de contexto: sin ella, su contenido necesita el aire
+   que antes ponía el contenedor, o quedaría pegado al borde superior. */
+.scroll > .view:not(.paso-layout) {
+  padding-top: 20px;
+}
+
+/* La etapa de "Especificación del envío" del remito comparte el mismo box (ancho, padding y gap)
+   que la etapa de emisión (`.emision-v2`), para que no haya saltos de layout al cambiar de paso.
+   No hereda los estilos de card de `.emision-v2`. */
+.remito-envio-layout {
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 24px;
+  gap: 16px;
+}

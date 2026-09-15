@@ -1,0 +1,1354 @@
+/* Piezas reutilizables: selectores, stepper, cards, botones, inputs, tablas */
+
+/* ===== Selectores superiores (operación + vendedor, mismo tamaño) ===== */
+.selbox {
+  padding: 8px 14px;
+  border: 1px solid var(--primary-blue);
+  color: var(--primary-blue);
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Con la lista desplegada el botón se cuadra abajo para empalmar con ella. El estado sale del
+   `aria-expanded` que el propio Dropdown ya expone: no hace falta una clase aparte. */
+.selbox[aria-expanded='true'] {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.topsel {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+/* Logo de la empresa: abre la barra, contra el margen izquierdo.
+
+   El alto lo fija la caja y el ancho lo pone la imagen (`width: auto` + `object-fit: contain`):
+   así entra COMPLETA, sin recorte ni deformación, con cualquier proporción de archivo. Va
+   centrada verticalmente (`align-self: center`) porque el resto de la barra se alinea por abajo
+   —los selectores tienen su rótulo arriba— y un logo pegado a esa base quedaría descolgado.
+   El filete de la derecha separa la marca de los controles. */
+.topsel-logo {
+  align-self: center;
+  flex: 0 0 auto;
+  /* 56px: el archivo trae aire propio arriba y abajo (~14% del alto), así que el logo dibujado
+     queda en ~48px. Es el alto con el que "La Batea" se lee cómodo sin agrandar la cabecera. */
+  height: 56px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  object-position: center;
+  padding-right: 20px;
+  border-right: 1px solid var(--border, #e4e7ec);
+  user-select: none;
+}
+/* En pantallas angostas la marca cede altura antes que ocupar una línea propia. */
+@media (max-width: 720px) {
+  .topsel-logo {
+    height: 40px;
+    max-width: 132px;
+    padding-right: 14px;
+  }
+}
+.topsel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.topsel-lbl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+/* Tasa de cambio: tarjeta estática a la DERECHA de la barra (junto al selector de vendedor). El
+   título mantiene los 13px de `.topsel-lbl`; el ícono y el valor la estructuran como una unidad. */
+.tasa-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 16px;
+  margin-left: auto;
+  border: 1px solid var(--p-border, #e4e7ec);
+  border-radius: 10px;
+  background: var(--c-bg-card, #fff);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.tasa-card-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 200, 117, 0.12);
+  color: var(--green, #00c875);
+  font-size: 13px;
+  flex: none;
+}
+.tasa-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.15;
+}
+.tasa-card-lbl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-gray, #667085);
+  white-space: nowrap;
+}
+.tasa-card-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.selbox--fix {
+  /* 240px: entra el nombre de vendedor más largo sin partirse en dos renglones. */
+  width: 240px;
+  height: 38px;
+  box-sizing: border-box;
+  justify-content: space-between;
+}
+.selbox--btn {
+  cursor: pointer;
+}
+/* Sin valor elegido: el selector se lee como vacío, no como un dato. */
+.selbox-ph {
+  color: var(--text-gray);
+  font-weight: 500;
+}
+/* Valor elegido del selector (ícono + nombre). Es UN solo hijo del botón: el `space-between` de
+   `.selbox--fix` sólo debe separar el valor del chevron, nunca el ícono de su nombre. */
+.selbox-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* Sin esto el texto no puede encogerse y desborda el ancho fijo del selector. */
+  min-width: 0;
+  overflow: hidden;
+}
+/* El nombre se recorta con puntos suspensivos antes que pasar a un segundo renglón. */
+.selbox-val-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== Stepper ===== */
+.stepper {
+  display: flex;
+  /* Los pasos se alinean por ARRIBA, no por el centro: cada uno mide círculo + "Paso N", así que
+     centrarlos dejaría los conectores a mitad de camino entre el círculo y su rótulo. Alineando
+     arriba, los círculos comparten línea de base y el conector se baja a mano hasta su eje. */
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+/* Cada paso es una columna: el círculo arriba y su ordinal debajo. */
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-gray);
+}
+/* Nombre de la etapa bajo el círculo. Hereda el color del estado del paso (gris / oscuro).
+   Ancho acotado y con salto: "Entrega de Mercadería" en una sola línea estiraría la barra hasta
+   empujarla a su propio renglón. */
+.step-nro {
+  font-size: 12px;
+  line-height: 1.2;
+  /* El rótulo es lo que fija el ancho de CADA paso, y el ancho de cada paso es lo que decide si la
+     barra entra al lado de los selectores o se va a su propio renglón. 72px alcanza para partir en
+     dos líneas el nombre más largo ("Entrega de Mercadería") y deja el ancho total de la barra en
+     el mismo orden que tenía cuando decía "Paso N". */
+  max-width: 72px;
+  text-align: center;
+  /* Reparte las palabras entre las líneas en vez de dejar una sola colgando en la última. */
+  text-wrap: balance;
+  /* Alto RESERVADO: tres líneas, que es lo que ocupa el rótulo más largo del sistema
+     ("Seleccionar Productos Regresados", "Registrar Nueva Actividad", "Completar Actividad
+     Pendiente"). Sin esto el alto de la barra —y con ella el del encabezado— sale de en cuántas
+     líneas parte CADA rótulo, y en REGISTRO DE ACTIVIDADES la segunda etapa se renombra en vivo:
+     al elegir "REGISTRAR NUEVA ACTIVIDAD" pasaba de dos líneas a tres y empujaba toda la página
+     hacia abajo. Reservado desde el arranque, el encabezado mide siempre lo mismo. */
+  min-height: 3.6em;
+}
+/* El color del número dice en qué estado está la etapa: verde ya cumplida, azul la actual,
+   gris la que falta. */
+.step.done {
+  color: var(--text-dark);
+}
+.step.done .sic {
+  background: var(--green);
+  color: #fff;
+  border: 1px solid var(--green);
+}
+.step.cur {
+  color: var(--text-dark);
+  font-weight: 600;
+}
+.step.cur .sic {
+  background: var(--primary-blue);
+  color: #fff;
+  border: 1px solid var(--primary-blue);
+  /* Brillo que respira: sin el nombre al lado, el color solo no alcanza para ubicar de un vistazo
+     en qué etapa está parado el usuario. `alternate` hace que suba y baje por el mismo camino, así
+     no hay salto al reiniciar el ciclo. */
+  animation: step-brillo 1.8s ease-in-out infinite alternate;
+}
+/* Halo suave alrededor del círculo: crece y se difumina, sin llegar a "titilar". */
+@keyframes step-brillo {
+  from {
+    box-shadow: 0 0 0 0 rgba(0, 82, 204, 0.35), 0 0 4px 0 rgba(0, 82, 204, 0.25);
+  }
+  to {
+    box-shadow: 0 0 0 6px rgba(0, 82, 204, 0), 0 0 14px 3px rgba(0, 82, 204, 0.55);
+  }
+}
+/* Con movimiento reducido el halo queda fijo: sigue señalando el paso, pero no se anima. */
+@media (prefers-reduced-motion: reduce) {
+  .step.cur .sic {
+    animation: none;
+    box-shadow: 0 0 0 4px rgba(0, 82, 204, 0.22);
+  }
+}
+.step.off .sic {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text-gray);
+}
+.sic {
+  /* Nodos minimalistas: 4px menos que el tamaño anterior (34 → 30). */
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+/* Navegación del stepper: los pasos YA alcanzados son clickeables (cursor de mano + realce sutil
+   del círculo al pasar/enfocar). NO se toca el estilo de estado (done/cur/off). Los pasos futuros,
+   bloqueados, muestran cursor de "no permitido". */
+.step--nav {
+  cursor: pointer;
+}
+.step--nav .sic {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.step--nav:hover .sic {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.16);
+}
+.step--nav:focus-visible {
+  outline: none;
+}
+.step--nav:focus-visible .sic {
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.4);
+}
+.step--locked {
+  cursor: not-allowed;
+}
+.sline {
+  height: 3px;
+  flex: 1;
+  max-width: 120px;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background 0.3s;
+  /* Baja el conector hasta el eje del círculo (30px de alto → centro en 15px; menos la mitad de
+     sus propios 3px). Sin esto quedaría arriba de todo, porque el stepper alinea por el tope. */
+  margin-top: 13.5px;
+}
+/* Tramo ya transitado: se rellena de verde para simular el avance de la operación. */
+.sline.done {
+  background: var(--green);
+}
+/* Sin margen propio: el elemento siguiente define la separación. */
+.stepper--tight {
+  margin-bottom: 0;
+}
+/* Barra FANTASMA del paso inicial: reserva el alto exacto que va a ocupar la barra real al
+   confirmar la operación, sin pintarse ni recibir foco. `visibility: hidden` —no `display: none`—
+   es justamente lo que conserva el espacio. */
+.stepper--fantasma {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ===== Layout de paso: header fijo · trabajo scrollable · footer fijo =====
+   El contexto (operación, vendedor, avance) y la acción principal quedan siempre visibles;
+   sólo scrollea el contenido del paso. */
+.paso-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  /* Contenedor de consulta: la cabecera se reordena según el ANCHO REAL del panel (no del viewport),
+     que en Monday depende de los paneles laterales. Vale para todas las vistas del wizard. */
+  container-type: inline-size;
+}
+/* Los márgenes laterales negativos compensan el padding del contenedor del paso: la barra
+   llega de borde a borde, y su contenido queda alineado con el resto. */
+.paso-header {
+  background: #fff;
+  border-bottom: 1px solid #e4e7ec;
+  margin: 0 -24px;
+  /* Sin padding ARRIBA: la barra arranca pegada al tope del panel. El aire de abajo lo mantiene
+     separada del filete que la cierra. */
+  padding: 0 24px 10px;
+}
+.paso-header-in {
+  display: flex;
+  align-items: center;
+  /* `flex-wrap: wrap` es la clave del arreglo: cuando el ancho no alcanza para los selectores + el
+     stepper en la misma fila, el stepper BAJA a una línea nueva en vez de desbordar su caja y
+     pintarse encima de los selectores. El `row-gap` (8px) es el "padding-top" que separa el stepper
+     de los elementos de arriba SÓLO cuando rebalsa (una sola fila no lo aplica). El `column-gap`
+     (24px) separa los grupos cuando comparten fila. */
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  max-width: 1480px;
+  margin: 0 auto;
+  /* `space-between` es lo que resuelve la alineación en las DOS situaciones, sin tener que
+     adivinar a qué ancho se produce el salto: `justify-content` se aplica por LÍNEA, no al
+     contenedor entero. Compartiendo fila hay dos ítems y los separa a los extremos (selectores a
+     la izquierda, stepper a la derecha); cuando el stepper baja, queda solo en su línea y un
+     único ítem con `space-between` se ancla al INICIO, o sea a la izquierda. */
+  justify-content: space-between;
+}
+/* Contexto de la transacción: los selectores del header conservan EXACTAMENTE el estilo de la
+   pantalla de inicio (etiqueta oscura arriba, caja azul con borde y ancho 220×38, chevron). Sólo se
+   quita el margen inferior del grupo para que entre en la barra de contexto; el resto se hereda del base. */
+.paso-header-sel {
+  /* Antes `0 0 auto` (no encogía): forzaba al stepper a un hueco demasiado chico y lo hacía
+     desbordar. Ahora puede encoger y su barra interna (`.topsel`, ya con `flex-wrap`) envuelve
+     sus propios controles cuando falta ancho. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.paso-header-sel .topsel {
+  margin-bottom: 0;
+}
+/* El avance vive a la DERECHA mientras comparte fila con los selectores, y a la IZQUIERDA cuando
+   baja a su propia línea. De eso se ocupa el `space-between` del contenedor. */
+.paso-header-steps {
+  /* NO crece (`flex-grow: 0`): la caja mide lo que mide el stepper. Con `flex-grow: 1` ocupaba
+     toda su línea al envolver y el `justify-content: flex-end` de adentro lo mantenía pegado a la
+     derecha, que es exactamente lo que había que corregir. Midiendo por contenido, el
+     `space-between` del contenedor lo lleva al inicio de la línea. */
+  flex: 0 1 auto;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  /* Aire propio arriba y abajo de la barra de etapas, para que nunca quede pegada ni a los
+     selectores (al envolver, donde además se suma el `row-gap` del contenedor) ni al filete que
+     cierra la cabecera. Va simétrico a propósito: con `align-items: center`, un padding sólo
+     arriba desplazaba el stepper hacia abajo cuando comparte fila con los selectores. */
+  padding: 15px 0;
+}
+.paso-header-steps .stepper {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 6px;
+}
+/* Conectores cortos. Medían 64px de cuando cada paso era SÓLO su círculo (30px) y la barra se
+   veía sparse: entre los cuatro pasos aportaban 192px de puro adorno. Con el nombre de la etapa
+   debajo, el ancho lo pone el rótulo y ese largo pasó a ser lo que empujaba la barra a su propio
+   renglón en pantallas donde antes entraba. */
+.paso-header-steps .sline {
+  flex: 0 0 auto;
+  width: 28px;
+  max-width: 28px;
+}
+
+/* NO hay regla de posición por ancho de panel: forzaba el stepper a la izquierda apenas el panel
+   bajaba de 1200px, aunque siguiera compartiendo fila con los selectores y sobrara lugar a la
+   derecha. La posición la decide sola el `space-between` del contenedor, por LÍNEA: arriba a la
+   derecha mientras entre, a la izquierda sólo cuando colapsa a su propia línea. */
+
+/* Botón de RETROCESO de etapa. Es el mismo control en las catorce pantallas de la app, así que se
+   define UNA vez y global: antes cada vista lo escribía con la clase que tuviera a mano —`.btn
+   .btn-out`, `.btn-outline` de dos hojas distintas, `.cobro-btn--out`— y convivían cuatro diseños,
+   con bordes, radios y rellenos distintos según la etapa.
+
+   Va sin scope de vista a propósito: las etapas viven en scopes distintos (`productos-v2`,
+   `emision-v2`, `actividad-v2`, `factura-v2`…) y una de ellas no tiene scope propio, así que
+   cualquier clase con prefijo dejaba pantallas afuera —que es exactamente cómo empezó la
+   divergencia—. */
+.btn-volver {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  border: 1px solid var(--border-suave);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-volver:hover:not(:disabled) {
+  background: #f4f5f7;
+}
+/* Deshabilitado sólo se apaga el texto: el botón sigue siendo el mismo control, y rellenarlo de
+   gris lo haría leer como otra cosa. */
+.btn-volver:disabled {
+  color: #a1a3b1;
+  cursor: not-allowed;
+}
+
+/* Salir de la operación: acompaña al título del paso, no a la barra de contexto. */
+.btn-cancelar {
+  flex: 0 0 auto;
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  border: none;
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.btn-cancelar:hover {
+  background: #fff1f0;
+}
+
+.paso-body {
+  flex: 1;
+  padding-top: 20px;
+}
+
+/* Anticipo de la próxima etapa, o el motivo por el que todavía no se puede avanzar. */
+.paso-siguiente {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #667085;
+}
+.paso-siguiente-ic {
+  transform: rotate(90deg);
+  color: #98a2b3;
+}
+.paso-siguiente--bloqueo {
+  color: #b42318;
+  font-weight: 600;
+}
+.btn-danger {
+  background: #d92d20;
+  color: #fff;
+  padding: 10px 20px;
+}
+.btn-danger:hover {
+  background: #b42318;
+}
+
+/* ===== Encabezado de paso =====
+   Número, título y bajada. Mismo tamaño en los tres pasos del flujo. */
+.header-section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+.step-indicator-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+/* El título manda: la salida queda al final de la misma línea. */
+.step-details-main {
+  flex: 1;
+  min-width: 0;
+}
+.step-badge-main {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #0052cc;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.step-details-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.step-title-main {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1f2937;
+  letter-spacing: -0.5px;
+}
+.step-desc-main {
+  font-size: 14px;
+  color: #667085;
+}
+
+/* ===== Cards ===== */
+/* Bordes rectos por defecto; sólo las cards de búsqueda (card--input) van redondeadas. */
+.card {
+  background: var(--tint-neutral);
+  border: 1px solid var(--tint-neutral-bd);
+  border-radius: 4px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+/* Diferenciación sutil por entonación de blanco (sin colores saturados) */
+.card--input {
+  background: var(--tint-input);
+  border-color: var(--tint-input-bd);
+  border-radius: 10px;
+}
+.card--data {
+  background: var(--tint-data);
+  border-color: var(--tint-data-bd);
+}
+.card--config {
+  background: var(--tint-config);
+  border-color: var(--tint-config-bd);
+}
+.card--summary {
+  background: var(--tint-summary);
+  border-color: var(--tint-summary-bd);
+}
+.card--neutral {
+  background: var(--tint-neutral);
+  border-color: var(--tint-neutral-bd);
+}
+.card--flush {
+  margin-bottom: 0;
+}
+.ctitle {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* ===== Dropdown genérico ===== */
+.dd {
+  position: relative;
+  width: 100%;
+}
+.dd--bare {
+  padding: 0;
+  border: none;
+}
+.vsel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  background: #fff;
+}
+.vsel--static {
+  cursor: default;
+}
+.vinfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vava {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+}
+.vname {
+  font-weight: 500;
+}
+/* Lista del desplegable. Cuelga del botón (`.dd` es el bloque contenedor), así que `top: 100%` cae
+   en su borde de abajo y lo único que puede separarlos es el margen.
+   Va PEGADA: el -1px solapa los dos bordes de 1px para no dibujar una línea doble, y sólo se
+   redondean las esquinas de abajo —las de arriba las cierra el botón—, así los dos se leen como un
+   solo panel en vez de como una caja flotando debajo de otra. */
+.ddmenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  margin-top: -1px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+.dditem {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dditem:last-child {
+  border-bottom: none;
+}
+.dditem:hover {
+  background: var(--bg);
+}
+.dditem--strong {
+  font-weight: 600;
+}
+
+/* ===== Inputs y búsqueda ===== */
+.sgroup {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.iw {
+  position: relative;
+  flex: 1;
+}
+.iw .fa-search {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-gray);
+  font-size: 13px;
+}
+.sinput {
+  width: 100%;
+  padding: 10px 12px 10px 36px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  height: 40px;
+}
+.sinput:focus {
+  border-color: var(--primary-blue);
+}
+.helper {
+  font-size: 11px;
+  color: #444;
+  margin-top: 8px;
+  font-weight: 500;
+}
+.fc {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+}
+.fc:focus {
+  border-color: var(--primary-blue);
+}
+/* Derivado o fijo: no se edita, y no debe parecer editable. */
+.fc--ro {
+  background: #f1f2f5;
+  cursor: default;
+}
+.fc--ro:focus {
+  border-color: var(--border);
+}
+.ctrl {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+  height: 38px;
+}
+.ctrl:focus {
+  border-color: var(--primary-blue);
+}
+/* Los precios se muestran, no se editan: el campo no debe parecer editable. */
+.ctrl[readonly] {
+  background: #f1f2f5;
+  cursor: default;
+}
+.ctrl[readonly]:focus {
+  border-color: var(--border);
+}
+.ig {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ig label {
+  font-size: 12px;
+  color: var(--text-gray);
+  font-weight: 600;
+}
+.field-ic {
+  position: relative;
+}
+.field-ic > i {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+}
+.field-ic .fc {
+  padding-left: 36px;
+}
+
+/* ===== Botones ===== */
+.btn {
+  border: none;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  transition: 0.2s;
+}
+.btn-primary {
+  background: var(--primary-blue);
+  color: #fff;
+  padding: 10px 20px;
+}
+.btn-primary:hover {
+  background: var(--primary-blue-hover);
+}
+.btn-primary.dis,
+.btn-primary:disabled {
+  background: #e6e9ef;
+  color: #a1a3b1;
+  cursor: not-allowed;
+}
+.btn-purple {
+  background: var(--purple);
+  color: #fff;
+  padding: 0 24px;
+  height: 40px;
+}
+.btn-purple:hover {
+  background: #5100c4;
+}
+.btn-out {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text-dark);
+  padding: 10px 20px;
+}
+.btn-out:hover {
+  background: #f4f5f7;
+}
+.btn-outblue {
+  border: 1px solid var(--primary-blue);
+  color: var(--primary-blue);
+  background: #fff;
+  padding: 0 20px;
+  height: 38px;
+}
+.btn-outblue:hover {
+  background: #f0f7ff;
+}
+.btn-gray {
+  background: #e6e9ef;
+  color: var(--text-dark);
+  padding: 10px 20px;
+}
+.btn-gray:hover {
+  background: #d8dce6;
+}
+.btn-green {
+  background: var(--green);
+  color: #fff;
+  padding: 10px 20px;
+}
+.btn-green:hover {
+  background: #00b067;
+}
+.btn-green:disabled,
+.btn-gray:disabled,
+.btn-block:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn--h38 {
+  height: 38px;
+}
+.btn--block {
+  width: 100%;
+}
+.btn-block {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+/* Envío: ancho fijo, no ocupa el ancho de la card. */
+.btn-block--enviar {
+  width: 275px;
+}
+/* Fila del botón de envío: el botón y —a su derecha— el detalle del error. */
+.enviar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+/* Detalle de lo último que pasó con el envío, a la derecha del botón. Ocupa el resto del renglón y
+   se lleva la línea entera cuando no entra, en vez de apretar al botón. */
+.enviar-avisos {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.enviar-aviso {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-gray);
+}
+/* El ícono no se achica cuando el texto ocupa dos renglones. */
+.enviar-aviso i {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.enviar-aviso--err {
+  color: var(--red);
+}
+.enviar-aviso--ok {
+  color: var(--green-dark);
+}
+.enviar-aviso--info i {
+  color: var(--primary-blue);
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tilde-lento {
+  animation: tilde-lento 0.9s ease-out both;
+}
+@keyframes tilde-lento {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* Quien pide no animarse, no se anima. */
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .tilde-lento {
+    animation: none;
+  }
+}
+.footer-acts {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 40px;
+}
+.footer-acts--end {
+  justify-content: flex-end;
+}
+/* Acciones agrupadas a la derecha, junto al botón de continuar. */
+.footer-acts-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.footer-err {
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ===== Tags ===== */
+.tags {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tag {
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.tag-gray {
+  background: #f0f0f0;
+  color: #333;
+}
+.tag-green {
+  background: #e2f5ea;
+  color: #008b46;
+}
+.tag-blue {
+  background: #e0f2ff;
+  color: var(--primary-blue);
+}
+.tag-purple {
+  background: #f0ebff;
+  color: var(--purple);
+}
+.ftag {
+  background: var(--tag-bg);
+  color: var(--primary-blue);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ftag i {
+  color: #8bbcf2;
+  cursor: pointer;
+}
+.ftag i:hover {
+  color: var(--primary-blue);
+}
+
+/* ===== Indicadores ===== */
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-green {
+  background: var(--green);
+  box-shadow: 0 0 6px 1px rgba(0, 200, 117, 0.4);
+}
+.dot-red {
+  background: var(--red);
+  box-shadow: 0 0 6px 1px rgba(226, 68, 92, 0.4);
+}
+.dot-yellow {
+  background: var(--yellow);
+  box-shadow: 0 0 6px 1px rgba(255, 203, 0, 0.4);
+}
+.dot--sm {
+  width: 8px;
+  height: 8px;
+}
+.pbar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 4px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.pfill {
+  height: 100%;
+  transition: width 0.4s, background 0.4s;
+}
+.circle {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 6px;
+}
+.circle-in {
+  width: 72px;
+  height: 72px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.circle-v {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.circle-l {
+  font-size: 12px;
+  color: var(--text-gray);
+}
+.prog-txt {
+  font-size: 12px;
+  color: var(--text-gray);
+}
+
+/* ===== Tablas ===== */
+.tablec {
+  background: var(--tint-neutral);
+  border: 2px solid var(--tint-neutral-bd);
+  border-radius: 4px;
+  margin-top: 38px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.thtitle {
+  padding: 16px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--tint-neutral-bd);
+  background: #fff;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  text-align: left;
+  padding: 12px 20px;
+  font-size: 12px;
+  color: var(--text-gray);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 14px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f1f4;
+}
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mini-table th {
+  text-align: left;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--text-gray);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.mini-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #f0f1f4;
+}
+.ta-c {
+  text-align: center;
+}
+.ta-r {
+  text-align: right;
+}
+.chev {
+  cursor: pointer;
+  color: var(--text-gray);
+  transition: transform 0.2s;
+}
+.chev.open {
+  color: var(--primary-blue);
+  transform: rotate(90deg);
+}
+.trash {
+  color: var(--red);
+  cursor: pointer;
+}
+.trash:hover {
+  color: #bd2a40;
+}
+
+/* ===== Cantidad ===== */
+.qty {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  height: 38px;
+  background: #fff;
+  overflow: hidden;
+}
+.qty button {
+  background: #f5f6f8;
+  border: none;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: bold;
+  height: 100%;
+}
+.qty button:hover {
+  background: #e4e6ed;
+}
+.qty input {
+  width: 50px;
+  text-align: center;
+  border: none;
+  height: 100%;
+  font-weight: 600;
+  outline: none;
+}
+.qbox {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  overflow: hidden;
+}
+.qbox input {
+  width: 40px;
+  text-align: center;
+  border: none;
+  outline: none;
+  padding: 4px;
+  font-size: 13px;
+  border-right: 1px solid var(--border);
+}
+.qbox .qbtns {
+  display: flex;
+  flex-direction: column;
+}
+.qbox .qbtns button {
+  border: none;
+  background: #f5f6f8;
+  cursor: pointer;
+  height: 13px;
+  line-height: 1;
+  font-size: 9px;
+  color: var(--text-gray);
+  width: 22px;
+}
+.qbox .qbtns button:hover {
+  background: #e4e6ed;
+}
+.qbox .qbtns button:first-child {
+  border-bottom: 1px solid var(--border);
+}
+.qbox .qbtns button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* Venta: se pasó de lo presupuestado. Los botones frenan antes; esto avisa si se escribió. */
+/* Ranura de la columna "A remitar/vender/facturar": reserva SIEMPRE el alto del `.qbox`, esté la
+   fila seleccionada (muestra el input) o no (muestra "—"). Así seleccionar no altera el alto de la
+   lista (sin layout shift). El alto exacto se afina por contexto (ver `.productos-v2`). */
+.pend-qty-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+}
+
+.qbox--error {
+  border-color: var(--red);
+  background: #fff5f6;
+}
+.qbox--error input {
+  background: #fff5f6;
+  border-right-color: var(--red);
+  color: var(--red);
+  font-weight: 700;
+}
+
+/* ===== Lista de pendientes (selección plana de productos) ===== */
+.pend-hint {
+  padding: 12px 20px 0;
+  font-size: 12px;
+  color: var(--text-gray);
+}
+.pend-hint i {
+  color: var(--primary-blue);
+  margin-right: 6px;
+}
+/* Buscador que filtra la lista de productos en vivo. */
+.pend-search {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 20px 0;
+}
+/* Scroll vertical cuando hay muchos productos (header fijo) y horizontal si la columna es angosta. */
+.pend-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: auto;
+  margin-top: 8px;
+}
+/* Ancho mínimo legible: por debajo de esto la tabla scrollea en lugar de aplastar las columnas. */
+.pend-table {
+  min-width: 680px;
+}
+.pend-table thead th {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+.pend-origen {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-gray);
+  background: #f0f1f4;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+/* Fila seleccionable: click en cualquier parte alterna la selección. */
+.pend-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.pend-row:hover {
+  background: #f8f9fa;
+}
+.pend-row.sel {
+  background: #eaf2ff;
+}
+/* Ya está en la tabla de seleccionados: no se puede volver a elegir. */
+.pend-row.dt-added {
+  background: #f4faf6;
+  color: var(--text-gray);
+  cursor: default;
+}
+.pend-acts {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--tint-neutral-bd);
+  background: #fff;
+}
+
+/* ===== Overlay de espera =====
+   Tapa la pantalla mientras se escribe en Monday, en cualquier paso. Sin namespace a
+   propósito: antes vivía bajo `.cobro-v2` y fuera del cobro el overlay quedaba sin estilos. */
+.modal-cargando {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+}
+.modal-cargando-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 380px;
+  padding: 28px 32px;
+  text-align: center;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.modal-cargando-box i {
+  font-size: 26px;
+  color: var(--primary-blue);
+}
+.modal-cargando-box strong {
+  font-size: 15px;
+  color: #1f2937;
+}
+.modal-cargando-box span {
+  font-size: 13px;
+  color: #667085;
+}
+
+/* ===== Skeleton: cajas quietas que preservan el layout mientras se resuelve un dato =====
+   SIN namespace. Nacieron duplicadas en `.cliente-v2` y `.actividad-v2` con reglas idénticas, y
+   esa duplicación se notó cuando el resumen de la venta —que vive en `.factura-v2`— las usó para
+   la comisión: el span salía sin estilos, o sea sin fondo ni tamaño, y el renglón se veía VACÍO.
+   Un placeholder invisible es peor que no tener placeholder: parece que el dato no existe.
+
+   Sin animación ni parpadeo, a propósito: marcan un hueco, no piden atención. */
+.skeleton {
+  display: block;
+  background: #eef1f6;
+  border-radius: 6px;
+}
+.skeleton--linea {
+  height: 14px;
+  margin-bottom: 10px;
+}
+.skeleton--corto {
+  width: 90px;
+}
+.skeleton--titulo {
+  height: 22px;
+  width: 220px;
+}
+.skeleton--medio {
+  width: 260px;
+}
+
+/* ===== Botones de emitir y de enviar, en MAYÚSCULAS =====
+   Los que cierran una operación —emitir el presupuesto, la factura, la proforma o el remito, y
+   "Confirmar y Enviar"— van en mayúsculas en TODOS sus estados ("Emitiendo…", "Factura emitida",
+   "Enviado exitosamente"…). Es por clase y no escribiendo el texto en mayúsculas: así cubre cada
+   estado sin tocar ningún rótulo, y el lector de pantalla sigue leyendo el texto normal —en
+   mayúsculas lo deletrearía como una sigla—. */
+.btn-mayus {
+  text-transform: uppercase;
+}

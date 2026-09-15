@@ -1,0 +1,1052 @@
+/*
+ * Hoja de la app de Obras. Toma prestados —textualmente— los patrones de La Batea: el buscador y
+ * el desplegable de resultados del paso "Seleccionar cliente", el visor de PDF de la emisión, la
+ * zona de arrastrar y soltar del cobro y las ventanas emergentes. Los tokens (colores, bordes,
+ * tipografía) salen de `base.css`; acá sólo vive lo propio de Obras.
+ *
+ * Todo cuelga de `.obras-v2` por la misma razón que allá `.cliente-v2`: el ámbito de una vista no
+ * se filtra al resto.
+ */
+
+/* ===== Ventanas emergentes (idénticas a La Batea) ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: modal-fade 0.15s ease-out;
+}
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+.modal-box {
+  position: relative;
+  background: #fff;
+  border-radius: 14px;
+  padding: 30px 32px 24px;
+  width: 460px;
+  max-width: 100%;
+  box-shadow: 0 24px 64px rgba(20, 30, 60, 0.3);
+  text-align: center;
+}
+.modal-box--ancho {
+  width: 620px;
+}
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-gray);
+  font-size: 16px;
+}
+.modal-close:hover {
+  color: var(--text-dark);
+}
+.modal-icon {
+  font-size: 36px;
+  color: var(--red);
+  margin-bottom: 14px;
+}
+.modal-icon--warn {
+  color: var(--yellow);
+}
+.modal-icon--ok {
+  color: var(--green-dark);
+}
+.modal-icon--info {
+  color: var(--primary-blue);
+}
+.modal-title {
+  font-size: 19px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.modal-body {
+  font-size: 14px;
+  color: var(--text-gray);
+  line-height: 1.55;
+}
+.modal-body strong {
+  color: var(--text-dark);
+  font-weight: 600;
+}
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+.btn-secundario {
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--text-dark);
+  padding: 10px 20px;
+}
+.btn-secundario:hover {
+  background: #f5f6f8;
+}
+.modal-detalle {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #676879;
+  word-break: break-word;
+}
+
+/* Carga a pantalla completa, sin caja: la animación va SOBRE la app. */
+.cargando-pantalla {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+}
+.cargando-pantalla i {
+  font-size: 30px;
+  color: var(--primary-blue);
+}
+.cargando-pantalla span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #676879;
+}
+
+/* ===== Caja de la vista ===== */
+.obras-v2 {
+  --o-primary: #6c4cf1;
+  --o-surface: #ffffff;
+  --o-text-main: #1f2937;
+  --o-text-title: #0f172a;
+  --o-text-muted: #64748b;
+  --o-border: #e2e8f0;
+  --o-badge-blue-bg: #eef5ff;
+  --o-badge-blue-text: #2563eb;
+  --o-badge-gray-bg: #f1f5f9;
+  --o-badge-gray-text: #475569;
+  --o-shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
+
+  /* Mismo ancho máximo que las etapas de La Batea. */
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 0 24px;
+  color: var(--o-text-main);
+  font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+.obras-v2 input,
+.obras-v2 button,
+.obras-v2 select,
+.obras-v2 textarea {
+  font-family: inherit;
+}
+.obras-v2 .card {
+  background: var(--o-surface);
+  border: 1px solid var(--o-border);
+  border-radius: 16px;
+  box-shadow: var(--o-shadow-card);
+  padding: 24px;
+  margin-bottom: 12px;
+}
+.obras-v2 .btn {
+  padding: 0 24px;
+  height: 46px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  gap: 8px;
+}
+.obras-v2 .btn--sm {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+.obras-v2 .btn-primary {
+  background: var(--primary-blue);
+  color: #fff;
+}
+/* El botón apagado tiene que SEGUIR apagado: la regla de arriba pisa por orden a la de
+   `components.css` (misma especificidad), y sin esto un botón deshabilitado —"Enviar OP al
+   taller" sin la confirmación del cliente— se veía igual de azul que uno disponible. */
+.obras-v2 .btn-primary:disabled,
+.obras-v2 .btn-primary.dis {
+  background: #e6e9ef;
+  color: #a1a3b1;
+  cursor: not-allowed;
+}
+/* Mismo motivo para el verde del envío por WhatsApp. */
+.obras-v2 .btn-green:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== Pantalla de procesos ===== */
+.procesos-intro {
+  text-align: center;
+  margin: 8px 0 28px;
+}
+.procesos-intro h1 {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--o-text-title);
+  letter-spacing: -0.3px;
+}
+.procesos-intro p {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--o-text-muted);
+}
+.procesos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding-bottom: 32px;
+}
+.proceso-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 22px;
+  border: 1px solid var(--o-border);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--o-shadow-card);
+  cursor: pointer;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s,
+    transform 0.18s;
+}
+.proceso-card:hover:not(:disabled) {
+  border-color: var(--primary-blue);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
+  transform: translateY(-2px);
+}
+.proceso-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.proceso-card-ic {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: var(--o-badge-blue-bg);
+  color: var(--o-badge-blue-text);
+}
+.proceso-card-t {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.proceso-card-d {
+  font-size: 13px;
+  color: var(--o-text-muted);
+  line-height: 1.5;
+}
+.proceso-card-pasos {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--o-badge-blue-text);
+}
+.proceso-card--soon .proceso-card-ic {
+  background: var(--o-badge-gray-bg);
+  color: var(--o-badge-gray-text);
+}
+
+/* ===== Buscador de obra (calcado del buscador de cliente) ===== */
+.obras-v2 .unified-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  margin-bottom: 12px;
+}
+.obras-v2 .search-container {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.obras-v2 .search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  height: 46px;
+}
+.obras-v2 .search-wrapper:focus-within {
+  border-color: var(--o-primary);
+}
+.obras-v2 .search-wrapper > svg {
+  position: absolute;
+  left: 12px;
+  color: #6366f1;
+}
+.obras-v2 .search-input {
+  width: 100%;
+  height: 100%;
+  padding: 0 16px 0 40px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  outline: none;
+  color: var(--o-text-main);
+}
+.obras-v2 .search-input::placeholder {
+  color: var(--o-text-muted);
+}
+.obras-v2 .search-helper {
+  --linea: 18px;
+  display: block;
+  min-height: var(--linea);
+  line-height: var(--linea);
+  font-size: 13px;
+  color: var(--o-text-muted);
+  padding-left: 4px;
+}
+.obras-v2 .search-helper--error {
+  color: var(--red);
+  font-weight: 600;
+}
+.obras-v2 .btn-buscar {
+  flex-shrink: 0;
+  height: 46px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 8px;
+  background: var(--o-badge-blue-text);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+.obras-v2 .btn-buscar:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+.obras-v2 .btn-buscar:disabled {
+  background: #9dbdf5;
+  cursor: not-allowed;
+}
+
+/* ===== Lista de obras ===== */
+.obras-lista-cab {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.obras-lista-t {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.obras-lista-sub {
+  font-size: 12px;
+  color: var(--o-text-muted);
+}
+.obra-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.obra-row + .obra-row {
+  margin-top: 8px;
+}
+.obra-row:hover {
+  border-color: var(--primary-blue);
+  background: #fbfcff;
+}
+.obra-row-main {
+  min-width: 0;
+}
+.obra-row-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--o-text-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.obra-row-meta {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--o-text-muted);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.obra-row-cliente {
+  font-size: 13px;
+  color: var(--o-text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.obra-row-ir {
+  color: var(--primary-blue);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.obras-vacio {
+  padding: 28px;
+  text-align: center;
+  color: var(--o-text-muted);
+  font-size: 13px;
+}
+.obras-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--o-text-muted);
+}
+.obras-pager-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--o-text-main);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.obras-pager-btn:hover:not(:disabled) {
+  background: #f5f6f8;
+}
+.obras-pager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.obras-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+}
+.obras-page-size select {
+  height: 34px;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--o-text-main);
+  font-size: 13px;
+}
+
+/* ===== Ficha de la obra ===== */
+.obra-ficha-cab {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.obra-ficha-id {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: var(--o-badge-blue-text);
+  text-transform: uppercase;
+}
+.obra-ficha-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--o-text-title);
+  line-height: 1.25;
+}
+.obra-ficha-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.obra-ficha-acts {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--o-badge-gray-bg);
+  color: var(--o-badge-gray-text);
+  white-space: nowrap;
+}
+.sbadge--monday {
+  color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.sbadge--vacio {
+  background: #f8fafc;
+  color: #94a3b8;
+  border: 1px dashed var(--o-border);
+}
+.sbadge-l {
+  font-weight: 600;
+  opacity: 0.85;
+}
+.obra-vinculos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.vinculo {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--tint-input-bd);
+  border-radius: 12px;
+  background: var(--tint-input);
+}
+.vinculo--falta {
+  border-color: #f4d7a6;
+  background: #fffaf0;
+}
+.vinculo-ic {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: var(--o-badge-blue-text);
+  border: 1px solid var(--tint-input-bd);
+}
+.vinculo-l {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--o-text-muted);
+}
+.vinculo-v {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--o-text-title);
+  word-break: break-word;
+}
+.vinculo-x {
+  font-size: 12px;
+  color: var(--o-text-muted);
+  margin-top: 2px;
+  word-break: break-word;
+}
+.obra-datos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 20px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--o-border);
+}
+.dato-l {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--o-text-muted);
+}
+.dato-v {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--o-text-main);
+  margin-top: 2px;
+  word-break: break-word;
+}
+.dato-v--vacio {
+  color: #a1a3b1;
+  font-weight: 500;
+}
+
+/* ===== Paneles de paso ===== */
+.paso-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .paso-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.panel-t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--o-text-title);
+  margin-bottom: 4px;
+}
+.panel-t i {
+  color: var(--o-badge-blue-text);
+}
+.panel-d {
+  font-size: 12.5px;
+  color: var(--o-text-muted);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.panel-sep {
+  height: 1px;
+  background: var(--o-border);
+  margin: 18px 0;
+}
+.campo-l {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-text-main);
+  margin-bottom: 6px;
+}
+.campo-col {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-left: 6px;
+  /* El id de la columna se muestra tal cual está en Monday: en minúscula, aunque el rótulo que
+     lo acompaña vaya en mayúsculas. */
+  text-transform: none;
+}
+.obs-area {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px 14px;
+  border: 1px solid var(--tint-input-bd);
+  border-radius: 10px;
+  background: var(--tint-input);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--o-text-main);
+  resize: vertical;
+  outline: none;
+}
+.obs-area:focus {
+  border-color: var(--primary-blue);
+  background: #fff;
+}
+.obs-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.obs-estado {
+  font-size: 12px;
+  color: var(--o-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.obs-estado--ok {
+  color: var(--green-dark);
+  font-weight: 600;
+}
+.obs-estado--pend {
+  color: #b7791f;
+  font-weight: 600;
+}
+
+/* Arrastrar y soltar (calcado del adjunto de comprobante). */
+.drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 92px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--o-border);
+  border-radius: 12px;
+  background: var(--tint-input);
+  color: var(--o-text-muted);
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.drop.is-over {
+  border-color: var(--primary-blue);
+  background: #eef4ff;
+}
+.drop.has-file {
+  border-style: solid;
+  border-color: var(--green);
+  color: var(--o-text-main);
+  background: #f5fdf9;
+}
+.drop-hint,
+.drop-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.drop-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drop-x {
+  border: none;
+  background: none;
+  color: var(--o-text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.drop-x:hover {
+  color: var(--red);
+}
+
+/* Archivos ya cargados en la columna del tablero. */
+.archivo-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.archivo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--tint-data-bd);
+  border-radius: 10px;
+  background: var(--tint-data);
+  font-size: 13px;
+}
+.archivo-item > i {
+  color: var(--red);
+}
+.archivo-item-n {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--o-text-main);
+}
+.archivo-item-a {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-blue);
+  text-decoration: none;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.archivo-item-a:hover {
+  text-decoration: underline;
+}
+
+/* Visor PDF (el mismo de la emisión de La Batea). */
+.pdfv {
+  position: relative;
+  background: #323338;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 420px;
+  border: 1px solid var(--border);
+}
+.pdftool {
+  background: #323338;
+  color: #b0b1b6;
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  border-bottom: 1px solid #4a4c54;
+}
+.pdftool-n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdfframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #525659;
+  min-height: 380px;
+}
+.pdf-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #525659;
+  color: #a9aab0;
+  text-align: center;
+  padding: 24px;
+  min-height: 380px;
+}
+.pdf-empty i {
+  font-size: 44px;
+  opacity: 0.7;
+}
+.pdf-empty p {
+  font-size: 14px;
+  max-width: 320px;
+}
+.pdf-open {
+  color: #b0b1b6;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pdf-open:hover {
+  color: #fff;
+}
+.pdf-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(50, 51, 56, 0.82);
+  backdrop-filter: blur(2px);
+}
+.pdf-overlay-icon {
+  font-size: 40px;
+  color: #fff;
+}
+.pdf-overlay-msg {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  max-width: 320px;
+}
+.pdf-overlay--error .pdf-overlay-icon {
+  color: var(--yellow);
+}
+
+/* ===== Avisos en línea ===== */
+.aviso {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  border: 1px solid var(--tint-neutral-bd);
+  background: var(--tint-neutral);
+  color: var(--text-gray);
+}
+.aviso i {
+  margin-top: 1px;
+}
+.aviso--ok {
+  background: #f1fbf5;
+  border-color: #bfe6cf;
+  color: #15633f;
+}
+.aviso--ok i {
+  color: var(--green);
+}
+.aviso--warn {
+  background: #fffaf0;
+  border-color: #f4d7a6;
+  color: #8a6d1f;
+}
+.aviso--warn i {
+  color: var(--orange);
+}
+.aviso--err {
+  background: #fdf2f3;
+  border-color: #f3c3c9;
+  color: #9b2130;
+}
+.aviso--err i {
+  color: var(--red);
+}
+.aviso--info i {
+  color: var(--primary-blue);
+}
+.aviso + .aviso {
+  margin-top: 8px;
+}
+.acciones-fila {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+/* ===== Historial de actividades ===== */
+.hist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.hist-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--tint-data-bd);
+  border-radius: 10px;
+  background: var(--tint-data);
+}
+.hist-ic {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--o-badge-blue-bg);
+  color: var(--o-badge-blue-text);
+  font-size: 12px;
+}
+.hist-body {
+  min-width: 0;
+  flex: 1;
+}
+.hist-cab {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.hist-autor {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.hist-fecha {
+  font-size: 11.5px;
+  color: var(--o-text-muted);
+}
+.hist-txt {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-gray);
+  word-break: break-word;
+}
+.hist-txt b,
+.hist-txt strong {
+  color: var(--o-text-main);
+}
+.hist-vacio {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--o-text-muted);
+}
+
+/* ===== Pie de navegación entre pasos ===== */
+.paso-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0 28px;
+}
+.paso-nav-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.paso-nav-nota {
+  font-size: 12px;
+  color: var(--o-text-muted);
+  max-width: 460px;
+  text-align: right;
+}
+
+/* Marca en texto, mientras no esté el archivo del logo en `public/`. */
+.topsel-logo-txt {
+  align-self: center;
+  flex: 0 0 auto;
+  padding-right: 20px;
+  border-right: 1px solid var(--border, #e4e7ec);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--primary-blue);
+  user-select: none;
+}
