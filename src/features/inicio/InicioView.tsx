@@ -1,46 +1,13 @@
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
+import { PROCESOS } from '@/lib/procesos'
 import { useDispatch } from '@/state/hooks'
-import type { Proceso } from '@/types'
-
-interface ProcesoCard {
-  id: Proceso | null
-  icono: string
-  titulo: string
-  descripcion: string
-  pasos: string
-}
 
 /**
- * Los procesos de la empresa. Hoy sólo 🪟 Obras está construido; los demás se muestran apagados
- * —y se dicen— porque la pantalla es el mapa del sistema, no sólo un botón: quien entra ve dónde
- * va a vivir lo que todavía falta.
+ * Pantalla principal: qué proceso se va a realizar. Todavía sin autenticación: se entra directo.
+ *
+ * Los procesos salen del mismo catálogo que alimenta al selector del encabezado (`lib/procesos`),
+ * así las dos pantallas no pueden decir cosas distintas.
  */
-const PROCESOS: ProcesoCard[] = [
-  {
-    id: 'obras',
-    icono: 'fa-window-maximize',
-    titulo: '🪟 Obras',
-    descripcion:
-      'Orden de producción: ingesta del ETMO, observaciones por ítem, generación de la OP final, envío al cliente y despacho al taller.',
-    pasos: '5 etapas',
-  },
-  {
-    id: null,
-    icono: 'fa-file-invoice-dollar',
-    titulo: 'Cuentas corrientes',
-    descripcion: 'Movimientos y saldos de la cuenta corriente del cliente.',
-    pasos: 'Próximamente',
-  },
-  {
-    id: null,
-    icono: 'fa-truck-fast',
-    titulo: 'Entregas y colocación',
-    descripcion: 'Coordinación de entrega, premarcos y colocación en obra.',
-    pasos: 'Próximamente',
-  },
-]
-
-/** Pantalla principal: qué proceso se va a realizar. Todavía sin autenticación: se entra directo. */
 export function InicioView() {
   const dispatch = useDispatch()
 
@@ -73,7 +40,7 @@ export function InicioView() {
             </span>
             <span className="proceso-card-t">{p.titulo}</span>
             <span className="proceso-card-d">{p.descripcion}</span>
-            <span className="proceso-card-pasos">{p.pasos}</span>
+            <span className="proceso-card-pasos">{p.detalle}</span>
           </button>
         ))}
       </div>

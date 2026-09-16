@@ -1,6 +1,9 @@
-import { type ReactNode } from 'react'
-import { Stepper } from '@/components/ui/Stepper'
+import { useState, type ReactNode } from 'react'
+import { Dropdown } from '@/components/ui/Dropdown'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
+import { Modal } from '@/components/ui/Modal'
+import { Stepper } from '@/components/ui/Stepper'
+import { PROCESOS, procesoDe, type ProcesoDef } from '@/lib/procesos'
 import { ETIQUETAS_PASO, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 
@@ -14,6 +17,88 @@ function TopSel({ label, children }: { label: string; children: ReactNode }) {
       <span className="topsel-lbl">{label}</span>
       {children}
     </div>
+  )
+}
+
+/**
+ * Selector de PROCESO, el mismo control con el que La Batea elige la operación.
+ *
+ * Desde acá se cambia de proceso sin volver al inicio. Un proceso que todavía no está construido se
+ * lista igual pero no se puede elegir: verlo apagado dice que existe y que no está listo, que es
+ * más de lo que diría su ausencia.
+ *
+ * Cambiar de proceso descarta la obra en curso, así que —como allá— se advierte antes.
+ */
+function SelectorProceso() {
+  const { proceso, obra } = useApp()
+  const dispatch = useDispatch()
+  const [pendiente, setPendiente] = useState<ProcesoDef | null>(null)
+  const actual = procesoDe(proceso)
+
+  const elegir = (p: ProcesoDef) => {
+    if (!p.id || p.id === proceso) return
+    // Sin obra abierta no hay nada que perder: el cambio va derecho.
+    if (!obra) {
+      dispatch({ type: 'setProceso', proceso: p.id })
+      return
+    }
+    setPendiente(p)
+  }
+
+  return (
+    <>
+      <Dropdown<ProcesoDef>
+        label={
+          actual ? (
+            <span className="selbox-val">
+              <i className={`fas ${actual.icono}`} />
+              <span className="selbox-val-txt">{actual.titulo}</span>
+            </span>
+          ) : (
+            <span className="selbox-ph">Seleccionar...</span>
+          )
+        }
+        items={PROCESOS}
+        itemKey={(p) => p.titulo}
+        renderItem={(p) => (
+          <span className={`ddproc ${p.id ? '' : 'ddproc--soon'}`}>
+            <i className={`fas ${p.icono}`} />
+            <span className="ddproc-t">{p.titulo}</span>
+            {!p.id && <span className="ddproc-x">Próximamente</span>}
+          </span>
+        )}
+        onSelect={elegir}
+      />
+
+      {pendiente && (
+        <Modal
+          title="¿Cambiar de proceso?"
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setPendiente(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setPendiente(null)}>
+                Volver
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const p = pendiente
+                  setPendiente(null)
+                  if (p.id) dispatch({ type: 'setProceso', proceso: p.id })
+                }}
+              >
+                Aceptar
+              </button>
+            </>
+          }
+        >
+          Vas a salir de <strong>{obra?.nombre}</strong> y empezar de nuevo en otro proceso. Lo que
+          ya se guardó en el tablero queda como está.
+        </Modal>
+      )}
+    </>
   )
 }
 
@@ -36,12 +121,7 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
             <LogoEmpresa />
 
             <TopSel label="Proceso">
-              <span className="selbox selbox--fix">
-                <span className="selbox-val">
-                  <i className="fas fa-window-maximize" />
-                  <span className="selbox-val-txt">Obras</span>
-                </span>
-              </span>
+              <SelectorProceso />
             </TopSel>
 
             <TopSel label="Obra">

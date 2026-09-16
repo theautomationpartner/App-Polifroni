@@ -1050,3 +1050,35 @@
   color: var(--primary-blue);
   user-select: none;
 }
+
+/* Opción del desplegable de procesos: ícono, nombre y, si todavía no está construido, el aviso.
+   El apagado no se puede elegir —el propio selector ignora el click—, así que se lee apagado. */
+.ddproc {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.ddproc > i {
+  width: 18px;
+  text-align: center;
+  color: var(--primary-blue);
+}
+.ddproc-t {
+  font-weight: 600;
+}
+.ddproc-x {
+  margin-left: auto;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #a1a3b1;
+}
+.ddproc--soon {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ddproc--soon > i {
+  color: #a1a3b1;
+}
