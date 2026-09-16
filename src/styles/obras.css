@@ -1082,3 +1082,67 @@
 .ddproc--soon > i {
   color: #a1a3b1;
 }
+
+/* ===== Requisitos previos a disparar el escenario ===== */
+.reqs {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.req {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--tint-data-bd);
+  background: var(--tint-data);
+}
+.req > i {
+  margin-top: 2px;
+}
+.req--ok {
+  border-color: #bfe6cf;
+  background: #f4fbf7;
+}
+.req--ok > i {
+  color: var(--green);
+}
+.req--falta {
+  border-color: #f4d7a6;
+  background: #fffaf0;
+}
+.req--falta > i {
+  color: var(--orange);
+}
+.req-t {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.req-d {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--o-text-muted);
+  word-break: break-word;
+}
+
+/* Resultado de la corrida: el bloque que cambia mientras se espera. Reserva su lugar aunque esté
+   vacío, así el panel no pega saltos cada vez que aparece o desaparece un aviso. */
+.resultado {
+  margin-top: 14px;
+  min-height: 4px;
+}
+
+/* El update que dejó ESTA corrida. No es el historial: es la respuesta a lo que se acaba de pedir. */
+.update-corrida {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #f3c3c9;
+  border-radius: 10px;
+  background: #fffafa;
+}

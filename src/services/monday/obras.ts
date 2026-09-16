@@ -356,6 +356,19 @@ export async function setEstado(itemId: string, columna: string, etiqueta: strin
  * Historial de actividades (updates del ítem)
  * ──────────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * El update que la automatización dejó DESPUÉS del momento indicado.
+ *
+ * Es lo que se muestra cuando una corrida falla. Se filtra por fecha a propósito: el ítem arrastra
+ * updates de corridas viejas —de hace semanas— y mostrarlos como si fueran el resultado de lo que
+ * el usuario acaba de hacer es peor que no mostrar nada. Si esta corrida no escribió nada, devuelve
+ * `null` y la pantalla lo dice así.
+ */
+export async function getActividadDesde(itemId: string, desdeMs: number): Promise<Actividad | null> {
+  const recientes = await getActividades(itemId, 3)
+  return recientes.find((a) => new Date(a.fecha).getTime() >= desdeMs) ?? null
+}
+
 /** Las últimas entradas del historial del ítem, de la más nueva a la más vieja. */
 export async function getActividades(itemId: string, limite = 30): Promise<Actividad[]> {
   const d = await mondayApi<{
@@ -393,6 +406,39 @@ export async function registrarActividad(itemId: string, cuerpoHtml: string): Pr
 /* ────────────────────────────────────────────────────────────────────────────────
  * Espera activa
  * ──────────────────────────────────────────────────────────────────────────────── */
+
+/** Lo único que hay que mirar para saber cómo va la generación de la OP final. */
+export interface EstadoOp {
+  /** Etiqueta de 🤖Estado Orden de Prod Final: Generar | Generando | Generado | Error - Ver Update. */
+  estado: string
+  /** Archivos de la columna 🤖OP Final. */
+  opFinal: ArchivoObra[]
+}
+
+/**
+ * Estado de la generación, con la consulta MÍNIMA: dos columnas de un ítem.
+ *
+ * Esto es lo que se pregunta cada pocos segundos mientras el escenario trabaja, así que pedir la
+ * obra entera —cuarenta columnas, conexiones y espejos incluidos— sería pagar cuarenta veces por el
+ * dato que se necesita. La obra completa se relee UNA vez, recién cuando la corrida termina.
+ */
+export async function getEstadoOp(itemId: string): Promise<EstadoOp> {
+  const d = await mondayApi<{ items: MondayItem[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ${JSON.stringify([COL.estadoOpFinal, COL.opFinal])}) { id text value }
+      }
+    }`,
+    { ids: [itemId] },
+  )
+  const item = d.items?.[0]
+  if (!item) return { estado: '', opFinal: [] }
+  const c = byId(item)
+  return {
+    estado: limpiar(c[COL.estadoOpFinal]?.text ?? ''),
+    opFinal: archivos(c[COL.opFinal]),
+  }
+}
 
 /**
  * Relee la obra cada `intervalo` hasta que `cumple` diga que sí, o hasta agotar el tiempo.
