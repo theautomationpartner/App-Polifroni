@@ -33,9 +33,14 @@ deploys de preview funcionen, las variables de entorno tienen que estar también
 **Preview**, no sólo en Production.
 
 > **El autor del commit importa.** Vercel no despliega un commit cuyo autor no pueda atribuir a una
-> cuenta con acceso al proyecto: lo bloquea antes de construir, con
-> *"Git author … must have access to the project"*. Por eso este repositorio tiene configurado el
-> `user.email` de la cuenta que administra el proyecto en Vercel.
+> cuenta con acceso al proyecto: lo bloquea ANTES de construir (*"Git author … must have access to
+> the project"*), así que en los logs no aparece ningún error de build, porque nunca hubo build.
+>
+> Los commits de este repositorio van firmados con `tomas@theautomationpartner.com`, que en GitHub
+> es la cuenta `TheAutomationPartner785`. Para que Vercel la acepte, esa cuenta tiene que estar
+> invitada al equipo del proyecto (botón *Invite to Team* en el deployment bloqueado). Si algún día
+> se firma con otro correo, el bloqueo vuelve: se resuelve invitando a esa cuenta, no cambiando el
+> código.
 
 ## Configuración en Vercel (producción)
 
