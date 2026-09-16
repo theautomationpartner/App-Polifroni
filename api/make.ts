@@ -20,10 +20,22 @@ const ESCENARIOS: Record<string, string> = {
 type Pedido = IncomingMessage & { body?: unknown }
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
-  if (req.method !== 'POST') return responder(res, 405, { error: 'Method Not Allowed' })
-
   const escenario = new URL(req.url ?? '', 'http://local').searchParams.get('escenario') ?? ''
   const variable = ESCENARIOS[escenario]
+
+  /* GET sólo contesta si el escenario TIENE una URL cargada, sin decir cuál. Existe porque la
+     pregunta "¿por qué no se disparó nada?" no se puede contestar disparando: eso mandaría un
+     mensaje de verdad. Nunca devuelve la URL ni ningún secreto. */
+  if (req.method === 'GET') {
+    if (!variable) return responder(res, 400, { error: 'Escenario desconocido.', escenario })
+    return responder(res, 200, {
+      escenario,
+      variable,
+      configurado: Boolean(process.env[variable]?.trim()),
+    })
+  }
+
+  if (req.method !== 'POST') return responder(res, 405, { error: 'Method Not Allowed' })
   /* Una lista cerrada: el cliente elige ENTRE escenarios conocidos, no manda una URL. Si pudiera
      mandarla, esta ruta serviría para pegarle a cualquier servidor desde nuestro dominio. */
   if (!variable) return responder(res, 400, { error: 'Escenario desconocido.' })

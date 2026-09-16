@@ -21,7 +21,7 @@ const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
 export function OpFinalView() {
   const obra = useObra()
   const refrescar = useRefrescarObra()
-  const { estado, generar, seguirEsperando, enCurso, noArranco } = useGenerarOp(obra)
+  const { estado, correr, seguirEsperando, enCurso, noArranco } = useGenerarOp(obra)
 
   const requisitos = requisitosOp(obra)
   const listoParaGenerar = puedeGenerar(obra)
@@ -34,7 +34,7 @@ export function OpFinalView() {
       ? 'Avisándole a la automatización…'
       : estado.fase === 'esperando'
         ? `Esperando que la automatización tome el pedido… ${reloj(estado.segundos)}`
-        : estado.fase === 'generando'
+        : estado.fase === 'trabajando'
           ? `Generando la Orden de Producción… ${reloj(estado.segundos)}`
           : null
 
@@ -87,7 +87,7 @@ export function OpFinalView() {
               className="btn btn-primary"
               disabled={!listoParaGenerar || enCurso}
               title={listoParaGenerar ? undefined : 'Faltan datos que la automatización necesita.'}
-              onClick={() => void generar()}
+              onClick={() => void correr()}
             >
               {enCurso ? (
                 <>
@@ -121,7 +121,7 @@ export function OpFinalView() {
                 en Make. Sigo mirando por las dudas.
               </Aviso>
             )}
-            {estado.fase === 'generando' && (
+            {estado.fase === 'trabajando' && (
               <Aviso tono="info">
                 La automatización está trabajando ({reloj(estado.segundos)}). Podés dejar la pantalla
                 abierta: cuando termine, el documento aparece solo.

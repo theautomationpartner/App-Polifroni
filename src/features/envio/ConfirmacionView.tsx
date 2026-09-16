@@ -1,16 +1,11 @@
 import { useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
-import { HistorialActividad } from '@/features/actividad/HistorialActividad'
+import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
-import {
-  ETIQUETA,
-  RESPONSABLE_RECHAZO,
-  esperarEnTablero,
-  registrarActividad,
-} from '@/services/monday'
+import { ETIQUETA, RESPONSABLE_RECHAZO, esperarEnTablero } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 
 type Resultado = { tono: 'ok' | 'warn' | 'err'; texto: string } | null
@@ -31,12 +26,12 @@ export function ConfirmacionView() {
   const [enviando, setEnviando] = useState(false)
   const [refrescando, setRefrescando] = useState(false)
   const [resultado, setResultado] = useState<Resultado>(null)
-  const [refrescoHistorial, setRefrescoHistorial] = useState(0)
 
   const confirmacion = obra.confirmacionOp.texto
   const confirmada = confirmacion === ETIQUETA.confirmado
   const rechazada = confirmacion === ETIQUETA.noConfirmado
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
+  const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
   /* Ante un rechazo, el escenario menciona a quien sigue el material de la obra. Se anticipa acá
      para que quien está mirando la pantalla sepa a quién le llegó el aviso. */
   const responsable = RESPONSABLE_RECHAZO[obra.tipo.texto] ?? null
@@ -45,7 +40,6 @@ export function ConfirmacionView() {
     setRefrescando(true)
     try {
       await refrescar()
-      setRefrescoHistorial((n) => n + 1)
     } finally {
       setRefrescando(false)
     }
@@ -60,10 +54,6 @@ export function ConfirmacionView() {
         tipo: obra.tipo.texto,
         accion: 'enviar-op-taller',
       })
-      await registrarActividad(
-        obra.id,
-        '🏭 <b>Orden de Producción enviada al taller</b> desde la app de Obras, con la OP confirmada por el cliente.',
-      ).catch(() => {})
 
       const { obra: fresca, cumplio } = await esperarEnTablero(
         obra.id,
@@ -73,8 +63,6 @@ export function ConfirmacionView() {
         { timeoutMs: 120_000, onLatido: (o) => dispatch({ type: 'refrescarObra', obra: o }) },
       )
 
-      setRefrescoHistorial((n) => n + 1)
-
       if (!cumplio) {
         setResultado({
           tono: 'warn',
@@ -83,10 +71,7 @@ export function ConfirmacionView() {
         return
       }
       if (fresca?.estadoEnvioTaller.texto === 'Error en Envio') {
-        setResultado({
-          tono: 'err',
-          texto: 'El escenario no pudo mandar la orden al taller. Revisá el historial.',
-        })
+        setResultado({ tono: 'err', texto: 'El escenario no pudo mandar la orden al taller.' })
         return
       }
       setResultado({ tono: 'ok', texto: 'La orden salió al taller de fabricación.' })
@@ -95,7 +80,7 @@ export function ConfirmacionView() {
         setResultado({
           tono: 'err',
           texto:
-            'Falta la URL del escenario de envío al taller en .env.local (MAKE_WEBHOOK_TALLER). Es el único dato que falta para cerrar el circuito.',
+            'Falta la URL del escenario de envío al taller (MAKE_WEBHOOK_TALLER). Es el único dato que falta para cerrar el circuito.',
         })
         return
       }
@@ -133,8 +118,8 @@ export function ConfirmacionView() {
           </div>
           <p className="panel-d">
             Lo que el cliente marcó en el formulario queda en la columna{' '}
-            <strong>Confirmacion de la Op</strong>. Esta pantalla la lee del tablero: no se
-            completa a mano.
+            <strong>Confirmacion de la Op</strong>. Esta pantalla la lee del tablero: no se completa
+            a mano.
           </p>
 
           <div className="obs-pie" style={{ marginTop: 0 }}>
@@ -157,7 +142,7 @@ export function ConfirmacionView() {
             </button>
           </div>
 
-          <div style={{ marginTop: 14 }}>
+          <div className="resultado">
             {confirmada && (
               <Aviso tono="ok">
                 El cliente confirmó la Orden de Producción. Ya se puede mandar al taller.
@@ -165,7 +150,7 @@ export function ConfirmacionView() {
             )}
             {rechazada && (
               <Aviso tono="err">
-                El cliente rechazó la orden. El motivo que cargó queda en el historial de la obra
+                El cliente rechazó la orden. El motivo que cargó queda en el registro de la obra
                 {responsable ? (
                   <>
                     , con la mención automática a <strong>{responsable}</strong> por ser una obra de{' '}
@@ -201,9 +186,7 @@ export function ConfirmacionView() {
               type="button"
               className="btn btn-primary"
               disabled={!confirmada || enviando}
-              title={
-                confirmada ? undefined : 'La orden tiene que estar confirmada por el cliente.'
-              }
+              title={confirmada ? undefined : 'La orden tiene que estar confirmada por el cliente.'}
               onClick={() => void enviarAlTaller()}
             >
               {enviando ? (
@@ -224,7 +207,7 @@ export function ConfirmacionView() {
           </div>
 
           {resultado && (
-            <div style={{ marginTop: 14 }}>
+            <div className="resultado">
               <Aviso tono={resultado.tono}>{resultado.texto}</Aviso>
             </div>
           )}
@@ -232,13 +215,12 @@ export function ConfirmacionView() {
 
         <div className="card">
           <div className="panel-t">
-            <i className="fas fa-clock-rotate-left" /> Historial de actividades
+            <i className="fas fa-file-pdf" /> La orden que está confirmando
           </div>
           <p className="panel-d">
-            Todo lo que pasó con la obra: adjuntos, generaciones, envíos, la respuesta del cliente y
-            las menciones automáticas.
+            Es el mismo documento que recibió el cliente, y el que va a salir al taller.
           </p>
-          <HistorialActividad itemId={obra.id} recargar={refrescoHistorial} limite={30} />
+          <VisorPdf archivo={opPdf} vacio="Esta obra todavía no tiene una OP final generada." />
         </div>
       </div>
 

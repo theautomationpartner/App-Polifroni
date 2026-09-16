@@ -6,7 +6,7 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { COL, getUrlArchivo, guardarObservaciones, registrarActividad, subirArchivo } from '@/services/monday'
+import { COL, getUrlArchivo, guardarObservaciones, subirArchivo } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 
@@ -77,10 +77,6 @@ export function EtmoView() {
     setAviso(null)
     try {
       await subirArchivo(obra.id, COL.ordenEtmo, archivo)
-      await registrarActividad(
-        obra.id,
-        `📄 <b>Orden ETMO adjuntada</b> desde la app de Obras.<br>Archivo: ${archivo.name}`,
-      )
       await refrescar()
       setArchivo(null)
       setAviso({ tono: 'ok', texto: 'La Orden ETMO quedó adjunta en la obra.' })

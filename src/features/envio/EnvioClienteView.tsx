@@ -5,31 +5,32 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
-import { COL, ETIQUETA, esperarEnTablero, registrarActividad, setEstado } from '@/services/monday'
+import { fechaHora, htmlATexto } from '@/lib/texto'
+import { COL, setEstado } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
-
-type Resultado = { tono: 'ok' | 'warn' | 'err'; texto: string } | null
+import { useEnviarOp } from './useEnviarOp'
 
 /** Opciones de las dos columnas de status que deciden a quién y por dónde se manda la orden. */
 const DESTINATARIOS = ['Cliente', 'Constructor', 'Ambos'] as const
 const VIAS = ['Whatsapp', 'Email', 'Ambos'] as const
 
+/** Los segundos como "1:05", que es como se lee una espera. */
+const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
 /**
  * Paso 4 · Envío de la OP final al cliente.
  *
  * El escenario de Make manda el documento por WhatsApp junto con el enlace al formulario donde el
- * cliente confirma o rechaza el pedido. La app elige destinatario y vía —dos columnas del
- * tablero—, toca el timbre y después sigue el estado del envío en el propio tablero.
+ * cliente confirma o rechaza. La app elige destinatario y vía —dos columnas del tablero—, toca el
+ * timbre y se queda esperando, igual que en la generación: con el reloj a la vista y mirando el
+ * tablero hasta que el estado del envío CAMBIE.
  */
 export function EnvioClienteView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-
-  const [enviando, setEnviando] = useState(false)
+  const { estado, correr, seguirEsperando, enCurso, noArranco } = useEnviarOp(obra)
   const [cambiando, setCambiando] = useState(false)
-  const [resultado, setResultado] = useState<Resultado>(null)
 
   const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
   const hayOp = obra.opFinal.length > 0
@@ -42,7 +43,7 @@ export function EnvioClienteView() {
     destinatario !== 'Cliente' && obra.celArquitecto ? `Constructor: ${obra.celArquitecto}` : '',
   ].filter(Boolean)
   const sinTelefono = telefonos.length === 0
-  const puedeEnviar = hayOp && !!destinatario && !sinTelefono && !enviando
+  const puedeEnviar = hayOp && !!destinatario && !sinTelefono && !enCurso
 
   const cambiarColumna = async (columna: string, etiqueta: string) => {
     setCambiando(true)
@@ -56,70 +57,14 @@ export function EnvioClienteView() {
     }
   }
 
-  const enviar = async () => {
-    setEnviando(true)
-    setResultado(null)
-    try {
-      await dispararEscenario(ESCENARIO.enviarOpCliente, obra.id, {
-        obra: obra.nombre,
-        destinatario,
-        via,
-        celCliente: obra.celCliente,
-        celArquitecto: obra.celArquitecto,
-        accion: 'enviar-op-cliente',
-      })
-      await registrarActividad(
-        obra.id,
-        `📲 <b>Envío de la OP final solicitado</b> desde la app de Obras.<br>Destinatario: ${destinatario || 'sin definir'} · Vía: ${via || 'sin definir'}`,
-      ).catch(() => {})
-
-      const { obra: fresca, cumplio } = await esperarEnTablero(
-        obra.id,
-        (o) =>
-          o.estadoEnvioOp.texto === ETIQUETA.envioEnviado ||
-          o.estadoEnvioOp.texto === ETIQUETA.envioError ||
-          o.mjsEnviadoCliente.texto === ETIQUETA.envioEnviado,
-        { timeoutMs: 120_000, onLatido: (o) => dispatch({ type: 'refrescarObra', obra: o }) },
-      )
-
-      if (!cumplio) {
-        setResultado({
-          tono: 'warn',
-          texto:
-            'El envío quedó en curso: el tablero todavía no confirma el resultado. Refrescá en un momento.',
-        })
-        return
-      }
-      if (fresca?.estadoEnvioOp.texto === ETIQUETA.envioError) {
-        setResultado({
-          tono: 'err',
-          texto: 'El escenario no pudo enviar el mensaje. Revisá el historial de la obra.',
-        })
-        return
-      }
-      setResultado({
-        tono: 'ok',
-        texto:
-          'Mensaje enviado. El cliente recibe la OP final y el enlace al formulario para confirmar o rechazar.',
-      })
-    } catch (e) {
-      if (e instanceof EscenarioNoConfigurado) {
-        setResultado({
-          tono: 'err',
-          texto:
-            'Falta la URL del escenario en .env.local (MAKE_WEBHOOK_ENVIAR_OP). Cargala y reiniciá npm run dev.',
-        })
-        return
-      }
-      setResultado({
-        tono: 'err',
-        texto: e instanceof Error ? e.message : 'No se pudo disparar el envío.',
-      })
-    } finally {
-      setEnviando(false)
-      void refrescar()
-    }
-  }
+  const trabajando =
+    estado.fase === 'disparando'
+      ? 'Avisándole a la automatización…'
+      : estado.fase === 'esperando'
+        ? `Esperando que la automatización tome el pedido… ${reloj(estado.segundos)}`
+        : estado.fase === 'trabajando'
+          ? `Enviando el mensaje por WhatsApp… ${reloj(estado.segundos)}`
+          : null
 
   return (
     <section className="view paso-layout obras-v2">
@@ -144,9 +89,7 @@ export function EnvioClienteView() {
             <i className="fas fa-paper-plane" /> Envío del documento
           </div>
           <p className="panel-d">
-            El destinatario y la vía se guardan en el tablero (columnas{' '}
-            <strong>✋ Orden de Produccion a:</strong> y{' '}
-            <strong>✋Enviar Orden de Produccion x:</strong>), que es de donde los lee el escenario.
+            El destinatario y la vía se guardan en el tablero, que es de donde los lee el escenario.
           </p>
 
           <div className="obra-vinculos" style={{ marginTop: 0 }}>
@@ -171,7 +114,7 @@ export function EnvioClienteView() {
                   items={DESTINATARIOS as readonly string[]}
                   itemKey={(d) => d}
                   renderItem={(d) => d}
-                  disabled={cambiando || enviando}
+                  disabled={cambiando || enCurso}
                   onSelect={(d) => void cambiarColumna(COL.opDestinatario, d)}
                 />
               </div>
@@ -198,7 +141,7 @@ export function EnvioClienteView() {
                   items={VIAS as readonly string[]}
                   itemKey={(v) => v}
                   renderItem={(v) => v}
-                  disabled={cambiando || enviando}
+                  disabled={cambiando || enCurso}
                   onSelect={(v) => void cambiarColumna(COL.opVia, v)}
                 />
               </div>
@@ -235,11 +178,11 @@ export function EnvioClienteView() {
               type="button"
               className="btn btn-green"
               disabled={!puedeEnviar}
-              onClick={() => void enviar()}
+              onClick={() => void correr()}
             >
-              {enviando ? (
+              {enCurso ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> Enviando…
+                  <i className="fas fa-circle-notch spin" /> {reloj(estado.segundos)}
                 </>
               ) : (
                 <>
@@ -250,7 +193,7 @@ export function EnvioClienteView() {
             <button
               type="button"
               className="btn btn-out btn--sm"
-              disabled={enviando}
+              disabled={enCurso}
               onClick={() => void refrescar()}
             >
               <i className="fas fa-rotate" /> Refrescar estado
@@ -262,11 +205,70 @@ export function EnvioClienteView() {
             <EstadoBadge label="Mensaje al cliente" estado={obra.mjsEnviadoCliente} />
           </div>
 
-          {resultado && (
-            <div style={{ marginTop: 14 }}>
-              <Aviso tono={resultado.tono}>{resultado.texto}</Aviso>
-            </div>
-          )}
+          <div className="resultado">
+            {estado.fase === 'esperando' && !noArranco && (
+              <Aviso tono="info">Pedido enviado. Esperando que la automatización lo tome…</Aviso>
+            )}
+            {noArranco && (
+              <Aviso tono="warn">
+                Pasaron {reloj(estado.segundos)} y el tablero no registró ningún movimiento del
+                envío. El escenario no tomó el pedido: revisá que esté activo en Make. Sigo mirando.
+              </Aviso>
+            )}
+            {estado.fase === 'trabajando' && (
+              <Aviso tono="info">
+                Mandando el mensaje ({reloj(estado.segundos)}). Podés dejar la pantalla abierta:
+                cuando termine, el estado cambia solo.
+              </Aviso>
+            )}
+            {estado.fase === 'listo' && (
+              <Aviso tono="ok">
+                Mensaje enviado en {reloj(estado.segundos)}. El cliente recibe la OP final y el
+                enlace al formulario para confirmar o rechazar.
+                <span className="origen">
+                  {' '}
+                  · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}
+                </span>
+              </Aviso>
+            )}
+            {estado.fase === 'demorado' && (
+              <>
+                <Aviso tono="warn">
+                  Pasaron 5 minutos y el tablero todavía no confirma el envío. La corrida sigue en
+                  Make: dejé de preguntar, no de esperar.
+                </Aviso>
+                <div className="acciones-fila">
+                  <button
+                    type="button"
+                    className="btn btn-out btn--sm"
+                    onClick={() => void seguirEsperando()}
+                  >
+                    <i className="fas fa-hourglass-half" /> Seguir esperando
+                  </button>
+                </div>
+              </>
+            )}
+            {estado.fase === 'error' && estado.problema && <Aviso tono="err">{estado.problema}</Aviso>}
+            {estado.fase === 'error' && !estado.problema && (
+              <>
+                <Aviso tono="err">
+                  El escenario no pudo enviar el mensaje.
+                  {estado.updateError ? ' Esto es lo que informó:' : ' No dejó ningún detalle.'}
+                </Aviso>
+                {estado.updateError && (
+                  <article className="update-corrida">
+                    <div className="hist-cab">
+                      <span className="hist-autor">{estado.updateError.autor}</span>
+                      <span className="hist-fecha">{fechaHora(estado.updateError.fecha)}</span>
+                    </div>
+                    <p className="hist-txt" style={{ whiteSpace: 'pre-wrap' }}>
+                      {htmlATexto(estado.updateError.body)}
+                    </p>
+                  </article>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="card">
@@ -280,7 +282,7 @@ export function EnvioClienteView() {
           <VisorPdf
             archivo={opPdf}
             vacio="Todavía no hay una OP final generada para esta obra."
-            trabajando={enviando ? 'Enviando la Orden de Producción al cliente…' : null}
+            trabajando={trabajando}
           />
         </div>
       </div>

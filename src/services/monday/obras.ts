@@ -431,6 +431,70 @@ export async function registrarActividad(itemId: string, cuerpoHtml: string): Pr
  * Espera activa
  * ──────────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Una etiqueta de status con el MOMENTO en que cambió.
+ *
+ * El `changed_at` es la diferencia entre "la columna dice Enviado" y "la columna pasó a Enviado
+ * recién". Sin él, una obra que ya tenía el estado puesto de una corrida anterior hace que la app
+ * dé por terminado algo que ni siquiera empezó. Pasó exactamente eso con el envío al cliente.
+ */
+export interface EstadoConFecha {
+  texto: string
+  /** Milisegundos epoch del último cambio; 0 si la columna nunca se tocó. */
+  cambio: number
+}
+
+function estadoConFecha(cv?: CV): EstadoConFecha {
+  const texto = limpiar(cv?.text ?? '')
+  const raw = (cv as { value?: string | null } | undefined)?.value
+  let cambio = 0
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as { changed_at?: string }
+      const t = parsed.changed_at ? Date.parse(parsed.changed_at) : NaN
+      cambio = Number.isFinite(t) ? t : 0
+    } catch {
+      cambio = 0
+    }
+  }
+  return { texto, cambio }
+}
+
+/** Estados del envío de la OP, con la fecha de su último cambio. */
+export interface EstadoEnvio {
+  /** 🤖 Estado de Envío OP: Enviar | Enviando | Enviado | Error de Envío. */
+  envioOp: EstadoConFecha
+  /** Mjs Enviado Cliente: Enviado | Error Envio. */
+  mensajeCliente: EstadoConFecha
+}
+
+/**
+ * Estado del envío, con la consulta mínima: dos columnas de un ítem.
+ *
+ * Es lo que se pregunta cada pocos segundos mientras el escenario manda el mensaje. Viene con el
+ * `changed_at` de cada columna porque lo que importa no es qué dice, sino si cambió DESPUÉS de que
+ * el usuario apretó el botón.
+ */
+export async function getEstadoEnvio(itemId: string): Promise<EstadoEnvio> {
+  const d = await mondayApi<{ items: MondayItem[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ${JSON.stringify([COL.estadoEnvioOp, COL.mjsEnviadoCliente])}) {
+          id text value
+        }
+      }
+    }`,
+    { ids: [itemId] },
+  )
+  const item = d.items?.[0]
+  if (!item) return { envioOp: { texto: '', cambio: 0 }, mensajeCliente: { texto: '', cambio: 0 } }
+  const c = byId(item)
+  return {
+    envioOp: estadoConFecha(c[COL.estadoEnvioOp]),
+    mensajeCliente: estadoConFecha(c[COL.mjsEnviadoCliente]),
+  }
+}
+
 /** Lo único que hay que mirar para saber cómo va la generación de la OP final. */
 export interface EstadoOp {
   /** Etiqueta de 🤖Estado Orden de Prod Final: Generar | Generando | Generado | Error - Ver Update. */
