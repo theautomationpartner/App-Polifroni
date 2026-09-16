@@ -5,25 +5,30 @@
  * OP al cliente por WhatsApp). La app no reimplementa nada de eso: sólo toca el timbre y después
  * mira el tablero, que es donde el escenario deja el resultado.
  *
- * Cada hook vive detrás de una ruta del propio origen (`/make/...`, ver `vite.config.ts`): el hook
- * de Make no responde con cabeceras CORS, así que pegarle directo desde el navegador falla, y de
- * paso la URL del escenario no queda escrita en el bundle.
+ * Nunca se le pega al hook directo desde el navegador: no responde con cabeceras CORS y, además,
+ * su URL es un secreto —quien la tenga puede disparar el escenario—. En desarrollo lo tapa el proxy
+ * de Vite (`/make/...`) y en producción la Serverless Function `/api/make`, que en los dos casos
+ * leen la URL de una variable de entorno del servidor.
  */
 import { BOARD_OBRAS } from '../monday/columns'
 
-/** Los escenarios que la app puede disparar, con la ruta local que los representa. */
+/** Los escenarios que la app puede disparar. El nombre es el mismo en los dos entornos. */
 export const ESCENARIO = {
-  leerDocumento: '/make/leer-documento',
-  enviarOpCliente: '/make/enviar-op-cliente',
-  enviarOpTaller: '/make/enviar-op-taller',
+  leerDocumento: 'leer-documento',
+  enviarOpCliente: 'enviar-op-cliente',
+  enviarOpTaller: 'enviar-op-taller',
 } as const
 
 export type Escenario = (typeof ESCENARIO)[keyof typeof ESCENARIO]
 
-/** El escenario no está configurado en el entorno: la ruta del proxy no existe y Vite devuelve 404. */
+/** A qué ruta del propio origen le pega cada escenario, según el entorno. */
+const rutaDe = (escenario: Escenario): string =>
+  import.meta.env.DEV ? `/make/${escenario}` : `/api/make?escenario=${escenario}`
+
+/** El escenario no está configurado en el entorno: no hay URL a la que mandar el pedido. */
 export class EscenarioNoConfigurado extends Error {
-  constructor(ruta: string) {
-    super(`El escenario de Make para "${ruta}" no está configurado en .env.local.`)
+  constructor(escenario: string) {
+    super(`El escenario de Make "${escenario}" no tiene URL configurada.`)
     this.name = 'EscenarioNoConfigurado'
   }
 }
@@ -70,21 +75,26 @@ export async function dispararEscenario(
   const corte = setTimeout(() => control.abort(), 180_000)
 
   try {
-    const res = await fetch(escenario, {
+    const res = await fetch(rutaDe(escenario), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cuerpo(itemId, extra)),
       signal: control.signal,
     })
-    /* Sin URL configurada, la ruta no existe: el 404 lo devuelve Vite, no Make. Se distingue para
-       poder decir en pantalla "falta configurar el escenario" en vez de "el escenario falló". */
+    /* Sin URL configurada la ruta contesta 404 —en desarrollo porque no existe, en producción
+       porque la función lo dice—. Se distingue para poder avisar "falta configurar el escenario"
+       en vez de "el escenario falló". */
     if (res.status === 404) throw new EscenarioNoConfigurado(escenario)
+    /* Que se corte la ESPERA no es que el escenario haya fallado: el hook ya recibió el pedido y
+       está trabajando. Pasa de verdad en producción, donde la función serverless tiene un tope de
+       duración más corto que un escenario que lee un PDF con IA. Se sigue de largo y lo resuelve
+       la lectura del tablero, que es la que sabe cómo terminó. */
+    if (res.status === 504 || res.status === 408) return ''
     if (!res.ok) throw new Error(`El escenario respondió HTTP ${res.status}`)
     return (await res.text()).trim()
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
-      throw new Error('El escenario de Make tardó más de 3 minutos en responder.')
-    }
+    // Mismo caso que el 504, pero cortado de este lado.
+    if (e instanceof DOMException && e.name === 'AbortError') return ''
     throw e
   } finally {
     clearTimeout(corte)

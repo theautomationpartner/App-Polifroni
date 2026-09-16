@@ -1,6 +1,6 @@
 # Polifroni · App de procesos — 🪟 Obras
 
-Aplicación local para el proceso de **Orden de Producción** de obras. Lee y escribe únicamente el
+Aplicación para el proceso de **Orden de Producción** de obras. Lee y escribe únicamente el
 tablero **🪟 Obras (9617181553)** de Monday y dispara los escenarios de Make que ya están
 desarrollados.
 
@@ -10,7 +10,7 @@ ese repositorio, y `obras.css` sigue sus mismos patrones para lo propio de este 
 
 ---
 
-## Cómo levantarla
+## Cómo levantarla (local)
 
 ```bash
 npm install
@@ -21,14 +21,47 @@ Abrir <http://localhost:5191>.
 
 Todavía **no hay autenticación**: se entra directo a la pantalla de selección de procesos.
 
-## Configuración (`.env.local`)
+## Configuración en Vercel (producción)
+
+En **Settings → Environment Variables** van estas cuatro, **ninguna con prefijo `VITE_`**:
+
+| Variable | Valor |
+| --- | --- |
+| `MONDAY_TOKEN` | El token de Monday de Polifroni |
+| `MAKE_WEBHOOK_LEER_DOC` | `https://hook.us1.make.com/9chqbwa4...` |
+| `MAKE_WEBHOOK_ENVIAR_OP` | `https://hook.us1.make.com/p0q6e8ga...` |
+| `MAKE_WEBHOOK_TALLER` | (pendiente) |
+
+Las lee el código de `api/`, que corre **en el servidor**. El navegador nunca ve el token: pide
+`/api/monday` y la función reenvía a Monday poniendo la credencial.
+
+> **Por qué no `VITE_MONDAY_TOKEN` en producción.** Vite reemplaza toda variable `VITE_*` por su
+> valor literal dentro del JavaScript que se descarga el navegador. Cargar el token así equivale a
+> publicarlo: cualquiera que abra la página puede leerlo del bundle y escribir en los tableros con
+> él. El build está hecho para que eso no pueda pasar ni por error (la lectura vive dentro de una
+> rama que sólo existe en desarrollo y el compilador la borra en producción).
+
+> **La app todavía no tiene autenticación.** Quien tenga la URL del deploy puede usarla, y por lo
+> tanto operar sobre el tablero a través de `/api/*`. Hasta que la capa de acceso exista, conviene
+> dejar el deploy cerrado en **Settings → Deployment Protection**.
+
+### Las rutas de `api/`
+
+| Ruta | Qué hace | Equivalente en desarrollo |
+| --- | --- | --- |
+| `api/monday.ts` | GraphQL de Monday con el token del servidor | proxy `/monday-api` |
+| `api/monday-upload.ts` | Subida del PDF a una columna `file` (multipart) | proxy `/monday-api-file` |
+| `api/monday-file.ts` | Trae los bytes del PDF desde S3 y les saca la cabecera de descarga | proxy `/monday-files` |
+| `api/make.ts` | Dispara un escenario de Make de una lista cerrada | proxy `/make/*` |
+
+## Configuración local (`.env.local`)
 
 El archivo ya está creado con los valores de trabajo. Es el único lugar donde viven los secretos y
 está fuera de git (`.gitignore`):
 
 | Variable | Para qué |
 | --- | --- |
-| `VITE_MONDAY_TOKEN` | Token de Monday. Viaja por el proxy de Vite (`/monday-api`). |
+| `VITE_MONDAY_TOKEN` | Token de Monday, SÓLO para desarrollo. Viaja por el proxy de Vite (`/monday-api`). En producción se usa `MONDAY_TOKEN` (ver arriba). |
 | `MAKE_WEBHOOK_LEER_DOC` | Escenario que lee el PDF de ETMO y arma la OP final. |
 | `MAKE_WEBHOOK_ENVIAR_OP` | Escenario que manda la OP al cliente por WhatsApp. |
 | `MAKE_WEBHOOK_TALLER` | Escenario de envío al taller. **Falta la URL**: sin ella el botón avisa qué configurar. |
@@ -52,6 +85,7 @@ importes, documentos— está presente en todas las etapas.
 ## Cómo está organizado
 
 ```
+api/                 Serverless Functions (Vercel): el token vive acá, no en el navegador
 src/
   services/monday/   columns.ts (mapa del tablero) · sdk.ts · obras.ts · parse.ts · cache.ts
   services/make/     sdk.ts (disparo de escenarios)
