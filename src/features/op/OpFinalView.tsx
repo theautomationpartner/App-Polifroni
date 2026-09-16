@@ -130,6 +130,9 @@ export function OpFinalView() {
             {estado.fase === 'listo' && (
               <Aviso tono="ok">
                 Orden de Producción final generada y adjunta a la obra en {reloj(estado.segundos)}.
+                {/* De dónde salió la noticia. Mientras se afina la espera, saber si contestó el
+                    escenario o si lo trajo el tablero explica por qué tardó lo que tardó. */}
+                <span className="origen"> · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}</span>
               </Aviso>
             )}
             {estado.fase === 'demorado' && (

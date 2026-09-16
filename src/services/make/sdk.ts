@@ -60,17 +60,47 @@ function cuerpo(itemId: string, extra: Record<string, unknown>) {
 }
 
 /**
- * Dispara un escenario y devuelve lo que contestó, como texto.
+ * Lo que contestó el escenario.
+ *
+ * El escenario tiene un módulo *Webhook response* al final de CADA rama del router, así que la
+ * respuesta dice cómo terminó:
+ *  - rama de error:  `{ "error_update_id": "<id del update>" }`
+ *  - rama de éxito:  `{ "estado": "true" }`
+ *
+ * Pero la respuesta llega recién cuando esa rama TERMINA, y el camino de éxito incluye leer el PDF
+ * con IA y armar el documento. Esa espera puede pasarse del tope de la función que hace de puente
+ * (y del que el propio Make mantiene abierta la conexión). Cuando eso pasa no hay respuesta y no
+ * pasó nada malo: el escenario sigue, y quien contesta es el tablero. Eso es `sinRespuesta`.
+ */
+export interface RespuestaEscenario {
+  /** El cuerpo ya parseado, si vino JSON. */
+  cuerpo: Record<string, unknown> | null
+  /** No hubo respuesta a tiempo. NO es un fallo: el escenario recibió el pedido igual. */
+  sinRespuesta: boolean
+}
+
+/** El id del update que el escenario dejó al fallar, si la respuesta lo trae. */
+export const updateDeError = (r: RespuestaEscenario): string | null => {
+  const id = r.cuerpo?.error_update_id
+  return id ? String(id) : null
+}
+
+/** La respuesta dice que la orden se generó. */
+export const terminoBien = (r: RespuestaEscenario): boolean =>
+  String(r.cuerpo?.estado ?? '') === 'true'
+
+/**
+ * Dispara un escenario y espera su respuesta.
  *
  * El tiempo de espera es largo (3 minutos) porque del otro lado hay un módulo de IA leyendo un PDF.
- * Aun así, la respuesta del hook NO es el resultado del proceso: quien dice si salió bien es el
- * tablero. Por eso el que llama sigue con `esperarEnTablero`.
+ * Si la respuesta no llega, no se lanza error: se devuelve `sinRespuesta` y el que llamó sigue
+ * mirando el tablero, que es donde el escenario deja el resultado pase lo que pase.
  */
 export async function dispararEscenario(
   escenario: Escenario,
   itemId: string,
   extra: Record<string, unknown> = {},
-): Promise<string> {
+): Promise<RespuestaEscenario> {
   const control = new AbortController()
   const corte = setTimeout(() => control.abort(), 180_000)
 
@@ -89,12 +119,24 @@ export async function dispararEscenario(
        está trabajando. Pasa de verdad en producción, donde la función serverless tiene un tope de
        duración más corto que un escenario que lee un PDF con IA. Se sigue de largo y lo resuelve
        la lectura del tablero, que es la que sabe cómo terminó. */
-    if (res.status === 504 || res.status === 408) return ''
+    if (res.status === 504 || res.status === 408) return { cuerpo: null, sinRespuesta: true }
     if (!res.ok) throw new Error(`El escenario respondió HTTP ${res.status}`)
-    return (await res.text()).trim()
+
+    const texto = (await res.text()).trim()
+    /* El cuerpo se parsea con cuidado: un webhook puede contestar "Accepted" a secas, y eso no es
+       JSON ni es un problema. Sin cuerpo entendible, decide el tablero. */
+    try {
+      const datos = JSON.parse(texto) as unknown
+      const cuerpo = datos && typeof datos === 'object' ? (datos as Record<string, unknown>) : null
+      return { cuerpo, sinRespuesta: false }
+    } catch {
+      return { cuerpo: null, sinRespuesta: false }
+    }
   } catch (e) {
     // Mismo caso que el 504, pero cortado de este lado.
-    if (e instanceof DOMException && e.name === 'AbortError') return ''
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return { cuerpo: null, sinRespuesta: true }
+    }
     throw e
   } finally {
     clearTimeout(corte)

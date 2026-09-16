@@ -357,7 +357,31 @@ export async function setEstado(itemId: string, columna: string, etiqueta: strin
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /**
+ * Un update puntual, por su id.
+ *
+ * Es el camino bueno cuando el escenario contesta con el id del update que acaba de escribir: se
+ * lee EXACTAMENTE ese, sin filtrar por fecha ni adivinar cuál de los últimos es el que corresponde.
+ */
+export async function getActividadPorId(updateId: string): Promise<Actividad | null> {
+  const d = await mondayApi<{
+    updates: { id: string; body: string; created_at: string; creator: { name: string } | null }[]
+  }>(
+    `query ($ids: [ID!]) {
+      updates(ids: $ids) { id body created_at creator { name } }
+    }`,
+    { ids: [updateId] },
+  )
+  const u = d.updates?.[0]
+  return u
+    ? { id: u.id, body: u.body ?? '', fecha: u.created_at, autor: u.creator?.name ?? 'Automatización' }
+    : null
+}
+
+/**
  * El update que la automatización dejó DESPUÉS del momento indicado.
+ *
+ * Es el plan B de `getActividadPorId`: sirve cuando la respuesta del escenario no llegó a tiempo y
+ * el único dato disponible es que el tablero quedó en error.
  *
  * Es lo que se muestra cuando una corrida falla. Se filtra por fecha a propósito: el ítem arrastra
  * updates de corridas viejas —de hace semanas— y mostrarlos como si fueran el resultado de lo que

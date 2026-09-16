@@ -1,6 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
-import { ETIQUETA, getActividadDesde, getEstadoOp, getObra } from '@/services/monday'
+import {
+  ESCENARIO,
+  EscenarioNoConfigurado,
+  dispararEscenario,
+  terminoBien,
+  updateDeError,
+  type RespuestaEscenario,
+} from '@/services/make'
+import {
+  ETIQUETA,
+  getActividadDesde,
+  getActividadPorId,
+  getEstadoOp,
+  getObra,
+} from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 import type { Actividad, Obra } from '@/types'
 
@@ -34,6 +47,8 @@ export interface Generacion {
   updateError: Actividad | null
   /** Un problema de la app, no del escenario: el hook no está configurado, la red falló. */
   problema: string | null
+  /** Quién trajo la noticia. Sirve para saber si la respuesta del escenario llega o no a tiempo. */
+  origen: 'respuesta' | 'tablero' | null
 }
 
 const INICIAL: Generacion = {
@@ -42,24 +57,33 @@ const INICIAL: Generacion = {
   arranco: false,
   updateError: null,
   problema: null,
+  origen: null,
 }
 
 /**
- * Dispara el escenario y sigue la corrida MIRANDO EL TABLERO.
+ * Dispara el escenario y espera el resultado por DOS caminos a la vez.
  *
- * El webhook contesta apenas recibe el pedido, no cuando termina: el resultado —el documento y el
- * estado— lo deja el escenario en el ítem, y eso es lo único que dice cómo salió. Por eso acá se
- * pregunta por las dos columnas de la OP hasta que aparece un archivo NUEVO (no el de una corrida
- * anterior) o el estado queda en error.
+ * 1. La respuesta del propio escenario, que ahora cierra cada rama con un *Webhook response*:
+ *    `{error_update_id}` si falló, `{estado:"true"}` si generó. Es la noticia más rápida y la más
+ *    precisa —con el id del update se lee exactamente el mensaje de esta corrida—.
+ * 2. El tablero, releído cada pocos segundos.
  *
- * Leer el tablero, y no esperar una respuesta del escenario, también es lo que hace que cerrar la
- * pestaña no pierda nada: al volver a entrar, la obra ya trae el resultado.
+ * Los dos corren en paralelo y gana el que llegue primero. No es redundancia: la respuesta del
+ * camino de éxito llega recién cuando terminan la IA y el armado del PDF, y esa espera puede
+ * pasarse del tope de la función que hace de puente. Cuando eso pasa, el sondeo ya está mirando y
+ * el usuario no se entera de nada. Y al revés: cuando el escenario falla rápido, la respuesta
+ * evita seguir preguntándole al tablero por algo que ya está resuelto.
+ *
+ * Mirar el tablero es, además, lo que hace que cerrar la pestaña no pierda nada: al volver a
+ * entrar, la obra ya trae el resultado.
  */
 export function useGenerarOp(obra: Obra) {
   const dispatch = useDispatch()
   const [estado, setEstado] = useState<Generacion>(INICIAL)
   /** Se apaga al desmontar: un `setState` sobre una vista que ya no está sólo trae ruido. */
   const vivo = useRef(true)
+  /** Ya se decidió cómo terminó: el otro camino tiene que callarse. */
+  const cerrado = useRef(false)
   /** Momento del disparo: con él se filtran los updates viejos y se mide la espera. */
   const t0 = useRef(0)
   const previos = useRef<Set<string>>(new Set())
@@ -68,6 +92,7 @@ export function useGenerarOp(obra: Obra) {
     vivo.current = true
     return () => {
       vivo.current = false
+      cerrado.current = true
     }
   }, [])
 
@@ -88,75 +113,113 @@ export function useGenerarOp(obra: Obra) {
     if (fresca && vivo.current) dispatch({ type: 'refrescarObra', obra: fresca })
   }, [dispatch, obra.id])
 
+  /** Cierra la corrida: el primero que sabe cómo terminó gana, el otro camino se calla. */
+  const cerrar = useCallback(
+    async (parcial: Partial<Generacion>) => {
+      if (cerrado.current) return
+      cerrado.current = true
+      if (vivo.current) setEstado((e) => ({ ...e, ...parcial }))
+      await refrescarObra()
+    },
+    [refrescarObra],
+  )
+
+  /** Camino 1 · lo que contestó el escenario. */
+  const leerRespuesta = useCallback(
+    async (r: RespuestaEscenario) => {
+      if (cerrado.current || r.sinRespuesta) return
+
+      const idUpdate = updateDeError(r)
+      if (idUpdate) {
+        const update = await getActividadPorId(idUpdate).catch(() => null)
+        await cerrar({ fase: 'error', updateError: update, origen: 'respuesta' })
+        return
+      }
+      if (terminoBien(r)) await cerrar({ fase: 'listo', origen: 'respuesta' })
+    },
+    [cerrar],
+  )
+
+  /** Camino 2 · el tablero, releído hasta que aparezca el resultado. */
   const sondear = useCallback(async () => {
-    while (vivo.current) {
+    while (vivo.current && !cerrado.current) {
       const { estado: etiqueta, opFinal } = await getEstadoOp(obra.id).catch(() => ({
         estado: '',
         opFinal: [],
       }))
+      if (cerrado.current) return
 
       /* Un archivo que no estaba antes de apretar: ESO es el resultado de esta corrida. Esperar
          "que haya archivo" daría por buena la OP vieja en el primer latido. */
-      const nuevo = opFinal.find((a) => !previos.current.has(a.assetId))
-      if (nuevo) {
-        setEstado((e) => ({ ...e, fase: 'listo' }))
-        await refrescarObra()
+      if (opFinal.some((a) => !previos.current.has(a.assetId))) {
+        await cerrar({ fase: 'listo', origen: 'tablero' })
         return
       }
 
       if (etiqueta === ETIQUETA.opError) {
         const update = await getActividadDesde(obra.id, t0.current).catch(() => null)
-        setEstado((e) => ({ ...e, fase: 'error', updateError: update }))
-        await refrescarObra()
+        await cerrar({ fase: 'error', updateError: update, origen: 'tablero' })
         return
       }
 
-      const transcurrido = Date.now() - t0.current
-      if (etiqueta === ETIQUETA.opGenerando) {
-        setEstado((e) => (e.arranco ? { ...e, fase: 'generando' } : { ...e, fase: 'generando', arranco: true }))
+      if (etiqueta === ETIQUETA.opGenerando && vivo.current) {
+        setEstado((e) => ({ ...e, fase: 'generando', arranco: true }))
       }
 
+      const transcurrido = Date.now() - t0.current
       if (transcurrido > TOPE_MS) {
-        setEstado((e) => ({ ...e, fase: 'demorado' }))
-        await refrescarObra()
+        await cerrar({ fase: 'demorado' })
         return
       }
 
       await espera(transcurrido > CAMBIO_DE_RITMO_MS ? INTERVALO_LARGO : INTERVALO_CORTO)
     }
-  }, [obra.id, refrescarObra])
+  }, [cerrar, obra.id])
 
-  /** Pide la generación: dispara el escenario y se queda mirando el tablero. */
+  /** Pide la generación: dispara el escenario y escucha por los dos caminos. */
   const generar = useCallback(async () => {
     t0.current = Date.now()
     previos.current = new Set(obra.opFinal.map((a) => a.assetId))
+    cerrado.current = false
     setEstado({ ...INICIAL, fase: 'disparando' })
 
-    try {
-      await dispararEscenario(ESCENARIO.leerDocumento, obra.id, {
-        obra: obra.nombre,
-        observaciones: obra.observaciones,
-        accion: 'leer-documento-etmo',
+    /* El pedido NO se espera antes de empezar a mirar el tablero: su respuesta llega al final del
+       escenario, y hasta entonces el tablero es la única fuente de novedades. */
+    const pedido = dispararEscenario(ESCENARIO.leerDocumento, obra.id, {
+      obra: obra.nombre,
+      observaciones: obra.observaciones,
+      accion: 'leer-documento-etmo',
+    })
+      .then(leerRespuesta)
+      .catch(async (e: unknown) => {
+        /* Sin URL configurada no salió nada y no hay nada que esperar: se corta acá. Cualquier otro
+           fallo de red puede haber llegado igual al escenario, así que el sondeo sigue. */
+        if (e instanceof EscenarioNoConfigurado) {
+          await cerrar({
+            fase: 'error',
+            problema:
+              'Falta la URL del escenario (MAKE_WEBHOOK_LEER_DOC). Cargala en el entorno y reintentá.',
+          })
+          return
+        }
+        if (vivo.current) {
+          setEstado((s) => ({
+            ...s,
+            problema:
+              e instanceof Error
+                ? `${e.message} — sigo mirando el tablero por las dudas.`
+                : 'No se pudo confirmar el disparo; sigo mirando el tablero.',
+          }))
+        }
       })
-    } catch (e) {
-      if (!vivo.current) return
-      const problema =
-        e instanceof EscenarioNoConfigurado
-          ? 'Falta la URL del escenario (MAKE_WEBHOOK_LEER_DOC). Cargala en el entorno y reintentá.'
-          : e instanceof Error
-            ? e.message
-            : 'No se pudo avisarle a la automatización.'
-      setEstado((s) => ({ ...s, fase: 'error', problema }))
-      return
-    }
 
-    if (!vivo.current) return
-    setEstado((s) => ({ ...s, fase: 'esperando' }))
-    await sondear()
-  }, [obra.id, obra.nombre, obra.observaciones, obra.opFinal, sondear])
+    if (vivo.current) setEstado((s) => ({ ...s, fase: 'esperando' }))
+    await Promise.all([sondear(), pedido])
+  }, [cerrar, leerRespuesta, obra.id, obra.nombre, obra.observaciones, obra.opFinal, sondear])
 
   /** Después del tope: volver a mirar, sin disparar el escenario otra vez. */
   const seguirEsperando = useCallback(async () => {
+    cerrado.current = false
     setEstado((e) => ({ ...e, fase: e.arranco ? 'generando' : 'esperando' }))
     await sondear()
   }, [sondear])
