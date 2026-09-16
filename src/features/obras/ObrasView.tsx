@@ -56,7 +56,16 @@ export function ObrasView() {
         setHistorial([])
         setPagina(1)
       })
-      .catch(() => setError('No se pudo leer la obra en Monday. Revisá el token en .env.local.'))
+      /* El consejo cambia según DÓNDE está corriendo la app: en tu máquina el token vive en
+         `.env.local`; en el servidor, en las variables del proyecto. Mandar a revisar un archivo
+         que en producción no existe es peor que no decir nada. */
+      .catch(() =>
+        setError(
+          import.meta.env.DEV
+            ? 'No se pudo leer la obra en Monday. Revisá VITE_MONDAY_TOKEN en .env.local.'
+            : 'No se pudo leer la obra en Monday. Revisá que MONDAY_TOKEN esté cargado en las variables de entorno del proyecto.',
+        ),
+      )
       .finally(() => setCargando(false))
   }, [])
 
@@ -159,9 +168,11 @@ export function ObrasView() {
         }
       />
 
+      {/* Sólo aparece corriendo en tu máquina: en el servidor el token no lo pone el navegador
+          sino la función de `api/`, así que `mondayHabilitado()` ya no pregunta por él. */}
       {sinToken && (
         <Aviso tono="err">
-          Falta el token de Monday. Cargalo en <strong>.env.local</strong> como{' '}
+          Falta el token de Monday para desarrollo. Cargalo en <strong>.env.local</strong> como{' '}
           <strong>VITE_MONDAY_TOKEN</strong> y reiniciá <strong>npm run dev</strong>.
         </Aviso>
       )}
