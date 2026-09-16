@@ -21,6 +21,22 @@ Abrir <http://localhost:5191>.
 
 Todavía **no hay autenticación**: se entra directo a la pantalla de selección de procesos.
 
+## Ramas
+
+| Rama | Para qué | Dónde se ve |
+| --- | --- | --- |
+| `main` | Lo que está en producción. Sólo llega acá lo ya probado. | Deploy de producción |
+| `dev` | Donde se trabaja y se prueba. | Deploy de *preview* que Vercel arma solo |
+
+El trabajo del día a día va a `dev`; a `main` se pasa cuando lo probado convence. Para que los
+deploys de preview funcionen, las variables de entorno tienen que estar también en el entorno
+**Preview**, no sólo en Production.
+
+> **El autor del commit importa.** Vercel no despliega un commit cuyo autor no pueda atribuir a una
+> cuenta con acceso al proyecto: lo bloquea antes de construir, con
+> *"Git author … must have access to the project"*. Por eso este repositorio tiene configurado el
+> `user.email` de la cuenta que administra el proyecto en Vercel.
+
 ## Configuración en Vercel (producción)
 
 En **Settings → Environment Variables** van estas cuatro, **ninguna con prefijo `VITE_`**:
