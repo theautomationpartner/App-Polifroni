@@ -1,0 +1,4 @@
+# El repositorio guarda todo con finales de línea LF, sea cual sea el sistema desde el que se
+# trabaje. Sin esto, cada commit desde Windows convierte los archivos a CRLF y el diff siguiente
+# muestra el archivo entero como cambiado.
+* text=auto eol=lf
