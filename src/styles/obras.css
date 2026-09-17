@@ -811,8 +811,10 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 420px;
+  /* VENTANA de alto fijo, no una caja que crece con el documento: el que scrollea es el visor,
+     no la página. Sin esto, una orden de diez hojas empuja los botones del paso diez pantallas
+     más abajo y hay que scrollear todo el documento para llegar a "Generar". */
+  height: clamp(420px, 68vh, 760px);
   border: 1px solid var(--border);
 }
 .pdftool {
@@ -840,6 +842,7 @@
 }
 .pdf-empty {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -849,7 +852,6 @@
   color: #a9aab0;
   text-align: center;
   padding: 24px;
-  min-height: 380px;
 }
 .pdf-empty i {
   font-size: 44px;
@@ -1158,6 +1160,10 @@
    de una hoja de papel sobre el fondo oscuro del visor. */
 .pdfscroll {
   flex: 1;
+  /* `min-height: 0` es lo que hace que el scroll sea DEL VISOR: un hijo flex, por defecto, se
+     niega a achicarse por debajo de su contenido, así que sin esto el contenedor crecía con las
+     hojas y la barra terminaba siendo la de la página. */
+  min-height: 0;
   overflow: auto;
   background: #525659;
   padding: 16px;
@@ -1165,7 +1171,6 @@
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  min-height: 380px;
 }
 .pdf-hoja {
   display: block;
