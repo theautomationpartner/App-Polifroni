@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>¡Gracias! · Polifroni</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Mismos tokens que el formulario y que la app: es la misma marca, dos pantallas seguidas. */
+      :root {
+        --primary-blue: #0073ea;
+        --green: #00c875;
+        --green-dark: #00874d;
+        --orange: #fdab3d;
+        --text-dark: #323338;
+        --text-gray: #676879;
+        --border-suave: #e2e8f0;
+        --sombra: 0 2px 8px rgba(15, 23, 42, 0.06);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: #f4f7f6;
+        color: var(--text-dark);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding: 24px 16px 40px;
+      }
+
+      .caja {
+        background: #fff;
+        border: 1px solid var(--border-suave);
+        border-radius: 16px;
+        box-shadow: var(--sombra);
+        padding: 32px 24px;
+        width: 100%;
+        max-width: 440px;
+        text-align: center;
+      }
+
+      .marca {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        color: var(--primary-blue);
+        padding-bottom: 20px;
+        margin-bottom: 26px;
+        border-bottom: 1px solid var(--border-suave);
+      }
+
+      /* El sello: redondo, grande y del color de lo que pasó. Es lo primero que se ve. */
+      .sello {
+        width: 74px;
+        height: 74px;
+        margin: 0 auto 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 34px;
+        background: #eafaf1;
+        color: var(--green-dark);
+      }
+      .sello--revisar {
+        background: #fff6e8;
+        color: #9a6a12;
+      }
+
+      h1 {
+        font-size: 21px;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.3;
+      }
+      .fecha {
+        margin-top: 10px;
+        display: inline-block;
+        padding: 5px 14px;
+        border-radius: 999px;
+        background: #f1f5f9;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #475569;
+      }
+      .detalle {
+        margin-top: 18px;
+        font-size: 15px;
+        line-height: 1.6;
+        color: var(--text-gray);
+      }
+      .detalle strong {
+        color: var(--text-dark);
+        font-weight: 600;
+      }
+
+      .nota {
+        margin-top: 24px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: #f8fafc;
+        border: 1px solid var(--border-suave);
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--text-gray);
+        text-align: left;
+      }
+
+      .pie {
+        margin-top: 22px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #94a3b8;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="caja">
+      <!-- Si preferís el logo en imagen, reemplazá esta línea por:
+           <img src="URL_DEL_LOGO" alt="Polifroni" style="height:52px" /> -->
+      <div class="marca">POLIFRONI</div>
+
+      <!-- Lo que respondió el cliente. Queda oculto: sólo sirve para elegir qué mensaje mostrar. -->
+      <span id="respuesta" hidden>{{1.estado_obra}}</span>
+
+      <!-- ===== Confirmó ===== -->
+      <div id="bloqueConfirmado">
+        <div class="sello">✅</div>
+        <h1>¡Confirmamos tu pedido<span id="nombreOk">, {{1.nombre}}</span>!</h1>
+        <div class="fecha">{{formatDate(now; "DD/MM/YYYY")}}</div>
+        <p class="detalle">
+          Ya estamos <strong>trabajando en tu pedido</strong>. Cualquier novedad de la fabricación te
+          la avisamos por WhatsApp.
+        </p>
+      </div>
+
+      <!-- ===== Pidió revisión ===== -->
+      <div id="bloqueRevisar" hidden>
+        <div class="sello sello--revisar">📝</div>
+        <h1>Recibimos tu observación<span id="nombreRev">, {{1.nombre}}</span></h1>
+        <div class="fecha">{{formatDate(now; "DD/MM/YYYY")}}</div>
+        <p class="detalle">
+          <strong>No mandamos nada a fabricar</strong> hasta resolverlo. Ya avisamos al equipo que
+          sigue tu obra para que lo revise y te contacte.
+        </p>
+        <div class="nota">
+          <strong>Lo que nos contaste:</strong><br />
+          {{1.motivo}}
+        </div>
+      </div>
+
+      <p class="pie">Podés cerrar esta ventana. Tu respuesta ya quedó registrada.</p>
+    </div>
+
+    <script>
+      /* Make lee este HTML como plantilla y trata cualquier llave doble como una variable SUYA.
+         Por eso la marca de "variable sin mapear" se arma en dos pedazos: escrita entera, Make
+         intentaría interpretarla y rechazaría el bloque completo con "Invalid IML". */
+      const SIN_MAPEAR = '{' + '{'
+
+      /* Una sola pantalla para las dos respuestas: el escenario no tiene que elegir entre dos
+         plantillas, y las dos mantienen la misma cara. */
+      const respuesta = (document.getElementById('respuesta').textContent || '').toLowerCase()
+      const rechaza = respuesta.includes('no confirmar')
+
+      document.getElementById('bloqueConfirmado').hidden = rechaza
+      document.getElementById('bloqueRevisar').hidden = !rechaza
+
+      /* Sin nombre mapeado, el saludo tiene que seguir cerrando: "¡Confirmamos tu pedido!" solo. */
+      for (const id of ['nombreOk', 'nombreRev']) {
+        const span = document.getElementById(id)
+        const nombre = span.textContent.replace(/^,\s*/, '').trim()
+        if (!nombre || nombre.includes(SIN_MAPEAR)) span.remove()
+      }
+
+      /* Si el motivo no vino, se saca la caja entera en vez de mostrarla vacía. */
+      const nota = document.querySelector('#bloqueRevisar .nota')
+      const motivo = nota.textContent.replace('Lo que nos contaste:', '').trim()
+      if (!motivo || motivo.includes(SIN_MAPEAR)) nota.remove()
+    </script>
+  </body>
+</html>
