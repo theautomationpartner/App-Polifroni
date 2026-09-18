@@ -14,7 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 const ESCENARIOS: Record<string, string> = {
   'leer-documento': 'MAKE_WEBHOOK_LEER_DOC',
   'enviar-op-cliente': 'MAKE_WEBHOOK_ENVIAR_OP',
-  'enviar-op-taller': 'MAKE_WEBHOOK_TALLER',
+  'enviar-op-taller': 'MAKE_WEBHOOK_ENVIAR_OP_TALLER',
 }
 
 type Pedido = IncomingMessage & { body?: unknown }

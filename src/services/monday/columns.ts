@@ -108,7 +108,11 @@ export const ETIQUETA = {
   confirmado: 'CONFIRMADO OP',
   noConfirmado: 'NO CONFIRMAOD',
   pendConfirmar: 'Pend de Confirmar',
+  tallerEnviando: 'Enviando',
   tallerEnviado: 'Enviado',
+  /* Tal cual figura en el tablero: la etiqueta del taller no lleva tilde, a diferencia de la del
+     envío al cliente ("Error de Envío"). Se compara contra lo que Monday devuelve. */
+  tallerError: 'Error en Envio',
   tipoPvc: 'PVC',
   tipoAluminio: 'Aluminio',
 } as const

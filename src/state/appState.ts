@@ -24,8 +24,6 @@ export interface AppState {
   /** `null` = pantalla de selección de procesos. */
   proceso: Proceso | null
   paso: Paso
-  /** Paso más avanzado alcanzado: hasta ahí se puede navegar con el stepper. */
-  pasoMaxIdx: number
   /** La obra en la que se está trabajando. Sin obra elegida, los pasos siguientes no se habilitan. */
   obra: Obra | null
   /** Acción que falló contra Monday, para el aviso global ("no se pudo <accion>"). */
@@ -35,7 +33,6 @@ export interface AppState {
 export const initialState: AppState = {
   proceso: null,
   paso: 'obra',
-  pasoMaxIdx: 0,
   obra: null,
   errorMonday: null,
 }
@@ -56,21 +53,21 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'setProceso':
       return { ...initialState, proceso: action.proceso }
 
-    case 'goto': {
-      const idx = indiceDe(action.paso)
-      return { ...state, paso: action.paso, pasoMaxIdx: Math.max(state.pasoMaxIdx, idx) }
-    }
+    /* A dónde se puede ir NO lo decide por dónde pasó el usuario sino el estado de la obra en el
+       tablero (ver 'lib/pasos'), así que acá no hay progreso que recordar. */
+    case 'goto':
+      return { ...state, paso: action.paso }
 
     /* Elegir una obra REINICIA el avance: los pasos hablan de esta obra y de ninguna otra, así que
        lo alcanzado con la anterior no se hereda. */
     case 'setObra':
-      return { ...state, obra: action.obra, paso: 'etmo', pasoMaxIdx: indiceDe('etmo') }
+      return { ...state, obra: action.obra, paso: 'etmo' }
 
     case 'refrescarObra':
       return { ...state, obra: action.obra }
 
     case 'salirDeLaObra':
-      return { ...state, obra: null, paso: 'obra', pasoMaxIdx: 0 }
+      return { ...state, obra: null, paso: 'obra' }
 
     case 'errorMonday':
       return { ...state, errorMonday: action.accion }

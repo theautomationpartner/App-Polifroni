@@ -51,7 +51,7 @@ En **Settings → Environment Variables** van estas cuatro, **ninguna con prefij
 | `MONDAY_TOKEN` | El token de Monday de Polifroni |
 | `MAKE_WEBHOOK_LEER_DOC` | `https://hook.us1.make.com/9chqbwa4...` |
 | `MAKE_WEBHOOK_ENVIAR_OP` | `https://hook.us1.make.com/p0q6e8ga...` |
-| `MAKE_WEBHOOK_TALLER` | (pendiente) |
+| `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | `https://hook.us1.make.com/…` (envío al taller) |
 
 Las lee el código de `api/`, que corre **en el servidor**. El navegador nunca ve el token: pide
 `/api/monday` y la función reenvía a Monday poniendo la credencial.
@@ -85,7 +85,7 @@ está fuera de git (`.gitignore`):
 | `VITE_MONDAY_TOKEN` | Token de Monday, SÓLO para desarrollo. Viaja por el proxy de Vite (`/monday-api`). En producción se usa `MONDAY_TOKEN` (ver arriba). |
 | `MAKE_WEBHOOK_LEER_DOC` | Escenario que lee el PDF de ETMO y arma la OP final. |
 | `MAKE_WEBHOOK_ENVIAR_OP` | Escenario que manda la OP al cliente por WhatsApp. |
-| `MAKE_WEBHOOK_TALLER` | Escenario de envío al taller. **Falta la URL**: sin ella el botón avisa qué configurar. |
+| `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | Escenario que manda la orden al taller de fabricación. |
 
 Las tres variables de Make **no** llevan prefijo `VITE_` a propósito: las lee el proxy de Vite, así
 la URL del escenario nunca entra en el código que corre en el navegador.
@@ -98,7 +98,7 @@ la URL del escenario nunca entra en el código que corre en el navegador.
 | 2 | **Orden ETMO** | Adjunta el PDF de ETMO y guarda las observaciones por ítem. | `file_mktkkjnj`, `text_mm73nvda` |
 | 3 | **OP Final** | Botón *Leer documento* (habilitado sólo con ETMO adjunto) → webhook de Make → espera a que el tablero traiga el documento. | `color_mm72nxsj`, `file_mm72n55y` |
 | 4 | **Envío al cliente** | Elige destinatario y vía, manda la OP por WhatsApp con el enlace al formulario de confirmación. | `color_mm12ez80`, `color_mktzfcdt`, `color_mm0h8j4m`, `color_mm5jsjea` |
-| 5 | **Confirmación y taller** | Muestra la respuesta del cliente e **habilita el envío al taller sólo si la OP está confirmada**. Historial completo del ítem. | `color_mm73rxg7`, `color_mkzrjgcj` |
+| 5 | **Confirmación y taller** | Muestra la respuesta del cliente y despacha al taller. Sólo se llega acá con el mensaje enviado y la orden confirmada. | `color_mm73rxg7`, `color_mkzrjgcj` |
 
 La ficha de la obra —cuenta corriente del cliente, constructor/arquitecto, teléfonos, estados,
 importes, documentos— está presente en todas las etapas.
@@ -121,18 +121,23 @@ un `text_xxxxx` suelto.
 
 ## Decisiones que conviene conocer
 
-- **El tablero es la fuente de verdad.** Los webhooks de Make contestan enseguida, pero el trabajo
-  recién empieza: después de dispararlos la app relee el ítem hasta que aparece el resultado
-  (`esperarEnTablero`). Mientras espera, la ficha se va actualizando sola.
+- **El tablero es la fuente de verdad.** Los webhooks contestan enseguida, pero el trabajo recién
+  empieza: la app relee el ítem hasta que aparece el resultado y a la vez escucha la respuesta del
+  escenario (`useCorrida`); gana el que llegue primero. Un estado sólo cuenta si **cambió después
+  del click** (`changed_at`): una obra puede arrastrar un "Enviado" de hace meses, y darlo por bueno
+  sería informar un envío que nunca ocurrió.
 - **El payload de los webhooks va con dos formas a la vez**: plana (`itemId`, `boardId`) y como el
   evento que manda el botón de Monday (`event.pulseId`), para que el escenario lo lea como lo lea.
   Si los escenarios esperan otro formato, se ajusta en `src/services/make/sdk.ts`.
 - **Los PDF se muestran por un proxy** (`/monday-files`): el bucket de Monday no manda cabeceras
   CORS y firma la URL como descarga; el proxy quita esa cabecera para que el visor pueda mostrarlos.
-- **Cada acción de la app queda registrada** como update en el ítem (adjuntar, generar, enviar), así
-  el historial del tablero cuenta la misma historia que la app.
+- **La app no escribe updates en el ítem.** El historial queda para lo que informan los escenarios;
+  ante un error se muestra el update de ESA corrida, nunca los de corridas viejas.
+- **A cada etapa se entra por el estado del tablero, no por dónde pasó el usuario** (`lib/pasos`):
+  al **Envío al cliente** se llega con la OP final generada, y a **Confirmación y taller** sólo con
+  el mensaje enviado (`color_mm0h8j4m` = Enviado) y la orden confirmada (`color_mm73rxg7` =
+  CONFIRMADO OP). La misma regla la usan el stepper y el pie de cada paso.
 
 ## Pendientes
 
-- URL del escenario de **envío al taller** (`MAKE_WEBHOOK_TALLER`).
 - Autenticación (hoy la app entra directo).

@@ -4,6 +4,7 @@ import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
 import { Modal } from '@/components/ui/Modal'
 import { Stepper } from '@/components/ui/Stepper'
 import { PROCESOS, procesoDe, type ProcesoDef } from '@/lib/procesos'
+import { accesoAlPaso, topePermitido } from '@/lib/pasos'
 import { ETIQUETAS_PASO, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 
@@ -110,7 +111,7 @@ function SelectorProceso() {
  * mandar la OP antes de generarla no es una navegación, es un error.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { paso, pasoMaxIdx, obra } = useApp()
+  const { paso, obra } = useApp()
   const dispatch = useDispatch()
 
   return (
@@ -149,15 +150,24 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
         </div>
 
         {/* La barra de etapas se ve SIEMPRE, también antes de elegir la obra: dice de entrada de
-            qué se compone el proceso. Lo que cambia es si se puede navegar —sin obra no hay a
-            dónde ir— y hasta dónde: sólo a etapas ya alcanzadas. */}
+            qué se compone el proceso. Lo que cambia es hasta dónde se puede navegar, y eso no lo
+            decide por dónde pasó el usuario sino el ESTADO DE LA OBRA en el tablero: al envío se
+            llega con la OP generada, y a la confirmación con el mensaje enviado y confirmado. */}
         <div className="paso-header-steps">
           <Stepper
             steps={ETAPAS}
             current={indiceDe(paso)}
             className="stepper--tight"
-            maxReached={obra ? pasoMaxIdx : 0}
-            onStep={obra ? (i) => dispatch({ type: 'goto', paso: PASOS[i] ?? 'obra' }) : undefined}
+            maxReached={topePermitido(obra)}
+            razonBloqueo={(i) => accesoAlPaso(PASOS[i] ?? 'obra', obra).motivo}
+            onStep={
+              obra
+                ? (i) => {
+                    const destino = PASOS[i] ?? 'obra'
+                    if (accesoAlPaso(destino, obra).ok) dispatch({ type: 'goto', paso: destino })
+                  }
+                : undefined
+            }
           />
         </div>
       </div>

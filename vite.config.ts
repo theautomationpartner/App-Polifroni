@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         ...hook('/make/leer-documento', env.MAKE_WEBHOOK_LEER_DOC),
         ...hook('/make/enviar-op-cliente', env.MAKE_WEBHOOK_ENVIAR_OP),
-        ...hook('/make/enviar-op-taller', env.MAKE_WEBHOOK_TALLER),
+        ...hook('/make/enviar-op-taller', env.MAKE_WEBHOOK_ENVIAR_OP_TALLER),
         /* Va ANTES de '/monday-api': Vite matchea por prefijo y '/monday-api-file' también
            empieza con '/monday-api'. */
         '/monday-api-file': {

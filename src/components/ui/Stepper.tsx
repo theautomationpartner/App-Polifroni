@@ -12,6 +12,11 @@ interface StepperProps {
   maxReached?: number
   /** Navegar al paso `index`. Sin este callback, el stepper no es interactivo. */
   onStep?: (index: number) => void
+  /**
+   * Por qué ese paso está bloqueado. Va en el tooltip, en lugar del texto genérico: "completá los
+   * pasos anteriores" no ayuda a nadie cuando lo que falta es que el cliente confirme.
+   */
+  razonBloqueo?: (index: number) => string
 }
 
 const stateOf = (index: number, current: number) =>
@@ -22,7 +27,7 @@ const stateOf = (index: number, current: number) =>
  * `pasosDe` según la operación, así que la misma barra sirve para presupuesto, venta, proforma y
  * remito sin que el componente sepa nada de los recorridos.
  */
-export function Stepper({ steps, current, className = '', maxReached, onStep }: StepperProps) {
+export function Stepper({ steps, current, className = '', maxReached, onStep, razonBloqueo }: StepperProps) {
   // Tope navegable: hasta el paso más avanzado alcanzado (o, si no se pasó, sólo hasta el actual).
   const limite = Math.max(maxReached ?? current, current)
   // Un paso es navegable si hay handler, no es el actual y ya fue alcanzado (≤ límite).
@@ -48,7 +53,9 @@ export function Stepper({ steps, current, className = '', maxReached, onStep }: 
                  el paso está bloqueado. Repetir el nombre en un tooltip no aporta nada. */
               aria-label={`Paso ${i + 1}: ${label}`}
               title={
-                bloqueado ? 'Completá los pasos anteriores para llegar a esta etapa.' : undefined
+                bloqueado
+                  ? (razonBloqueo?.(i) ?? 'Completá los pasos anteriores para llegar a esta etapa.')
+                  : undefined
               }
               onClick={nav ? () => onStep!(i) : undefined}
               onKeyDown={

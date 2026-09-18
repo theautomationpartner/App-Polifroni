@@ -5,6 +5,7 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
+import { accesoAlPaso } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
 import { COL, setEstado } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
@@ -44,6 +45,7 @@ export function EnvioClienteView() {
   ].filter(Boolean)
   const sinTelefono = telefonos.length === 0
   const puedeEnviar = hayOp && !!destinatario && !sinTelefono && !enCurso
+  const accesoALaConfirmacion = accesoAlPaso('confirmacion', obra)
 
   const cambiarColumna = async (columna: string, etiqueta: string) => {
     setCambiando(true)
@@ -287,9 +289,15 @@ export function EnvioClienteView() {
         </div>
       </div>
 
+      {/* Al paso 5 se entra sólo con el mensaje enviado Y la orden confirmada: es lo que habilita
+          el despacho al taller, y no tiene sentido llegar antes. */}
       <PasoNav
         siguiente="Ver confirmación del cliente"
-        nota="El cliente confirma o rechaza desde el formulario que le llega en el mensaje."
+        bloqueado={!accesoALaConfirmacion.ok}
+        nota={
+          accesoALaConfirmacion.motivo ||
+          'El cliente confirma o rechaza desde el formulario que le llega en el mensaje.'
+        }
       />
     </section>
   )

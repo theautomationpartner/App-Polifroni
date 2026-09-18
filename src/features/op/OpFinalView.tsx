@@ -3,8 +3,9 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
+import { accesoAlPaso } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
-import { COL, ETIQUETA } from '@/services/monday'
+import { COL } from '@/services/monday'
 import { puedeGenerar, requisitosOp } from './requisitos'
 import { useGenerarOp } from './useGenerarOp'
 
@@ -26,7 +27,9 @@ export function OpFinalView() {
   const requisitos = requisitosOp(obra)
   const listoParaGenerar = puedeGenerar(obra)
   const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
-  const generado = obra.estadoOpFinal.texto === ETIQUETA.opGenerado && obra.opFinal.length > 0
+  /* Al paso siguiente se pasa con la MISMA regla que usa el stepper (ver lib/pasos), para que el
+     pie no deje pasar a donde la barra de etapas frena. */
+  const accesoAlEnvio = accesoAlPaso('envio', obra)
 
   /** El cartel del visor mientras el escenario trabaja. Dice EN QUÉ va, no sólo que espere. */
   const trabajando =
@@ -205,14 +208,11 @@ export function OpFinalView() {
         </div>
       </div>
 
+      {/* La misma regla que usa el stepper: el pie no puede dejar pasar a donde el stepper frena. */}
       <PasoNav
         siguiente="Enviar al cliente"
-        bloqueado={!generado}
-        nota={
-          generado
-            ? undefined
-            : 'La OP final tiene que estar generada y adjunta para poder mandarla al cliente.'
-        }
+        bloqueado={!accesoAlEnvio.ok}
+        nota={accesoAlEnvio.motivo || undefined}
       />
     </section>
   )

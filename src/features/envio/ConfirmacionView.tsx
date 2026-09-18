@@ -4,28 +4,26 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
-import { ETIQUETA, RESPONSABLE_RECHAZO, esperarEnTablero } from '@/services/monday'
-import { useDispatch } from '@/state/hooks'
+import { fechaHora, htmlATexto } from '@/lib/texto'
+import { ETIQUETA, RESPONSABLE_RECHAZO } from '@/services/monday'
+import { useEnviarTaller } from './useEnviarTaller'
 
-type Resultado = { tono: 'ok' | 'warn' | 'err'; texto: string } | null
+/** Los segundos como "1:05", que es como se lee una espera. */
+const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 /**
  * Paso 5 · Confirmación del cliente y despacho al taller.
  *
- * La confirmación NO se decide acá: la carga el cliente desde el formulario que le llegó con el
- * mensaje, y el escenario la escribe en el tablero. La app la muestra y, sobre ella, habilita o no
- * el envío al taller. Esa es la regla del proceso: al taller no se manda nada que el cliente no
- * haya confirmado.
+ * A esta etapa sólo se llega con el mensaje enviado y la orden confirmada (ver `lib/pasos`), así
+ * que acá la confirmación ya está: lo que queda es despachar al taller. La confirmación NO se
+ * decide en la app —la carga el cliente desde el formulario y el escenario la escribe en el
+ * tablero—; esta pantalla la muestra y, sobre ella, habilita el botón.
  */
 export function ConfirmacionView() {
   const obra = useObra()
-  const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-
-  const [enviando, setEnviando] = useState(false)
+  const { estado, correr, seguirEsperando, enCurso, noArranco } = useEnviarTaller(obra)
   const [refrescando, setRefrescando] = useState(false)
-  const [resultado, setResultado] = useState<Resultado>(null)
 
   const confirmacion = obra.confirmacionOp.texto
   const confirmada = confirmacion === ETIQUETA.confirmado
@@ -45,55 +43,6 @@ export function ConfirmacionView() {
     }
   }
 
-  const enviarAlTaller = async () => {
-    setEnviando(true)
-    setResultado(null)
-    try {
-      await dispararEscenario(ESCENARIO.enviarOpTaller, obra.id, {
-        obra: obra.nombre,
-        tipo: obra.tipo.texto,
-        accion: 'enviar-op-taller',
-      })
-
-      const { obra: fresca, cumplio } = await esperarEnTablero(
-        obra.id,
-        (o) =>
-          o.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado ||
-          o.estadoEnvioTaller.texto === 'Error en Envio',
-        { timeoutMs: 120_000, onLatido: (o) => dispatch({ type: 'refrescarObra', obra: o }) },
-      )
-
-      if (!cumplio) {
-        setResultado({
-          tono: 'warn',
-          texto: 'El envío al taller quedó en curso. Refrescá en un momento para ver el estado.',
-        })
-        return
-      }
-      if (fresca?.estadoEnvioTaller.texto === 'Error en Envio') {
-        setResultado({ tono: 'err', texto: 'El escenario no pudo mandar la orden al taller.' })
-        return
-      }
-      setResultado({ tono: 'ok', texto: 'La orden salió al taller de fabricación.' })
-    } catch (e) {
-      if (e instanceof EscenarioNoConfigurado) {
-        setResultado({
-          tono: 'err',
-          texto:
-            'Falta la URL del escenario de envío al taller (MAKE_WEBHOOK_TALLER). Es el único dato que falta para cerrar el circuito.',
-        })
-        return
-      }
-      setResultado({
-        tono: 'err',
-        texto: e instanceof Error ? e.message : 'No se pudo disparar el envío al taller.',
-      })
-    } finally {
-      setEnviando(false)
-      void refrescar()
-    }
-  }
-
   return (
     <section className="view paso-layout obras-v2">
       <PasoHeader />
@@ -103,7 +52,7 @@ export function ConfirmacionView() {
         titulo="Confirmación del cliente y taller"
         descripcion={
           <>
-            El cliente responde desde el formulario que recibió por WhatsApp. Con la orden
+            El cliente respondió desde el formulario que recibió por WhatsApp. Con la orden
             confirmada se habilita el despacho al taller de fabricación.
           </>
         }
@@ -127,7 +76,7 @@ export function ConfirmacionView() {
             <button
               type="button"
               className="btn btn-out btn--sm"
-              disabled={refrescando}
+              disabled={refrescando || enCurso}
               onClick={() => void actualizar()}
             >
               {refrescando ? (
@@ -160,12 +109,6 @@ export function ConfirmacionView() {
                 .
               </Aviso>
             )}
-            {!confirmada && !rechazada && (
-              <Aviso tono="info">
-                Todavía sin respuesta. Cuando el cliente complete el formulario, el estado cambia
-                solo.
-              </Aviso>
-            )}
           </div>
 
           <div className="panel-sep" />
@@ -174,7 +117,8 @@ export function ConfirmacionView() {
             <i className="fas fa-screwdriver-wrench" /> Despacho al taller
           </div>
           <p className="panel-d">
-            El botón se habilita únicamente con la orden confirmada por el cliente.
+            Se dispara el escenario con el id de esta obra. La app no toca ninguna columna: el estado
+            lo escribe el escenario, que es el que sabe si el mensaje salió.
           </p>
 
           <div className="obs-pie" style={{ marginTop: 0, marginBottom: 12 }}>
@@ -185,13 +129,13 @@ export function ConfirmacionView() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!confirmada || enviando}
+              disabled={!confirmada || enCurso}
               title={confirmada ? undefined : 'La orden tiene que estar confirmada por el cliente.'}
-              onClick={() => void enviarAlTaller()}
+              onClick={() => void correr()}
             >
-              {enviando ? (
+              {enCurso ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> Enviando al taller…
+                  <i className="fas fa-circle-notch spin" /> {reloj(estado.segundos)}
                 </>
               ) : (
                 <>
@@ -199,26 +143,85 @@ export function ConfirmacionView() {
                 </>
               )}
             </button>
-            {yaEnTaller && (
+            {yaEnTaller && !enCurso && (
               <span className="obs-estado obs-estado--ok">
                 <i className="fas fa-circle-check" /> Ya enviada al taller
               </span>
             )}
           </div>
 
-          {resultado && (
-            <div className="resultado">
-              <Aviso tono={resultado.tono}>{resultado.texto}</Aviso>
-            </div>
-          )}
+          <div className="resultado">
+            {estado.fase === 'esperando' && !noArranco && (
+              <Aviso tono="info">Pedido enviado. Esperando que la automatización lo tome…</Aviso>
+            )}
+            {noArranco && (
+              <Aviso tono="warn">
+                Pasaron {reloj(estado.segundos)} y el tablero no registró ningún movimiento del
+                envío al taller. El escenario no tomó el pedido: revisá que esté activo en Make.
+                Sigo mirando.
+              </Aviso>
+            )}
+            {estado.fase === 'trabajando' && (
+              <Aviso tono="info">
+                Mandando la orden al taller ({reloj(estado.segundos)}). Podés dejar la pantalla
+                abierta: cuando termine, el estado cambia solo.
+              </Aviso>
+            )}
+            {estado.fase === 'listo' && (
+              <Aviso tono="ok">
+                La orden salió al taller de fabricación en {reloj(estado.segundos)}.
+                <span className="origen">
+                  {' '}
+                  · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}
+                </span>
+              </Aviso>
+            )}
+            {estado.fase === 'demorado' && (
+              <>
+                <Aviso tono="warn">
+                  Pasaron 5 minutos y el tablero todavía no confirma el envío. La corrida sigue en
+                  Make: dejé de preguntar, no de esperar.
+                </Aviso>
+                <div className="acciones-fila">
+                  <button
+                    type="button"
+                    className="btn btn-out btn--sm"
+                    onClick={() => void seguirEsperando()}
+                  >
+                    <i className="fas fa-hourglass-half" /> Seguir esperando
+                  </button>
+                </div>
+              </>
+            )}
+            {estado.fase === 'error' && estado.problema && <Aviso tono="err">{estado.problema}</Aviso>}
+            {estado.fase === 'error' && !estado.problema && (
+              <>
+                <Aviso tono="err">
+                  El escenario no pudo mandar la orden al taller.
+                  {estado.updateError ? ' Esto es lo que informó:' : ' No dejó ningún detalle.'}
+                </Aviso>
+                {estado.updateError && (
+                  <article className="update-corrida">
+                    <div className="hist-cab">
+                      <span className="hist-autor">{estado.updateError.autor}</span>
+                      <span className="hist-fecha">{fechaHora(estado.updateError.fecha)}</span>
+                    </div>
+                    <p className="hist-txt" style={{ whiteSpace: 'pre-wrap' }}>
+                      {htmlATexto(estado.updateError.body)}
+                    </p>
+                  </article>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="card">
           <div className="panel-t">
-            <i className="fas fa-file-pdf" /> La orden que está confirmando
+            <i className="fas fa-file-pdf" /> La orden que sale al taller
           </div>
           <p className="panel-d">
-            Es el mismo documento que recibió el cliente, y el que va a salir al taller.
+            Es el mismo documento que confirmó el cliente, y el que va a fabricarse.
           </p>
           <VisorPdf archivo={opPdf} vacio="Esta obra todavía no tiene una OP final generada." />
         </div>

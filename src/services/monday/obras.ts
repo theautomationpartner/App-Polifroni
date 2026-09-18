@@ -460,7 +460,34 @@ function estadoConFecha(cv?: CV): EstadoConFecha {
   return { texto, cambio }
 }
 
-/** Estados del envío de la OP, con la fecha de su último cambio. */
+const SIN_ESTADO: EstadoConFecha = { texto: '', cambio: 0 }
+
+/**
+ * Lee UNAS POCAS columnas de status con su fecha de cambio.
+ *
+ * Es la consulta que se repite cada pocos segundos mientras un escenario trabaja, así que pide sólo
+ * lo que se mira. Y viene con el `changed_at` porque lo que importa no es qué dice la columna, sino
+ * si cambió DESPUÉS de que el usuario apretó el botón: una obra puede arrastrar un "Enviado" de
+ * hace meses, y darlo por bueno sería informar un envío que nunca ocurrió.
+ */
+export async function getEstadosConFecha(
+  itemId: string,
+  columnas: string[],
+): Promise<Record<string, EstadoConFecha>> {
+  const d = await mondayApi<{ items: MondayItem[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ${JSON.stringify(columnas)}) { id text value }
+      }
+    }`,
+    { ids: [itemId] },
+  )
+  const item = d.items?.[0]
+  const c = item ? byId(item) : {}
+  return Object.fromEntries(columnas.map((id) => [id, c[id] ? estadoConFecha(c[id]) : SIN_ESTADO]))
+}
+
+/** Estados del envío de la OP al cliente, con la fecha de su último cambio. */
 export interface EstadoEnvio {
   /** 🤖 Estado de Envío OP: Enviar | Enviando | Enviado | Error de Envío. */
   envioOp: EstadoConFecha
@@ -468,31 +495,19 @@ export interface EstadoEnvio {
   mensajeCliente: EstadoConFecha
 }
 
-/**
- * Estado del envío, con la consulta mínima: dos columnas de un ítem.
- *
- * Es lo que se pregunta cada pocos segundos mientras el escenario manda el mensaje. Viene con el
- * `changed_at` de cada columna porque lo que importa no es qué dice, sino si cambió DESPUÉS de que
- * el usuario apretó el botón.
- */
+/** Lo que hay que mirar mientras el escenario manda el mensaje al cliente. */
 export async function getEstadoEnvio(itemId: string): Promise<EstadoEnvio> {
-  const d = await mondayApi<{ items: MondayItem[] }>(
-    `query ($ids: [ID!]) {
-      items(ids: $ids) {
-        column_values(ids: ${JSON.stringify([COL.estadoEnvioOp, COL.mjsEnviadoCliente])}) {
-          id text value
-        }
-      }
-    }`,
-    { ids: [itemId] },
-  )
-  const item = d.items?.[0]
-  if (!item) return { envioOp: { texto: '', cambio: 0 }, mensajeCliente: { texto: '', cambio: 0 } }
-  const c = byId(item)
+  const c = await getEstadosConFecha(itemId, [COL.estadoEnvioOp, COL.mjsEnviadoCliente])
   return {
-    envioOp: estadoConFecha(c[COL.estadoEnvioOp]),
-    mensajeCliente: estadoConFecha(c[COL.mjsEnviadoCliente]),
+    envioOp: c[COL.estadoEnvioOp] ?? SIN_ESTADO,
+    mensajeCliente: c[COL.mjsEnviadoCliente] ?? SIN_ESTADO,
   }
+}
+
+/** Lo que hay que mirar mientras el escenario manda la orden al taller. */
+export async function getEstadoTaller(itemId: string): Promise<EstadoConFecha> {
+  const c = await getEstadosConFecha(itemId, [COL.estadoEnvioTaller])
+  return c[COL.estadoEnvioTaller] ?? SIN_ESTADO
 }
 
 /** Lo único que hay que mirar para saber cómo va la generación de la OP final. */
