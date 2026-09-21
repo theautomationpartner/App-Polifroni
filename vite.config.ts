@@ -16,19 +16,50 @@ export default defineConfig(({ mode }) => {
   // Prefijo vacío: también se leen las variables SIN `VITE_`, que se usan sólo acá (nunca en el bundle).
   const env = loadEnv(mode, process.cwd(), '')
 
-  /** Un webhook de Make detrás de una ruta del propio origen. Sin URL configurada, la ruta no existe. */
-  const hook = (ruta: string, url: string | undefined): Record<string, ProxyOptions> => {
+  /**
+   * La app ya desplegada. Se usa como respaldo para los escenarios que NO tienen su URL en
+   * `.env.local`: en vez de dejar la ruta muerta, el pedido va a `/api/make` del deploy, que sí
+   * tiene la variable cargada. Así se prueba el circuito completo en local sin repartir las URLs
+   * de los hooks por las máquinas de cada uno.
+   *
+   * No agrega exposición: esa ruta ya es pública. Se puede apuntar a otro lado con `APP_URL`, y
+   * apagar el respaldo poniéndola vacía.
+   */
+  const desplegada = (env.APP_URL ?? 'https://app-polifroni.vercel.app').trim()
+
+  /* Los escenarios leen el PDF con IA: los 30 s por defecto de http-proxy los cortarían a mitad de
+     camino. Acompaña al tope del cliente. */
+  const espera = { timeout: 180_000, proxyTimeout: 180_000 }
+
+  /**
+   * Un escenario de Make detrás de una ruta del propio origen.
+   *
+   * Con la URL del hook en `.env.local` se le pega directo. Sin ella, se pasa por la función del
+   * deploy. Si tampoco hay deploy configurado, la ruta no existe y la app avisa que falta
+   * configurar el escenario.
+   */
+  const hook = (escenario: string, url: string | undefined): Record<string, ProxyOptions> => {
+    const ruta = `/make/${escenario}`
     const limpia = url?.trim()
-    if (!limpia) return {}
+
+    if (limpia) {
+      return {
+        [ruta]: {
+          target: new URL(limpia).origin,
+          changeOrigin: true,
+          rewrite: () => new URL(limpia).pathname,
+          ...espera,
+        },
+      }
+    }
+
+    if (!desplegada) return {}
     return {
       [ruta]: {
-        target: new URL(limpia).origin,
+        target: desplegada,
         changeOrigin: true,
-        rewrite: () => new URL(limpia).pathname,
-        /* Los escenarios leen el PDF con IA: los 30 s por defecto de http-proxy los cortarían a
-           mitad de camino. Acompaña al tope del cliente. */
-        timeout: 180_000,
-        proxyTimeout: 180_000,
+        rewrite: () => `/api/make?escenario=${escenario}`,
+        ...espera,
       },
     }
   }
@@ -42,10 +73,10 @@ export default defineConfig(({ mode }) => {
       port: 5191,
       strictPort: true,
       proxy: {
-        ...hook('/make/leer-documento', env.MAKE_WEBHOOK_LEER_DOC),
-        ...hook('/make/leer-observaciones', env.MAKE_WEBHOOK_LEER_OBSERVACIONES || env.LEER_OBSERVACIONES),
-        ...hook('/make/enviar-op-cliente', env.MAKE_WEBHOOK_ENVIAR_OP),
-        ...hook('/make/enviar-op-taller', env.MAKE_WEBHOOK_ENVIAR_OP_TALLER),
+        ...hook('leer-documento', env.MAKE_WEBHOOK_LEER_DOC),
+        ...hook('leer-observaciones', env.MAKE_WEBHOOK_LEER_OBSERVACIONES || env.LEER_OBSERVACIONES),
+        ...hook('enviar-op-cliente', env.MAKE_WEBHOOK_ENVIAR_OP),
+        ...hook('enviar-op-taller', env.MAKE_WEBHOOK_ENVIAR_OP_TALLER),
         /* Va ANTES de '/monday-api': Vite matchea por prefijo y '/monday-api-file' también
            empieza con '/monday-api'. */
         '/monday-api-file': {

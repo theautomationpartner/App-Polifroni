@@ -17,6 +17,34 @@ interface FilaRespuesta {
   observacion?: unknown
 }
 
+/**
+ * El cuerpo de la respuesta, aunque venga roto.
+ *
+ * El módulo *Webhook response* del escenario arma su cuerpo interpolando texto:
+ *
+ *     { "observaciones": {{24.jsonResponse.observaciones}} }
+ *
+ * y Make interpola una lista pegando sus elementos con comas, SIN los corchetes del array. El
+ * resultado es `{"observaciones":{…}, {…}, {…}}`, que no es JSON válido aunque traiga los datos
+ * completos. Se los recupera poniendo los corchetes que faltan.
+ *
+ * Es una reparación acotada a ese caso: si el cuerpo ya era válido nunca se llega acá, y si está
+ * roto de otra forma la reparación tampoco parsea y se devuelve `null`.
+ */
+function cuerpoDe(respuesta: { cuerpo: Record<string, unknown> | null; texto: string }) {
+  if (respuesta.cuerpo) return respuesta.cuerpo
+  const texto = respuesta.texto.trim()
+  if (!texto.includes('"observaciones"')) return null
+
+  const conCorchetes = texto.replace(/("observaciones"\s*:\s*)([\s\S]*?)(\s*}\s*)$/, '$1[$2]$3')
+  try {
+    const datos = JSON.parse(conCorchetes) as unknown
+    return datos && typeof datos === 'object' ? (datos as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
+}
+
 /** La respuesta, convertida en aberturas. `null` si no vino con la forma esperada. */
 function aAberturas(cuerpo: Record<string, unknown> | null): Abertura[] | null {
   const lista = cuerpo?.observaciones
@@ -76,7 +104,7 @@ export function useLeerObservaciones(itemId: string) {
         return null
       }
 
-      const aberturas = aAberturas(respuesta.cuerpo)
+      const aberturas = aAberturas(cuerpoDe(respuesta))
       if (!aberturas) {
         /* El caso típico: Make contesta "Accepted". Eso significa que TOMÓ el pedido pero el
            escenario terminó antes de su módulo de respuesta —su router filtra por dirección,
@@ -107,7 +135,9 @@ export function useLeerObservaciones(itemId: string) {
         fase: 'error',
         problema:
           e instanceof EscenarioNoConfigurado
-            ? 'Falta configurar el escenario de lectura de observaciones en el servidor.'
+            ? import.meta.env.DEV
+              ? 'El pedido no salió de esta máquina: no hay ruta para el escenario. Cargá MAKE_WEBHOOK_LEER_OBSERVACIONES en .env.local (o dejá que use el deploy con APP_URL) y reiniciá npm run dev.'
+              : 'Falta cargar la URL del escenario de observaciones en las variables del proyecto.'
             : 'No se pudo hablar con el escenario que lee el documento.',
       }))
       return null

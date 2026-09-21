@@ -95,6 +95,11 @@ está fuera de git (`.gitignore`):
 Las variables de Make **no** llevan prefijo `VITE_` a propósito: las lee el proxy de Vite, así
 la URL del escenario nunca entra en el código que corre en el navegador.
 
+**Un escenario sin URL local no queda muerto**: el proxy lo manda a `/api/make` de la app ya
+desplegada, que sí tiene la variable. Así se prueba el circuito completo sin repartir las URLs de
+los hooks por las máquinas de cada uno. Se apunta a otro deploy con `APP_URL`, y se apaga el
+respaldo poniéndola vacía.
+
 ## Las cinco etapas
 
 | # | Etapa | Qué hace | Columnas del tablero |

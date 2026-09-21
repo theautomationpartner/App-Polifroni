@@ -77,6 +77,14 @@ function cuerpo(itemId: string, extra: Record<string, unknown>) {
 export interface RespuestaEscenario {
   /** El cuerpo ya parseado, si vino JSON. */
   cuerpo: Record<string, unknown> | null
+  /**
+   * El cuerpo tal cual llegó.
+   *
+   * Se conserva porque un escenario puede contestar algo que NO es JSON válido y aun así traer el
+   * dato: Make arma el cuerpo de su respuesta interpolando texto, y una lista interpolada ahí sale
+   * sin los corchetes del array. Quien llamó puede intentar recuperarlo; acá no se adivina nada.
+   */
+  texto: string
   /** No hubo respuesta a tiempo. NO es un fallo: el escenario recibió el pedido igual. */
   sinRespuesta: boolean
 }
@@ -121,7 +129,9 @@ export async function dispararEscenario(
        está trabajando. Pasa de verdad en producción, donde la función serverless tiene un tope de
        duración más corto que un escenario que lee un PDF con IA. Se sigue de largo y lo resuelve
        la lectura del tablero, que es la que sabe cómo terminó. */
-    if (res.status === 504 || res.status === 408) return { cuerpo: null, sinRespuesta: true }
+    if (res.status === 504 || res.status === 408) {
+      return { cuerpo: null, texto: '', sinRespuesta: true }
+    }
     if (!res.ok) throw new Error(`El escenario respondió HTTP ${res.status}`)
 
     const texto = (await res.text()).trim()
@@ -130,14 +140,14 @@ export async function dispararEscenario(
     try {
       const datos = JSON.parse(texto) as unknown
       const cuerpo = datos && typeof datos === 'object' ? (datos as Record<string, unknown>) : null
-      return { cuerpo, sinRespuesta: false }
+      return { cuerpo, texto, sinRespuesta: false }
     } catch {
-      return { cuerpo: null, sinRespuesta: false }
+      return { cuerpo: null, texto, sinRespuesta: false }
     }
   } catch (e) {
     // Mismo caso que el 504, pero cortado de este lado.
     if (e instanceof DOMException && e.name === 'AbortError') {
-      return { cuerpo: null, sinRespuesta: true }
+      return { cuerpo: null, texto: '', sinRespuesta: true }
     }
     throw e
   } finally {

@@ -302,7 +302,7 @@ export function EtmoView() {
               ) : (
                 <>
                   <i className="fas fa-wand-magic-sparkles" />{' '}
-                  {tieneAberturas ? 'Volver a leer' : 'Leer documento'}
+                  {tieneAberturas ? 'Volver a generar observaciones' : 'Generar observaciones'}
                 </>
               )}
             </button>
@@ -370,7 +370,7 @@ export function EtmoView() {
 
       {proponerLectura && (
         <Modal
-          title="¿Agregar observaciones?"
+          title="¿Generar las observaciones?"
           icon={<i className="fas fa-wand-magic-sparkles modal-icon--info" />}
           onClose={() => setProponerLectura(false)}
           actions={
@@ -380,20 +380,20 @@ export function EtmoView() {
                 className="btn btn-out"
                 onClick={() => setProponerLectura(false)}
               >
-                Ahora no
+                No generar observaciones
               </button>
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={() => void leerDocumento()}
               >
-                <i className="fas fa-wand-magic-sparkles" /> Leer documento
+                <i className="fas fa-wand-magic-sparkles" /> Generar observaciones
               </button>
             </>
           }
         >
-          El documento ya está en la obra. Si lo leemos, te dejamos una caja por abertura para
-          escribir las observaciones. Podés hacerlo más tarde.
+          El documento ya está en la obra. Leerlo tarda un momento y deja una caja por cada
+          abertura que encuentre. Si ahora no, el botón queda disponible en el paso.
         </Modal>
       )}
     </section>
