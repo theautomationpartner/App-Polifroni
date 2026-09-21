@@ -4,6 +4,7 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
+import { puedeDespacharAlTaller } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
 import { ETIQUETA, RESPONSABLE_RECHAZO } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
@@ -14,10 +15,10 @@ const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
 /**
  * Paso 5 · Confirmación del cliente y despacho al taller.
  *
- * A esta etapa sólo se llega con el mensaje enviado y la orden confirmada (ver `lib/pasos`), así
- * que acá la confirmación ya está: lo que queda es despachar al taller. La confirmación NO se
- * decide en la app —la carga el cliente desde el formulario y el escenario la escribe en el
- * tablero—; esta pantalla la muestra y, sobre ella, habilita el botón.
+ * Se entra con la OP final generada, esté confirmada o no: ésta es la pantalla donde se mira si el
+ * cliente contestó, y cerrarla mientras se espera dejaría sin ningún lugar donde verlo. La
+ * confirmación NO se decide en la app —la carga el cliente desde el formulario y el escenario la
+ * escribe en el tablero—; acá se muestra y, sobre ella, se habilita el despacho al taller.
  */
 export function ConfirmacionView() {
   const obra = useObra()
@@ -28,6 +29,9 @@ export function ConfirmacionView() {
   const confirmacion = obra.confirmacionOp.texto
   const confirmada = confirmacion === ETIQUETA.confirmado
   const rechazada = confirmacion === ETIQUETA.noConfirmado
+  /* A esta pantalla se entra con la OP generada, confirmada o no: es donde se mira si el cliente
+     contestó. Lo que la confirmación gobierna es el DESPACHO. */
+  const despacho = puedeDespacharAlTaller(obra)
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
   const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
   /* Ante un rechazo, el escenario menciona a quien sigue el material de la obra. Se anticipa acá
@@ -52,8 +56,7 @@ export function ConfirmacionView() {
         titulo="Confirmación del cliente y taller"
         descripcion={
           <>
-            El cliente respondió desde el formulario que recibió por WhatsApp. Con la orden
-            confirmada se habilita el despacho al taller de fabricación.
+            Con la orden confirmada por el cliente se habilita el despacho al taller.
           </>
         }
       />
@@ -97,6 +100,12 @@ export function ConfirmacionView() {
                 El cliente confirmó la Orden de Producción. Ya se puede mandar al taller.
               </Aviso>
             )}
+            {!confirmada && !rechazada && (
+              <Aviso tono="info">
+                Todavía no contestó. Cuando confirme desde el formulario, el tablero lo registra y
+                se habilita el envío al taller.
+              </Aviso>
+            )}
             {rechazada && (
               <Aviso tono="err">
                 El cliente rechazó la orden. El motivo que cargó queda en el registro de la obra
@@ -129,8 +138,8 @@ export function ConfirmacionView() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!confirmada || enCurso}
-              title={confirmada ? undefined : 'La orden tiene que estar confirmada por el cliente.'}
+              disabled={!despacho.ok || enCurso}
+              title={despacho.motivo || undefined}
               onClick={() => void correr()}
             >
               {enCurso ? (

@@ -3,10 +3,11 @@ import { PROCESOS } from '@/lib/procesos'
 import { useDispatch } from '@/state/hooks'
 
 /**
- * Pantalla principal: qué proceso se va a realizar. Todavía sin autenticación: se entra directo.
+ * Pantalla de entrada: qué se va a hacer. Todavía sin autenticación: se entra directo.
  *
- * Los procesos salen del mismo catálogo que alimenta al selector del encabezado (`lib/procesos`),
- * así las dos pantallas no pueden decir cosas distintas.
+ * Deliberadamente escueta. Lo único que hay que decidir acá es el proceso, y explicar de dónde
+ * salen los datos no ayuda a decidirlo: alarga la pantalla y hay que leerla entera para llegar al
+ * mismo click. Los procesos salen del catálogo único (`lib/procesos`).
  */
 export function InicioView() {
   const dispatch = useDispatch()
@@ -15,15 +16,10 @@ export function InicioView() {
     <section className="view obras-v2">
       <div className="topsel">
         <LogoEmpresa />
-        <div className="topsel-item">
-          <span className="topsel-lbl">Sistema de procesos</span>
-          <span className="xs">Tablero 🪟 Obras · Monday</span>
-        </div>
       </div>
 
       <div className="procesos-intro">
-        <h1>¿Qué proceso vas a realizar?</h1>
-        <p>Elegí el proceso para arrancar. Los datos se leen y se escriben en el tablero de Monday.</p>
+        <h1>¿Qué vas a hacer?</h1>
       </div>
 
       <div className="procesos-grid">
@@ -39,7 +35,6 @@ export function InicioView() {
               <i className={`fas ${p.icono}`} />
             </span>
             <span className="proceso-card-t">{p.titulo}</span>
-            <span className="proceso-card-d">{p.descripcion}</span>
             <span className="proceso-card-pasos">{p.detalle}</span>
           </button>
         ))}

@@ -101,7 +101,7 @@ export function EnvioClienteView() {
               </span>
               <div>
                 <div className="vinculo-l">
-                  Orden de producción a<span className="campo-col">{COL.opDestinatario}</span>
+                  Orden de producción a
                 </div>
                 <Dropdown<string>
                   label={
@@ -128,7 +128,7 @@ export function EnvioClienteView() {
               </span>
               <div>
                 <div className="vinculo-l">
-                  Enviar por<span className="campo-col">{COL.opVia}</span>
+                  Enviar por
                 </div>
                 <Dropdown<string>
                   label={

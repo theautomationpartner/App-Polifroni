@@ -1,5 +1,6 @@
 import { COL } from '@/services/monday'
 import type { Obra } from '@/types'
+import { parsear, tieneAlgunaObservacion } from './observaciones'
 
 /**
  * Formato que el escenario le exige a la observación.
@@ -15,9 +16,9 @@ export interface Requisito {
   /** Si se cumple. Mientras alguno esté en `false`, el botón no se habilita. */
   ok: boolean
   titulo: string
-  /** Qué falta, o qué se leyó. Lo que el usuario necesita para poder arreglarlo. */
+  /** Qué falta, o qué se leyó. Lo justo para poder arreglarlo. */
   detalle: string
-  /** La columna del tablero donde se corrige. */
+  /** Sirve de clave; no se muestra. */
   columna: string
 }
 
@@ -30,6 +31,13 @@ export interface Requisito {
  */
 export function requisitosOp(obra: Obra): Requisito[] {
   const observacion = obra.observaciones.trim()
+  const aberturas = parsear(observacion)
+  /* No alcanza con que el texto EMPIECE bien: un documento leído deja una línea por abertura y
+     todas pueden estar vacías. Eso pasa el formato y no tiene nada que volcar en la orden. */
+  const conTexto = aberturas.length > 0 ? tieneAlgunaObservacion(aberturas) : observacion.length > 0
+  const formatoOk = FORMATO_OBSERVACION.test(observacion) && conTexto
+
+  const escritas = aberturas.filter((a) => a.texto.trim()).length
 
   return [
     {
@@ -38,17 +46,21 @@ export function requisitosOp(obra: Obra): Requisito[] {
       detalle:
         obra.ordenEtmo.length > 0
           ? obra.ordenEtmo.map((a) => a.nombre).join(' · ')
-          : 'Sin archivo. Cargalo en el paso anterior: es el documento que lee la automatización.',
+          : 'Falta el archivo. Se carga en el paso anterior.',
       columna: COL.ordenEtmo,
     },
     {
-      ok: FORMATO_OBSERVACION.test(observacion),
-      titulo: 'Observación con el formato esperado',
-      detalle: FORMATO_OBSERVACION.test(observacion)
-        ? observacion.split('\n')[0]
-        : observacion
-          ? `Tiene que empezar con "Modelo V1:" (la V y el número del modelo). Hoy empieza con: "${observacion.slice(0, 40)}${observacion.length > 40 ? '…' : ''}"`
-          : 'Vacía. Escribila en el paso anterior con el formato "Modelo V1: …".',
+      ok: formatoOk,
+      titulo: 'Observaciones cargadas',
+      detalle: formatoOk
+        ? aberturas.length > 0
+          ? `${escritas} de ${aberturas.length} aberturas con observación`
+          : observacion.split('\n')[0]
+        : !observacion
+          ? 'Todavía no hay ninguna. Se escriben en el paso anterior.'
+          : !conTexto
+            ? 'Las aberturas están listadas pero ninguna tiene observación.'
+            : 'Tienen que empezar con "Modelo V1:".',
       columna: COL.observaciones,
     },
   ]

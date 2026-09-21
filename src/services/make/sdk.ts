@@ -15,6 +15,8 @@ import { BOARD_OBRAS } from '../monday/columns'
 /** Los escenarios que la app puede disparar. El nombre es el mismo en los dos entornos. */
 export const ESCENARIO = {
   leerDocumento: 'leer-documento',
+  /** Lee el ETMO y devuelve, en la respuesta, una entrada por abertura del documento. */
+  leerObservaciones: 'leer-observaciones',
   enviarOpCliente: 'enviar-op-cliente',
   enviarOpTaller: 'enviar-op-taller',
 } as const

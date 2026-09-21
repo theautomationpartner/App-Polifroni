@@ -4,9 +4,10 @@ import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
 import { Modal } from '@/components/ui/Modal'
 import { Stepper } from '@/components/ui/Stepper'
 import { PROCESOS, procesoDe, type ProcesoDef } from '@/lib/procesos'
-import { accesoAlPaso, topePermitido } from '@/lib/pasos'
+import { topePermitido } from '@/lib/pasos'
 import { ETIQUETAS_PASO, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
+import { AccionSelect } from './AccionSelect'
 
 /** Etiquetas de las etapas, en el orden del proceso. */
 const ETAPAS = PASOS.map((p) => ETIQUETAS_PASO[p])
@@ -24,11 +25,12 @@ function TopSel({ label, children }: { label: string; children: ReactNode }) {
 /**
  * Selector de PROCESO, el mismo control con el que La Batea elige la operación.
  *
- * Desde acá se cambia de proceso sin volver al inicio. Un proceso que todavía no está construido se
- * lista igual pero no se puede elegir: verlo apagado dice que existe y que no está listo, que es
- * más de lo que diría su ausencia.
+ * Lo que se elige acá es el proceso ENTERO —"Cargar Orden de Producción", cinco etapas—, no una de
+ * sus etapas: el encabezado dice en qué trabajo estás, y adentro del trabajo se elige la acción
+ * (`AccionSelect`). Mezclar las dos cosas en un solo control hacía que el proceso no tuviera nombre.
  *
- * Cambiar de proceso descarta la obra en curso, así que —como allá— se advierte antes.
+ * Un proceso que todavía no está construido se lista igual pero no se puede elegir: verlo apagado
+ * dice que existe y que no está listo, que es más de lo que diría su ausencia.
  */
 function SelectorProceso() {
   const { proceso, obra } = useApp()
@@ -104,11 +106,8 @@ function SelectorProceso() {
 }
 
 /**
- * Barra de contexto del proceso: a la izquierda la marca, el proceso y la obra en la que se está
- * trabajando; a la derecha, el avance por etapas.
- *
- * Los círculos navegan a etapas YA alcanzadas. Las que todavía no se tocaron quedan bloqueadas:
- * mandar la OP antes de generarla no es una navegación, es un error.
+ * Barra de contexto: a la izquierda la marca y las dos cajas —qué proceso y sobre qué obra—; a la
+ * derecha, el avance por etapas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
   const { paso, obra } = useApp()
@@ -119,7 +118,15 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
       <div className="paso-header-in">
         <div className="paso-header-sel">
           <div className="topsel">
-            <LogoEmpresa />
+            {/* La marca es el camino de vuelta al inicio: sin ella no habría ninguno. */}
+            <button
+              type="button"
+              className="marca-btn"
+              title="Volver al inicio"
+              onClick={() => dispatch({ type: 'reset' })}
+            >
+              <LogoEmpresa />
+            </button>
 
             <TopSel label="Proceso">
               <SelectorProceso />
@@ -149,25 +156,15 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
           </div>
         </div>
 
-        {/* La barra de etapas se ve SIEMPRE, también antes de elegir la obra: dice de entrada de
-            qué se compone el proceso. Lo que cambia es hasta dónde se puede navegar, y eso no lo
-            decide por dónde pasó el usuario sino el ESTADO DE LA OBRA en el tablero: al envío se
-            llega con la OP generada, y a la confirmación con el mensaje enviado y confirmado. */}
+        {/* La barra de etapas INFORMA, no navega: dice en qué etapa estás y cuánto falta. Moverse
+            es tarea del selector de acción, que además puede explicar por qué una etapa no está
+            disponible —cosa que un círculo apagado no sabe hacer—. */}
         <div className="paso-header-steps">
           <Stepper
             steps={ETAPAS}
             current={indiceDe(paso)}
             className="stepper--tight"
             maxReached={topePermitido(obra)}
-            razonBloqueo={(i) => accesoAlPaso(PASOS[i] ?? 'obra', obra).motivo}
-            onStep={
-              obra
-                ? (i) => {
-                    const destino = PASOS[i] ?? 'obra'
-                    if (accesoAlPaso(destino, obra).ok) dispatch({ type: 'goto', paso: destino })
-                  }
-                : undefined
-            }
           />
         </div>
       </div>
@@ -179,20 +176,30 @@ interface PasoTituloProps {
   /** El mismo número que marca el stepper. */
   numero: number
   titulo: string
-  descripcion: ReactNode
+  /** Bajada. Opcional: cuando el título ya se explica solo, sobra. */
+  descripcion?: ReactNode
 }
 
-/** Encabezado del paso: número, título y bajada. */
+/**
+ * Encabezado del paso: número, título y —si hace falta— una línea de bajada, con el selector de
+ * acción debajo.
+ *
+ * El selector viene incluido acá y no lo pone cada vista: es la única forma de moverse por el
+ * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
+ */
 export function PasoTitulo({ numero, titulo, descripcion }: PasoTituloProps) {
   return (
-    <header className="header-section">
-      <div className="step-indicator-main">
-        <div className="step-badge-main">{numero}</div>
-        <div className="step-details-main">
-          <h1 className="step-title-main">{titulo}</h1>
-          <p className="step-desc-main">{descripcion}</p>
+    <>
+      <header className="header-section">
+        <div className="step-indicator-main">
+          <div className="step-badge-main">{numero}</div>
+          <div className="step-details-main">
+            <h1 className="step-title-main">{titulo}</h1>
+            {descripcion && <p className="step-desc-main">{descripcion}</p>}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      <AccionSelect />
+    </>
   )
 }

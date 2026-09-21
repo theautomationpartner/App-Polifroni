@@ -193,8 +193,9 @@
 
 /* ===== Pantalla de procesos ===== */
 .procesos-intro {
-  text-align: center;
-  margin: 8px 0 28px;
+  /* A la izquierda, en la misma línea que arrancan las tarjetas: centrado sobre una grilla
+     alineada a la izquierda el título queda flotando sin relación con nada. */
+  margin: 4px 0 20px;
 }
 .procesos-intro h1 {
   font-size: 26px;
@@ -539,6 +540,111 @@
   font-weight: 600;
   opacity: 0.85;
 }
+/* ===== Etiqueta de estado (chip) =====
+   Calcada de las etiquetas de La Batea: caja tenue del color de la letra, esquinas apenas
+   redondeadas. Acá van TODAS en azul —el color no codifica nada, lo dice el texto— y con la misma
+   jerarquía que los datos de la ficha: rótulo chico en mayúsculas, valor en oscuro y con peso. */
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--o-badge-blue-bg);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.chip-l {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--o-badge-blue-text);
+  flex: 0 0 auto;
+}
+.chip-v {
+  font-weight: 700;
+  color: var(--o-text-main);
+}
+/* Sin valor en el tablero. No es "otro estado": es la ausencia de uno, y por eso se apaga. */
+.chip--vacio {
+  background: var(--o-badge-gray-bg);
+}
+.chip--vacio .chip-l {
+  color: #94a3b8;
+}
+.chip--vacio .chip-v {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+/* ===== Selector de acción (la caja de configuración de La Batea) =====
+   Ícono en pastilla, la pregunta arriba y el selector debajo, sin chrome propio. Es el ÚNICO
+   control que mueve por el proceso desde que el stepper dejó de navegar. */
+.accion-cfg {
+  margin-bottom: 12px;
+}
+.obras-v2 .cfgbox {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--primary-blue);
+  border-radius: 8px;
+  background: var(--o-badge-blue-bg);
+  box-shadow: 0 1px 3px rgba(0, 115, 234, 0.06);
+}
+.obras-v2 .cfg-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--primary-blue);
+  color: #fff;
+  font-size: 17px;
+}
+.obras-v2 .cfg-c {
+  flex: 1;
+  min-width: 0;
+}
+.obras-v2 .cfg-l {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--o-text-muted);
+}
+.obras-v2 .cfg-sel {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--o-text-main);
+  outline: none;
+  cursor: pointer;
+}
+.obras-v2 .cfg-sel:focus,
+.obras-v2 .cfg-sel:focus-visible {
+  outline: none;
+}
+/* Por qué la próxima etapa no está disponible. */
+.accion-nota {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 2px 0;
+  font-size: 12.5px;
+  color: var(--o-text-muted);
+}
+.accion-nota i {
+  font-size: 11px;
+  color: #a1a3b1;
+}
+
 .obra-vinculos {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -592,10 +698,30 @@
 .obra-datos-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px 20px;
+  gap: 14px 20px;
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--o-border);
+}
+/* Cada dato con su ícono: la fila se reconoce de un vistazo, sin tener que leer el rótulo. */
+.dato {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.dato-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  border-radius: 8px;
+  background: #f2f4f7;
+  color: var(--primary-blue);
+  font-size: 12px;
 }
 .dato-l {
   font-size: 11px;
@@ -614,6 +740,91 @@
 .dato-v--vacio {
   color: #a1a3b1;
   font-weight: 500;
+}
+
+/* ===== La plata de la obra =====
+   Total pactado, cancelado y saldo, con la barra de avance del cobro. Es lo primero que se mira al
+   abrir una obra, así que va arriba y con el tamaño de tipografía de un titular, no de un dato. */
+.plata {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--o-border);
+}
+.plata-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.plata-card {
+  padding: 12px 14px;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+.plata-l {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--o-text-muted);
+}
+.plata-v {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--o-text-main);
+  font-variant-numeric: tabular-nums;
+}
+.plata-v--ok {
+  color: #12a150;
+}
+/* Lo que falta cobrar. En rojo sólo por ser el número que se mira con otra intención. */
+.plata-v--deuda {
+  color: #d92d20;
+}
+.plata-barra {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.plata-barra-l {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--o-text-muted);
+}
+.plata-pct {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary-blue);
+  font-variant-numeric: tabular-nums;
+}
+.plata-pct--full {
+  color: #12a150;
+}
+/* La barra NO ocupa todo el ancho: con el track estirado, el número quedaba en la otra punta de la
+   pantalla y había que ir a buscarlo. Acotada, el porcentaje queda pegado al final de la barra. */
+.plata-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 420px;
+  height: 14px;
+  border-radius: 999px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+.plata-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary-blue);
+  transition: width 0.3s ease;
+}
+.plata-fill--full {
+  background: #12a150;
 }
 
 /* ===== Paneles de paso ===== */
@@ -706,6 +917,187 @@
 .obs-estado--pend {
   color: #b7791f;
   font-weight: 600;
+}
+
+/* Quitar el documento cargado por equivocación. Discreto: es una salida, no una acción del paso. */
+.archivo-item-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid var(--o-border);
+  border-radius: 6px;
+  background: #fff;
+  color: #98a2b3;
+  cursor: pointer;
+  font-size: 11px;
+}
+.archivo-item-x:hover:not(:disabled) {
+  border-color: #fca5a5;
+  background: #fff1f2;
+  color: #d92d20;
+}
+.archivo-item-x:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Todavía no se leyó el documento: no hay aberturas, así que no hay dónde escribir. El vacío lo
+   explica en vez de mostrar un campo que no lleva a ningún lado. */
+.obs-vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 148px;
+  padding: 18px;
+  border: 1px dashed var(--o-border);
+  border-radius: 10px;
+  background: #fbfcfd;
+  text-align: center;
+}
+.obs-vacio i {
+  font-size: 20px;
+  color: #c6cbd4;
+}
+.obs-vacio p {
+  max-width: 320px;
+  font-size: 13px;
+  color: var(--o-text-muted);
+}
+
+/* ===== Observaciones por abertura =====
+   Una abertura por vez, con tres formas de moverse: flechas, desplegable y puntos. */
+.abs-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.abs-flecha {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--o-text-main);
+  cursor: pointer;
+  font-size: 12px;
+}
+.abs-flecha:hover:not(:disabled) {
+  background: #f2f4f7;
+}
+.abs-flecha:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.abs-sel {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.abs-sel-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--o-border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--o-text-main);
+}
+.abs-sel-btn:hover {
+  border-color: var(--primary-blue);
+}
+.abs-sel-t {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "3 de 7": la posición dentro del documento, al costado del nombre. */
+.abs-sel-x {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--o-text-muted);
+  white-space: nowrap;
+}
+.abs-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.12);
+}
+.abs-op {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.abs-op:hover {
+  background: #f2f4f7;
+}
+.abs-op--act {
+  background: #eaf1ff;
+}
+.abs-op-t {
+  font-weight: 600;
+}
+.abs-op-ok {
+  margin-left: auto;
+  color: var(--green-dark, #12a150);
+  font-size: 12px;
+}
+.abs-op-vacio {
+  margin-left: auto;
+  font-size: 11px;
+  color: #a1a3b1;
+}
+/* Los puntos: cuántas aberturas hay y cuáles ya tienen observación. */
+.abs-puntos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.abs-punto {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: 1px solid #c6cbd4;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+.abs-punto--lleno {
+  border-color: var(--green-dark, #12a150);
+  background: var(--green-dark, #12a150);
+}
+.abs-punto--act {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
 }
 
 /* Arrastrar y soltar (calcado del adjunto de comprobante). */
@@ -1040,17 +1432,60 @@
   text-align: right;
 }
 
-/* Marca en texto, mientras no esté el archivo del logo en `public/`. */
-.topsel-logo-txt {
-  align-self: center;
+/* ===== Selector de proceso del encabezado (las cinco etapas) ===== */
+
+/* El número de la etapa dentro de la caja cerrada: ubica sin gastar palabras. */
+.selbox-paso-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
   flex: 0 0 auto;
-  padding-right: 20px;
-  border-right: 1px solid var(--border, #e4e7ec);
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  color: var(--primary-blue);
-  user-select: none;
+  border-radius: 50%;
+  background: var(--primary-blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ddpaso {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.ddpaso-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--border, #e4e7ec);
+  background: #f2f4f7;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ddpaso-n--act {
+  border-color: var(--primary-blue);
+  background: var(--primary-blue);
+  color: #fff;
+}
+.ddpaso-t {
+  font-weight: 600;
+}
+.ddpaso-lock {
+  margin-left: auto;
+  font-size: 11px;
+  color: #a1a3b1;
+}
+/* Etapa a la que la obra todavía no llegó. El click se ignora en el propio selector; acá sólo se
+   hace evidente, y el tooltip dice qué falta. */
+.dditem--off {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Opción del desplegable de procesos: ícono, nombre y, si todavía no está construido, el aviso.

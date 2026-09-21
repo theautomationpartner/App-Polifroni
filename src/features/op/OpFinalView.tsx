@@ -1,11 +1,13 @@
+import { useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
+import { Modal } from '@/components/ui/Modal'
 import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
-import { COL } from '@/services/monday'
+import { useDispatch } from '@/state/hooks'
 import { puedeGenerar, requisitosOp } from './requisitos'
 import { useGenerarOp } from './useGenerarOp'
 
@@ -21,8 +23,16 @@ const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
  */
 export function OpFinalView() {
   const obra = useObra()
+  const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
   const { estado, correr, seguirEsperando, enCurso, noArranco } = useGenerarOp(obra)
+
+  /* Última oportunidad de cargar observaciones. Se pregunta UNA vez al llegar —por eso el estado
+     arranca con la respuesta ya calculada y no con un efecto—: quien dijo "no" en el paso anterior
+     puede haber cambiado de idea, y quien dice "no" acá quiere generar sin ellas. */
+  const [proponerObs, setProponerObs] = useState(
+    () => obra.ordenEtmo.length > 0 && !obra.observaciones.trim(),
+  )
 
   const requisitos = requisitosOp(obra)
   const listoParaGenerar = puedeGenerar(obra)
@@ -45,16 +55,7 @@ export function OpFinalView() {
     <section className="view paso-layout obras-v2">
       <PasoHeader />
 
-      <PasoTitulo
-        numero={3}
-        titulo="Generar la Orden de Producción final"
-        descripcion={
-          <>
-            La automatización lee el PDF de ETMO, estructura los datos y arma la OP final con las
-            observaciones cargadas. El documento queda adjunto a la obra.
-          </>
-        }
-      />
+      <PasoTitulo numero={3} titulo="Generar la Orden de Producción final" />
 
       <ObraFicha obra={obra} />
 
@@ -63,10 +64,6 @@ export function OpFinalView() {
           <div className="panel-t">
             <i className="fas fa-robot" /> Leer documento y generar
           </div>
-          <p className="panel-d">
-            Antes de disparar se verifica lo mismo que necesita el escenario. Si falta algo, se
-            corrige en el paso anterior y no se gasta una corrida.
-          </p>
 
           {/* Los requisitos, con su estado. El que falta dice DÓNDE se arregla. */}
           <ul className="reqs">
@@ -74,10 +71,7 @@ export function OpFinalView() {
               <li className={`req ${r.ok ? 'req--ok' : 'req--falta'}`} key={r.columna}>
                 <i className={`fas ${r.ok ? 'fa-circle-check' : 'fa-circle-exclamation'}`} />
                 <div>
-                  <div className="req-t">
-                    {r.titulo}
-                    <span className="campo-col">{r.columna}</span>
-                  </div>
+                  <div className="req-t">{r.titulo}</div>
                   <div className="req-d">{r.detalle}</div>
                 </div>
               </li>
@@ -119,30 +113,22 @@ export function OpFinalView() {
             )}
             {noArranco && (
               <Aviso tono="warn">
-                Pasaron {reloj(estado.segundos)} y el tablero todavía no pasó a{' '}
-                <strong>Generando</strong>. El escenario no tomó el pedido: revisá que esté activo
-                en Make. Sigo mirando por las dudas.
+                Pasaron {reloj(estado.segundos)} y el tablero no se movió. El escenario no tomó el
+                pedido: revisá que esté activo en Make. Sigo mirando.
               </Aviso>
             )}
             {estado.fase === 'trabajando' && (
               <Aviso tono="info">
-                La automatización está trabajando ({reloj(estado.segundos)}). Podés dejar la pantalla
-                abierta: cuando termine, el documento aparece solo.
+                Generando ({reloj(estado.segundos)}). Cuando termine, el documento aparece solo.
               </Aviso>
             )}
             {estado.fase === 'listo' && (
-              <Aviso tono="ok">
-                Orden de Producción final generada y adjunta a la obra en {reloj(estado.segundos)}.
-                {/* De dónde salió la noticia. Mientras se afina la espera, saber si contestó el
-                    escenario o si lo trajo el tablero explica por qué tardó lo que tardó. */}
-                <span className="origen"> · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}</span>
-              </Aviso>
+              <Aviso tono="ok">Orden generada en {reloj(estado.segundos)}.</Aviso>
             )}
             {estado.fase === 'demorado' && (
               <>
                 <Aviso tono="warn">
-                  Pasaron 5 minutos y todavía no hay documento. La corrida sigue en Make: dejé de
-                  preguntar, no de esperar.
+                  Pasaron 5 minutos y todavía no hay documento. La corrida sigue en Make.
                 </Aviso>
                 <div className="acciones-fila">
                   <button
@@ -178,28 +164,12 @@ export function OpFinalView() {
               </>
             )}
           </div>
-
-          <div className="panel-sep" />
-          <span className="campo-l">
-            Observaciones que se vuelcan en la orden
-            <span className="campo-col">{COL.observaciones}</span>
-          </span>
-          <div
-            className={`dato-v ${obra.observaciones ? '' : 'dato-v--vacio'}`}
-            style={{ whiteSpace: 'pre-wrap' }}
-          >
-            {obra.observaciones || 'Sin observaciones cargadas.'}
-          </div>
         </div>
 
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-file-circle-check" /> Orden de Producción final
           </div>
-          <p className="panel-d">
-            El documento que se le va a mandar al cliente. Si no es el correcto, corregí las
-            observaciones y volvé a generarlo.
-          </p>
           <VisorPdf
             archivo={opPdf}
             vacio="Todavía no hay una OP final generada para esta obra."
@@ -207,6 +177,34 @@ export function OpFinalView() {
           />
         </div>
       </div>
+
+      {proponerObs && (
+        <Modal
+          title="¿Generar sin observaciones?"
+          icon={<i className="fas fa-circle-question modal-icon--info" />}
+          onClose={() => setProponerObs(false)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn btn-out"
+                onClick={() => {
+                  setProponerObs(false)
+                  dispatch({ type: 'goto', paso: 'etmo' })
+                }}
+              >
+                Cargar observaciones
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => setProponerObs(false)}>
+                Generar sin observaciones
+              </button>
+            </>
+          }
+        >
+          Esta obra no tiene observaciones cargadas. La Orden de Producción se puede generar igual;
+          si querés agregarlas, te llevamos al paso anterior.
+        </Modal>
+      )}
 
       {/* La misma regla que usa el stepper: el pie no puede dejar pasar a donde el stepper frena. */}
       <PasoNav

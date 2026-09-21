@@ -10,42 +10,63 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-/** Los únicos escenarios que se pueden disparar, y de qué variable sale la URL de cada uno. */
-const ESCENARIOS: Record<string, string> = {
-  'leer-documento': 'MAKE_WEBHOOK_LEER_DOC',
-  'enviar-op-cliente': 'MAKE_WEBHOOK_ENVIAR_OP',
-  'enviar-op-taller': 'MAKE_WEBHOOK_ENVIAR_OP_TALLER',
+/**
+ * Los únicos escenarios que se pueden disparar, y de qué variable sale la URL de cada uno.
+ *
+ * Cada escenario acepta MÁS DE UN nombre de variable, en orden de preferencia. No es capricho: la
+ * variable de la lectura de observaciones se cargó en Vercel como `LEER_OBSERVACIONES`, sin el
+ * prefijo del resto, y un despliegue no debería romperse por cómo se tipeó un nombre. Se toma la
+ * primera que tenga valor.
+ */
+const ESCENARIOS: Record<string, string[]> = {
+  'leer-documento': ['MAKE_WEBHOOK_LEER_DOC', 'LEER_DOC'],
+  'leer-observaciones': ['MAKE_WEBHOOK_LEER_OBSERVACIONES', 'LEER_OBSERVACIONES'],
+  'enviar-op-cliente': ['MAKE_WEBHOOK_ENVIAR_OP', 'ENVIAR_OP'],
+  'enviar-op-taller': ['MAKE_WEBHOOK_ENVIAR_OP_TALLER', 'ENVIAR_OP_TALLER'],
+}
+
+/** La primera de las variables del escenario que tenga una URL cargada. */
+function urlDelEscenario(nombres: string[] | undefined): { variable: string; url: string } | null {
+  for (const nombre of nombres ?? []) {
+    const url = process.env[nombre]?.trim()
+    if (url) return { variable: nombre, url }
+  }
+  return null
 }
 
 type Pedido = IncomingMessage & { body?: unknown }
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
   const escenario = new URL(req.url ?? '', 'http://local').searchParams.get('escenario') ?? ''
-  const variable = ESCENARIOS[escenario]
+  const nombres = ESCENARIOS[escenario]
+  const cargada = urlDelEscenario(nombres)
 
   /* GET sólo contesta si el escenario TIENE una URL cargada, sin decir cuál. Existe porque la
      pregunta "¿por qué no se disparó nada?" no se puede contestar disparando: eso mandaría un
      mensaje de verdad. Nunca devuelve la URL ni ningún secreto. */
   if (req.method === 'GET') {
-    if (!variable) return responder(res, 400, { error: 'Escenario desconocido.', escenario })
+    if (!nombres) return responder(res, 400, { error: 'Escenario desconocido.', escenario })
     return responder(res, 200, {
       escenario,
-      variable,
-      configurado: Boolean(process.env[variable]?.trim()),
+      /* Qué variable se está usando de verdad, no cuál debería usarse: es el dato que contesta
+         "¿por qué no se dispara nada?". La URL no se devuelve nunca. */
+      variable: cargada?.variable ?? nombres[0],
+      acepta: nombres,
+      configurado: Boolean(cargada),
     })
   }
 
   if (req.method !== 'POST') return responder(res, 405, { error: 'Method Not Allowed' })
   /* Una lista cerrada: el cliente elige ENTRE escenarios conocidos, no manda una URL. Si pudiera
      mandarla, esta ruta serviría para pegarle a cualquier servidor desde nuestro dominio. */
-  if (!variable) return responder(res, 400, { error: 'Escenario desconocido.' })
+  if (!nombres) return responder(res, 400, { error: 'Escenario desconocido.' })
 
-  const url = process.env[variable]?.trim()
   /* 404 a propósito: es la misma respuesta que da el proxy de Vite cuando la URL no está cargada,
      así la app muestra el mismo aviso de "falta configurar el escenario" en los dos entornos. */
-  if (!url) {
-    return responder(res, 404, { error: `Falta configurar ${variable} en el servidor.` })
+  if (!cargada) {
+    return responder(res, 404, { error: `Falta configurar ${nombres.join(' o ')} en el servidor.` })
   }
+  const url = cargada.url
 
   try {
     const body = await leerCuerpo(req)

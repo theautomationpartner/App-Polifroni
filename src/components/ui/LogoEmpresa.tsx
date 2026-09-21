@@ -1,33 +1,33 @@
 import { useState } from 'react'
 
 /**
- * Logo de la empresa en la barra superior. El archivo se sirve desde `public/`, así que para
- * cambiarlo alcanza con reemplazarlo: no hay que tocar código ni recompilar.
+ * Marca de la empresa: el logo y, al lado, el nombre.
  *
- * Mientras el archivo no esté, en vez del ícono de imagen rota se dibuja el nombre: la barra se ve
- * terminada igual desde el primer arranque.
+ * El archivo se sirve desde `public/`, así que para cambiarlo alcanza con reemplazarlo: no hay que
+ * tocar código ni recompilar. Mientras no esté, en vez del ícono de imagen rota se dibuja sólo el
+ * nombre: la barra se ve terminada igual desde el primer arranque.
  */
 const LOGO_SRC = '/logo-polifroni.png'
 
 export function LogoEmpresa() {
   const [sinArchivo, setSinArchivo] = useState(false)
 
-  if (sinArchivo) {
-    return (
-      <span className="topsel-logo-txt" aria-label="Polifroni">
-        POLIFRONI
-      </span>
-    )
-  }
-
   return (
-    <img
-      className="topsel-logo"
-      src={LOGO_SRC}
-      alt="Polifroni"
-      decoding="async"
-      draggable={false}
-      onError={() => setSinArchivo(true)}
-    />
+    <div className="marca">
+      {!sinArchivo && (
+        <img
+          className="marca-img"
+          src={LOGO_SRC}
+          alt=""
+          decoding="async"
+          draggable={false}
+          onError={() => setSinArchivo(true)}
+        />
+      )}
+      <span className="marca-txt">
+        <span className="marca-n">POLIFRONI</span>
+        <span className="marca-s">Aberturas SRL</span>
+      </span>
+    </div>
   )
 }

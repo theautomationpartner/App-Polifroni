@@ -9,13 +9,26 @@ import type { Obra, Paso, Proceso } from '@/types'
 /** Orden de los pasos del proceso de Orden de Producción. Manda el stepper y la navegación. */
 export const PASOS: readonly Paso[] = ['obra', 'etmo', 'op-final', 'envio', 'confirmacion']
 
-/** Etiqueta de cada paso, la que se lee debajo del círculo del stepper. */
+/** Etiqueta de cada paso, la que se lee debajo del círculo del stepper. Corta a propósito. */
 export const ETIQUETAS_PASO: Record<Paso, string> = {
   obra: 'Obra',
   etmo: 'Orden ETMO',
   'op-final': 'OP Final',
   envio: 'Envío al cliente',
   confirmacion: 'Confirmación y taller',
+}
+
+/**
+ * El mismo paso, dicho como la ACCIÓN que se va a hacer. Es lo que muestra el selector de proceso
+ * del encabezado: ahí no se está ubicando una etapa en una barra sino eligiendo qué hacer ahora,
+ * y "Cargar Orden ETMO" contesta esa pregunta; "Orden ETMO", no.
+ */
+export const ACCIONES_PASO: Record<Paso, string> = {
+  obra: 'Elegir la obra',
+  etmo: 'Cargar Orden ETMO',
+  'op-final': 'Generar la OP final',
+  envio: 'Enviar la OP al cliente',
+  confirmacion: 'Confirmar y enviar al taller',
 }
 
 export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))

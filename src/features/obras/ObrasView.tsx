@@ -157,16 +157,7 @@ export function ObrasView() {
     <section className="view paso-layout obras-v2">
       <PasoHeader />
 
-      <PasoTitulo
-        numero={1}
-        titulo="Seleccionar la obra"
-        descripcion={
-          <>
-            Buscá la obra por nombre o por su id de ítem. Desde ella se cargan la Orden ETMO, las
-            observaciones y todo el circuito de la Orden de Producción.
-          </>
-        }
-      />
+      <PasoTitulo numero={1} titulo="Seleccionar la obra" />
 
       {/* Sólo aparece corriendo en tu máquina: en el servidor el token no lo pone el navegador
           sino la función de `api/`, así que `mondayHabilitado()` ya no pregunta por él. */}
@@ -196,7 +187,7 @@ export function ObrasView() {
             <input
               type="text"
               className="search-input"
-              placeholder="Buscar obra por nombre o id de ítem..."
+              placeholder="Buscar obra por nombre o id..."
               autoComplete="off"
               value={termino}
               disabled={cargando || sinToken}
@@ -233,17 +224,17 @@ export function ObrasView() {
         <div className="obras-lista-cab">
           <div>
             <div className="obras-lista-t">
-              {modo === 'destacadas' ? 'Obra de trabajo' : `Resultados de "${terminoActivo}"`}
+              {modo === 'destacadas' ? 'Obra' : `Resultados de "${terminoActivo}"`}
             </div>
-            <div className="obras-lista-sub">
-              {modo === 'destacadas'
-                ? 'La lista completa del tablero se consulta desde el buscador.'
-                : `Página ${pagina} · ${filas.length} obra${filas.length === 1 ? '' : 's'} en esta página`}
-            </div>
+            {modo === 'listado' && (
+              <div className="obras-lista-sub">
+                {`Página ${pagina} · ${filas.length} obra${filas.length === 1 ? '' : 's'}`}
+              </div>
+            )}
           </div>
           {modo === 'listado' && (
             <button type="button" className="obras-pager-btn" onClick={cargarDestacadas}>
-              <i className="fas fa-rotate-left" /> Volver a la obra de trabajo
+              <i className="fas fa-rotate-left" /> Volver
             </button>
           )}
         </div>
@@ -251,9 +242,7 @@ export function ObrasView() {
         {error && <Aviso tono="err">{error}</Aviso>}
 
         {filas.length === 0 && !cargando && !error && (
-          <div className="obras-vacio">
-            No hay obras para mostrar. Probá con otro nombre, o pegá el id del ítem.
-          </div>
+          <div className="obras-vacio">Sin resultados. Probá con otro nombre o con el id.</div>
         )}
 
         {filas.map((f) => (

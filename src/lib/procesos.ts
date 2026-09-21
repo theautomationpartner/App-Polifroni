@@ -1,48 +1,43 @@
 import type { Proceso } from '@/types'
 
-/** Un proceso del sistema, tal como se ve en la pantalla inicial y en el selector del encabezado. */
+/** Un proceso del sistema, tal como se ve en la pantalla inicial y en el encabezado. */
 export interface ProcesoDef {
   /** `null` mientras el proceso no está construido: se muestra, pero no se puede entrar. */
   id: Proceso | null
   icono: string
   titulo: string
-  descripcion: string
+  /** Pie de la tarjeta: cuántas etapas tiene, o que todavía no está. Nada más. */
   detalle: string
 }
 
 /**
- * Catálogo de procesos. Vive acá y no dentro de una vista porque lo usan DOS lugares —la pantalla
- * inicial y el selector del encabezado— y tienen que decir lo mismo: si mañana se agrega un
- * proceso, aparece en los dos sin tocar ninguno.
+ * Catálogo de procesos, fuera de la vista que los dibuja: agregar uno es agregar una entrada acá.
  *
- * Hoy sólo 🪟 Obras está construido. Los demás se listan igual: la pantalla es el mapa del
- * sistema, y ver dónde va a vivir lo que falta vale más que esconderlo.
+ * Los nombres son ACCIONES, no tableros: quien entra elige qué va a hacer ("Cargar Orden de
+ * Producción"), no en qué tablero de Monday se guarda. En 🪟 Obras va a haber más de un proceso, y
+ * nombrarlos por el tablero los volvería indistinguibles.
  */
 export const PROCESOS: ProcesoDef[] = [
   {
     id: 'obras',
-    icono: 'fa-window-maximize',
-    titulo: '🪟 Obras',
-    descripcion:
-      'Orden de producción: ingesta del ETMO, observaciones por ítem, generación de la OP final, envío al cliente y despacho al taller.',
+    icono: 'fa-file-circle-plus',
+    titulo: 'Cargar Orden de Producción',
     detalle: '5 etapas',
   },
   {
     id: null,
     icono: 'fa-file-invoice-dollar',
     titulo: 'Cuentas corrientes',
-    descripcion: 'Movimientos y saldos de la cuenta corriente del cliente.',
     detalle: 'Próximamente',
   },
   {
     id: null,
     icono: 'fa-truck-fast',
     titulo: 'Entregas y colocación',
-    descripcion: 'Coordinación de entrega, premarcos y colocación en obra.',
     detalle: 'Próximamente',
   },
 ]
 
-/** El proceso en curso, para mostrarlo en el selector del encabezado. */
+/** El proceso en curso, para nombrarlo en el encabezado. */
 export const procesoDe = (id: Proceso | null): ProcesoDef | undefined =>
   PROCESOS.find((p) => p.id !== null && p.id === id)

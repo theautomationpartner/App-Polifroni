@@ -26,33 +26,80 @@
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
-/* Logo de la empresa: abre la barra, contra el margen izquierdo.
+/* Marca de la empresa: abre la barra, contra el margen izquierdo. Es el logo MÁS el nombre, que
+   es como la firma Polifroni en sus documentos; el logo solo no dice la razón social.
 
-   El alto lo fija la caja y el ancho lo pone la imagen (`width: auto` + `object-fit: contain`):
-   así entra COMPLETA, sin recorte ni deformación, con cualquier proporción de archivo. Va
-   centrada verticalmente (`align-self: center`) porque el resto de la barra se alinea por abajo
-   —los selectores tienen su rótulo arriba— y un logo pegado a esa base quedaría descolgado.
-   El filete de la derecha separa la marca de los controles. */
-.topsel-logo {
+   Va centrada verticalmente (`align-self: center`) porque el resto de la barra se alinea por
+   abajo —los selectores tienen su rótulo arriba— y una marca pegada a esa base quedaría
+   descolgada. El filete de la derecha la separa de los controles. */
+.marca {
   align-self: center;
   flex: 0 0 auto;
-  /* 56px: el archivo trae aire propio arriba y abajo (~14% del alto), así que el logo dibujado
-     queda en ~48px. Es el alto con el que "La Batea" se lee cómodo sin agrandar la cabecera. */
-  height: 56px;
-  width: auto;
-  max-width: 180px;
-  object-fit: contain;
-  object-position: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   padding-right: 20px;
   border-right: 1px solid var(--border, #e4e7ec);
   user-select: none;
 }
-/* En pantallas angostas la marca cede altura antes que ocupar una línea propia. */
+/* El alto lo fija la caja y el ancho lo pone la imagen (`width: auto` + `object-fit: contain`):
+   así entra COMPLETA, sin recorte ni deformación, con cualquier proporción de archivo. */
+.marca-img {
+  height: 40px;
+  width: auto;
+  max-width: 120px;
+  object-fit: contain;
+  object-position: center;
+}
+.marca-txt {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.marca-n {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: var(--primary-blue);
+}
+/* El complemento de la razón social, en la MISMA letra pero más chico: acompaña al nombre sin
+   competirle. */
+.marca-s {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--o-text-muted, #667085);
+}
+/* Sola en su barra —la pantalla de inicio— no separa de nada: el filete sobra. */
+.topsel > .marca:only-child {
+  padding-right: 0;
+  border-right: 0;
+}
+/* La marca es además el camino de vuelta al inicio, así que en el encabezado es un botón. No se
+   pinta como tal: sigue leyéndose como la marca. */
+.marca-btn {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+/* En pantallas angostas la marca cede tamaño antes que ocupar una línea propia. */
 @media (max-width: 720px) {
-  .topsel-logo {
-    height: 40px;
-    max-width: 132px;
+  .marca {
+    gap: 9px;
     padding-right: 14px;
+  }
+  .marca-img {
+    height: 30px;
+    max-width: 90px;
+  }
+  .marca-n {
+    font-size: 14px;
+  }
+  .marca-s {
+    font-size: 9px;
   }
 }
 .topsel-item {

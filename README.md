@@ -44,14 +44,18 @@ deploys de preview funcionen, las variables de entorno tienen que estar también
 
 ## Configuración en Vercel (producción)
 
-En **Settings → Environment Variables** van estas cuatro, **ninguna con prefijo `VITE_`**:
+En **Settings → Environment Variables** van estas cinco, **ninguna con prefijo `VITE_`**:
 
 | Variable | Valor |
 | --- | --- |
 | `MONDAY_TOKEN` | El token de Monday de Polifroni |
 | `MAKE_WEBHOOK_LEER_DOC` | `https://hook.us1.make.com/9chqbwa4...` |
+| `MAKE_WEBHOOK_LEER_OBSERVACIONES` | Escenario que lee el ETMO y devuelve una entrada por abertura. **También se acepta `LEER_OBSERVACIONES`**, que es como quedó cargada |
 | `MAKE_WEBHOOK_ENVIAR_OP` | `https://hook.us1.make.com/p0q6e8ga...` |
 | `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | `https://hook.us1.make.com/…` (envío al taller) |
+
+> Cargalas en **Production Y Preview**. Una variable que sólo está en Production hace que los
+> deploys de preview de `dev` fallen justo en lo que se quería probar.
 
 Las lee el código de `api/`, que corre **en el servidor**. El navegador nunca ve el token: pide
 `/api/monday` y la función reenvía a Monday poniendo la credencial.
@@ -84,10 +88,11 @@ está fuera de git (`.gitignore`):
 | --- | --- |
 | `VITE_MONDAY_TOKEN` | Token de Monday, SÓLO para desarrollo. Viaja por el proxy de Vite (`/monday-api`). En producción se usa `MONDAY_TOKEN` (ver arriba). |
 | `MAKE_WEBHOOK_LEER_DOC` | Escenario que lee el PDF de ETMO y arma la OP final. |
+| `MAKE_WEBHOOK_LEER_OBSERVACIONES` | Escenario que lee el ETMO y devuelve qué aberturas tiene. |
 | `MAKE_WEBHOOK_ENVIAR_OP` | Escenario que manda la OP al cliente por WhatsApp. |
 | `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | Escenario que manda la orden al taller de fabricación. |
 
-Las tres variables de Make **no** llevan prefijo `VITE_` a propósito: las lee el proxy de Vite, así
+Las variables de Make **no** llevan prefijo `VITE_` a propósito: las lee el proxy de Vite, así
 la URL del escenario nunca entra en el código que corre en el navegador.
 
 ## Las cinco etapas
@@ -95,10 +100,10 @@ la URL del escenario nunca entra en el código que corre en el navegador.
 | # | Etapa | Qué hace | Columnas del tablero |
 | --- | --- | --- | --- |
 | 1 | **Obra** | Buscador + lista paginada (15/25). Arranca con la obra de trabajo; el resto se trae buscando por nombre o por id de ítem. | — |
-| 2 | **Orden ETMO** | Adjunta el PDF de ETMO y guarda las observaciones por ítem. | `file_mktkkjnj`, `text_mm73nvda` |
+| 2 | **Orden ETMO** | Carga el PDF de ETMO, lo lee y escribe las observaciones, una caja por abertura. | `file_mktkkjnj`, `text_mm73nvda` |
 | 3 | **OP Final** | Botón *Leer documento* (habilitado sólo con ETMO adjunto) → webhook de Make → espera a que el tablero traiga el documento. | `color_mm72nxsj`, `file_mm72n55y` |
 | 4 | **Envío al cliente** | Elige destinatario y vía, manda la OP por WhatsApp con el enlace al formulario de confirmación. | `color_mm12ez80`, `color_mktzfcdt`, `color_mm0h8j4m`, `color_mm5jsjea` |
-| 5 | **Confirmación y taller** | Muestra la respuesta del cliente y despacha al taller. Sólo se llega acá con el mensaje enviado y la orden confirmada. | `color_mm73rxg7`, `color_mkzrjgcj` |
+| 5 | **Confirmación y taller** | Muestra la respuesta del cliente y despacha al taller. Se entra con la OP generada; el despacho pide la confirmación. | `color_mm73rxg7`, `color_mkzrjgcj` |
 
 La ficha de la obra —cuenta corriente del cliente, constructor/arquitecto, teléfonos, estados,
 importes, documentos— está presente en todas las etapas.
@@ -133,11 +138,31 @@ un `text_xxxxx` suelto.
   CORS y firma la URL como descarga; el proxy quita esa cabecera para que el visor pueda mostrarlos.
 - **La app no escribe updates en el ítem.** El historial queda para lo que informan los escenarios;
   ante un error se muestra el update de ESA corrida, nunca los de corridas viejas.
+- **Las observaciones son opcionales, y se editan por abertura** (`features/op/observaciones.ts`).
+  No hay campo libre: no se puede escribir hasta que el documento se leyó, porque quién sabe cuántas
+  aberturas tiene es el documento. Si al cargarlo se dijo que no, el botón *Leer documento* queda
+  disponible, y al llegar al paso 3 sin observaciones se vuelve a preguntar una vez. Una obra puede
+  generarse sin ninguna; lo que sí corta la generación es una observación con formato inválido.
+  Al adjuntar el ETMO se ofrece leerlo: el escenario `leer-observaciones` devuelve una entrada por
+  dibujo y la pantalla arma una caja para cada una. En el tablero se sigue guardando un renglón por
+  abertura con el formato que el escenario de la OP ya espera (`Modelo V1: …`), así que la columna
+  no cambia de forma. Volver a leer el documento **no pisa** lo ya escrito: aporta la lista, no el
+  texto. A diferencia de los otros escenarios, éste no deja nada en el tablero —contesta en la
+  respuesta del webhook—, así que si la respuesta no llega no hay nada que ir a buscar.
 - **A cada etapa se entra por el estado del tablero, no por dónde pasó el usuario** (`lib/pasos`):
-  al **Envío al cliente** se llega con la OP final generada, y a **Confirmación y taller** sólo con
-  el mensaje enviado (`color_mm0h8j4m` = Enviado) y la orden confirmada (`color_mm73rxg7` =
-  CONFIRMADO OP). La misma regla la usan el stepper y el pie de cada paso.
+  a **Envío al cliente** y a **Confirmación y taller** se llega con la OP final generada, y la
+  condición se **encadena** (la etapa bloqueada informa el primer requisito que falta, no el
+  último). Entrar al paso 5 **no** exige la confirmación: ésa es justamente la pantalla donde se
+  mira si el cliente contestó, y cerrarla mientras se espera dejaría sin dónde verlo. Lo que la
+  confirmación gobierna es el **botón** de despacho al taller (`puedeDespacharAlTaller`): con
+  `color_mm73rxg7` en *Pend de Confirmar* se entra igual, pero no se manda.
+- **El recorrido se hace con el selector de acción, no con el stepper.** La barra de etapas informa
+  —dónde estás, cuánto falta— y no navega: un círculo apagado no sabe explicar por qué está
+  apagado. El selector (`AccionSelect`, la caja de configuración de La Batea) lista las cinco
+  acciones, deshabilita las que la obra no alcanzó y muestra abajo qué falta para la próxima.
 
 ## Pendientes
 
 - Autenticación (hoy la app entra directo).
+- El archivo del logo. Va en `public/logo-polifroni.png`; mientras no esté, la barra dibuja el
+  nombre en texto y se ve terminada igual.

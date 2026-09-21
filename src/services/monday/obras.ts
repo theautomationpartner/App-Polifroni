@@ -336,6 +336,27 @@ export async function guardarObservaciones(itemId: string, texto: string): Promi
   )
 }
 
+/**
+ * Vacía una columna de archivos.
+ *
+ * Se usa para sacar un adjunto cargado por equivocación. Va con `change_column_value` y no con la
+ * versión "simple" porque el valor es un objeto (`{"clear_all": true}`), que es como Monday pide
+ * borrar los archivos de una columna: no existe un "quitar este archivo".
+ */
+export async function limpiarArchivos(itemId: string, columna: string): Promise<void> {
+  await mondayApi(
+    `mutation ($valor: JSON!) {
+      change_column_value(
+        board_id: ${BOARD_OBRAS}
+        item_id: ${itemId}
+        column_id: "${columna}"
+        value: $valor
+      ) { id }
+    }`,
+    { valor: JSON.stringify({ clear_all: true }) },
+  )
+}
+
 /** Cambia una columna status por su etiqueta (la etiqueta tiene que existir en el tablero). */
 export async function setEstado(itemId: string, columna: string, etiqueta: string): Promise<void> {
   await mondayApi(

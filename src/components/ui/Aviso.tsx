@@ -24,8 +24,14 @@ export function Aviso({ tono = 'info', children }: { tono?: TonoAviso; children:
 }
 
 /**
- * Etiqueta de estado del tablero, con SU color. Monday pinta el fondo entero de la celda, así que
- * acá se hace lo mismo: el color es lo que se reconoce de un vistazo, no el texto.
+ * Etiqueta de estado del tablero.
+ *
+ * NO usa el color que Monday le puso a la etiqueta. Una fila con seis colores distintos no informa
+ * seis cosas: obliga a leerlas todas igual y encima compite con los avisos, que sí usan el color
+ * para decir algo. Van todas en el mismo azul, y lo que se lee es el TEXTO.
+ *
+ * La jerarquía es la misma que la de los datos de la ficha: el rótulo chico en mayúsculas dice qué
+ * se está mirando, y el valor —lo que de verdad importa— va en oscuro y con más peso.
  */
 export function EstadoBadge({
   label,
@@ -34,19 +40,11 @@ export function EstadoBadge({
   label?: string
   estado: { texto: string; color: string }
 }) {
-  if (!estado.texto) {
-    return (
-      <span className="sbadge sbadge--vacio">
-        {label && <span className="sbadge-l">{label}:</span>} sin definir
-      </span>
-    )
-  }
+  const vacio = !estado.texto
   return (
-    <span
-      className={`sbadge ${estado.color ? 'sbadge--monday' : ''}`}
-      style={estado.color ? { background: estado.color } : undefined}
-    >
-      {label && <span className="sbadge-l">{label}:</span>} {estado.texto}
+    <span className={`chip ${vacio ? 'chip--vacio' : ''}`}>
+      {label && <span className="chip-l">{label}:</span>}
+      <span className="chip-v">{estado.texto || 'sin definir'}</span>
     </span>
   )
 }
