@@ -223,9 +223,11 @@ export interface PaginaObras {
 }
 
 /**
- * Obras del tablero, de a una página. Con `termino` filtra por nombre (contiene); sin término
- * lista el tablero entero paginado. NO se traen todos los ítems de una: el board tiene cientos y
- * la app pagina de 15 o 25 como la lista de Monday.
+ * Obras del tablero, de a una página.
+ *
+ * Con `termino` filtra por nombre (contiene); sin término empieza a listar el tablero entero, que
+ * es como el catálogo (`features/obras/catalogoObras`) trae su primer lote. Nunca se piden todos
+ * los ítems de una: el board tiene cientos y la primera pantalla tiene que aparecer enseguida.
  */
 export async function buscarObras(termino: string, limite: number): Promise<PaginaObras> {
   const t = termino.trim()
@@ -275,16 +277,6 @@ export async function siguientePaginaObras(cursor: string, limite: number): Prom
   )
   const page = d.next_items_page
   return { filas: (page?.items ?? []).map(aFila), cursor: page?.cursor ?? null }
-}
-
-/** Fila de una obra puntual (la que la app muestra de arranque, sin listar el tablero entero). */
-export async function getFilasPorId(ids: string[]): Promise<ObraFila[]> {
-  if (ids.length === 0) return []
-  const d = await mondayApi<{ items: MondayItem[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { ${CAMPOS_FILA} } }`,
-    { ids },
-  )
-  return (d.items ?? []).map(aFila)
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────

@@ -1,98 +1,84 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Aviso } from '@/components/ui/Aviso'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
-import { OBRAS_DESTACADAS, TAMANOS_PAGINA } from '@/lib/config'
-import {
-  buscarObras,
-  getFilasPorId,
-  getObra,
-  mondayHabilitado,
-  siguientePaginaObras,
-} from '@/services/monday'
+import { TAMANOS_PAGINA } from '@/lib/config'
+import { buscarObras, getObra, mondayHabilitado, siguientePaginaObras } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 import type { ObraFila } from '@/types'
+import {
+  asegurarCatalogo,
+  conPrioridad,
+  refrescarCatalogo,
+  useCatalogoObras,
+} from './catalogoObras'
 
-type Modo = 'destacadas' | 'listado'
+type Modo = 'catalogo' | 'busqueda'
 
 /**
  * Paso 1 · Elegir la obra.
  *
- * Arranca mostrando la obra de trabajo (ver `OBRAS_DESTACADAS`): el tablero tiene cientos de ítems
- * y traerlos todos al abrir no le sirve a nadie. El buscador de arriba sí va al tablero —por
- * nombre o por id de ítem— y trae los resultados de a una página, como la lista de Monday.
+ * La lista es el tablero ENTERO, pero no se espera a tenerlo entero para mostrar algo: el catálogo
+ * (`catalogoObras`) trae lotes y la pantalla los va dibujando a medida que llegan. Lo que se pagina
+ * acá es lo ya traído, así que pasar de página es instantáneo.
+ *
+ * El buscador sí va al tablero —encuentra obras que todavía no llegaron, y por id de ítem también—
+ * y se dispara con prioridad sobre la carga de fondo.
  */
 export function ObrasView() {
   const dispatch = useDispatch()
+  const catalogo = useCatalogoObras()
 
   const [termino, setTermino] = useState('')
   const [errorInput, setErrorInput] = useState('')
-  const [modo, setModo] = useState<Modo>('destacadas')
+  const [modo, setModo] = useState<Modo>('catalogo')
   /** Término con el que se trajo lo que se está viendo (no el que se está tecleando). */
   const [terminoActivo, setTerminoActivo] = useState('')
-  const [filas, setFilas] = useState<ObraFila[]>([])
-  const [tamano, setTamano] = useState<number>(TAMANOS_PAGINA[0])
-  /** Cursor de la página SIGUIENTE; `null` = no hay más. */
+  const [resultados, setResultados] = useState<ObraFila[]>([])
+  /** Cursor de la página SIGUIENTE de la búsqueda; `null` = no hay más. */
   const [cursor, setCursor] = useState<string | null>(null)
-  /** Cursores de las páginas ya vistas, para poder volver. */
-  const [historial, setHistorial] = useState<string[]>([])
+  const [tamano, setTamano] = useState<number>(TAMANOS_PAGINA[0])
   const [pagina, setPagina] = useState(1)
-  const [cargando, setCargando] = useState(true)
+  const [buscando, setBuscando] = useState(false)
   const [abriendo, setAbriendo] = useState(false)
   const [error, setError] = useState('')
 
   const sinToken = !mondayHabilitado()
 
-  /** La obra de arranque: una consulta puntual por id, sin recorrer el tablero. */
-  const cargarDestacadas = useCallback(() => {
-    setCargando(true)
-    setError('')
-    getFilasPorId(OBRAS_DESTACADAS)
-      .then((f) => {
-        setFilas(f)
-        setModo('destacadas')
-        setTerminoActivo('')
-        setCursor(null)
-        setHistorial([])
-        setPagina(1)
-      })
-      /* El consejo cambia según DÓNDE está corriendo la app: en tu máquina el token vive en
-         `.env.local`; en el servidor, en las variables del proyecto. Mandar a revisar un archivo
-         que en producción no existe es peor que no decir nada. */
-      .catch(() =>
-        setError(
-          import.meta.env.DEV
-            ? 'No se pudo leer la obra en Monday. Revisá VITE_MONDAY_TOKEN en .env.local.'
-            : 'No se pudo leer la obra en Monday. Revisá que MONDAY_TOKEN esté cargado en las variables de entorno del proyecto.',
-        ),
-      )
-      .finally(() => setCargando(false))
-  }, [])
-
   useEffect(() => {
-    if (sinToken) {
-      setCargando(false)
-      return
-    }
-    cargarDestacadas()
-  }, [cargarDestacadas, sinToken])
+    if (!sinToken) asegurarCatalogo()
+  }, [sinToken])
 
-  /** Primera página de una búsqueda (o del tablero entero, si el término está vacío). */
+  /* Lo que se ve: el catálogo se pagina en memoria; la búsqueda, como la trae el tablero. */
+  const filas = modo === 'catalogo' ? catalogo.filas : resultados
+  const total = filas.length
+  const visibles = useMemo(() => {
+    if (modo === 'busqueda') return resultados
+    const desde = (pagina - 1) * tamano
+    return catalogo.filas.slice(desde, desde + tamano)
+  }, [modo, resultados, catalogo.filas, pagina, tamano])
+
+  const hayMasLocal = modo === 'catalogo' && pagina * tamano < total
+  const hayMas = modo === 'catalogo' ? hayMasLocal : !!cursor
+  const cargando = modo === 'catalogo' ? catalogo.cargando : buscando
+
+  /** Primera página de una búsqueda. Le gana a la carga de fondo. */
   const buscar = async (texto: string, limite = tamano) => {
-    setCargando(true)
+    setBuscando(true)
     setError('')
     try {
-      const { filas: encontradas, cursor: proximo } = await buscarObras(texto, limite)
-      setFilas(encontradas)
+      const { filas: encontradas, cursor: proximo } = await conPrioridad(() =>
+        buscarObras(texto, limite),
+      )
+      setResultados(encontradas)
       setCursor(proximo)
-      setHistorial([])
       setPagina(1)
-      setModo('listado')
+      setModo('busqueda')
       setTerminoActivo(texto)
     } catch {
       setError('No se pudo buscar en Monday. Probá de nuevo en unos segundos.')
     } finally {
-      setCargando(false)
+      setBuscando(false)
     }
   }
 
@@ -106,41 +92,60 @@ export function ObrasView() {
     void buscar(t)
   }
 
+  const volverAlCatalogo = () => {
+    setModo('catalogo')
+    setTerminoActivo('')
+    setResultados([])
+    setCursor(null)
+    setPagina(1)
+    setTermino('')
+    /* Por si la carga quedó a medio camino o venció mientras se buscaba. */
+    asegurarCatalogo()
+  }
+
   const irSiguiente = async () => {
+    if (modo === 'catalogo') {
+      setPagina((p) => p + 1)
+      return
+    }
     if (!cursor) return
-    setCargando(true)
+    setBuscando(true)
     try {
-      const actual = cursor
-      const { filas: siguientes, cursor: proximo } = await siguientePaginaObras(actual, tamano)
-      setHistorial((h) => [...h, actual])
-      setFilas(siguientes)
+      const { filas: siguientes, cursor: proximo } = await conPrioridad(() =>
+        siguientePaginaObras(cursor, tamano),
+      )
+      setResultados(siguientes)
       setCursor(proximo)
       setPagina((p) => p + 1)
     } catch {
       setError('No se pudo traer la página siguiente.')
     } finally {
-      setCargando(false)
+      setBuscando(false)
     }
   }
 
-  /* Monday pagina hacia adelante con cursores de un solo uso: no hay "cursor anterior". Volver a
-     la página 1 se hace rehaciendo la búsqueda, que es exactamente lo que ya sabe hacer `buscar`.
-     Para las intermedias no hay atajo honesto, así que el botón sólo vuelve al principio. */
-  const volverAlPrincipio = () => {
-    if (modo === 'destacadas') return
+  /* Monday pagina hacia adelante con cursores de un solo uso: en una BÚSQUEDA no hay "anterior",
+     y volver a la primera se hace rehaciendo la consulta. En el catálogo, en cambio, todo lo
+     traído está en memoria, así que se retrocede sin pedir nada. */
+  const irAnterior = () => {
+    if (modo === 'catalogo') {
+      setPagina((p) => Math.max(1, p - 1))
+      return
+    }
     void buscar(terminoActivo)
   }
 
   const cambiarTamano = (nuevo: number) => {
     setTamano(nuevo)
-    if (modo === 'listado') void buscar(terminoActivo, nuevo)
+    setPagina(1)
+    if (modo === 'busqueda') void buscar(terminoActivo, nuevo)
   }
 
   /** Abre la obra: se trae el ítem COMPLETO, que es lo que necesitan las etapas siguientes. */
   const abrir = async (id: string) => {
     setAbriendo(true)
     try {
-      const obra = await getObra(id)
+      const obra = await conPrioridad(() => getObra(id))
       if (!obra) {
         setError('Esa obra ya no está en el tablero.')
         return
@@ -190,12 +195,12 @@ export function ObrasView() {
               placeholder="Buscar obra por nombre o id..."
               autoComplete="off"
               value={termino}
-              disabled={cargando || sinToken}
+              disabled={sinToken}
               onChange={(e) => {
                 setTermino(e.target.value)
                 if (errorInput) setErrorInput('')
               }}
-              onKeyDown={(e) => e.key === 'Enter' && !cargando && onBuscar()}
+              onKeyDown={(e) => e.key === 'Enter' && !buscando && onBuscar()}
             />
           </div>
           <span
@@ -207,8 +212,8 @@ export function ObrasView() {
           </span>
         </div>
 
-        <button type="button" className="btn-buscar" onClick={onBuscar} disabled={cargando || sinToken}>
-          {cargando ? (
+        <button type="button" className="btn-buscar" onClick={onBuscar} disabled={buscando || sinToken}>
+          {buscando ? (
             <>
               <i className="fas fa-spinner fa-spin" /> Buscando...
             </>
@@ -224,28 +229,54 @@ export function ObrasView() {
         <div className="obras-lista-cab">
           <div>
             <div className="obras-lista-t">
-              {modo === 'destacadas' ? 'Obra' : `Resultados de "${terminoActivo}"`}
+              {modo === 'catalogo' ? 'Obras' : `Resultados de "${terminoActivo}"`}
             </div>
-            {modo === 'listado' && (
-              <div className="obras-lista-sub">
-                {`Página ${pagina} · ${filas.length} obra${filas.length === 1 ? '' : 's'}`}
-              </div>
-            )}
+            <div className="obras-lista-sub">
+              {modo === 'catalogo' ? (
+                <>
+                  {total} obra{total === 1 ? '' : 's'}
+                  {catalogo.cargando && (
+                    <>
+                      {' '}
+                      <i className="fas fa-circle-notch spin" /> trayendo el resto…
+                    </>
+                  )}
+                </>
+              ) : (
+                `Página ${pagina} · ${visibles.length} obra${visibles.length === 1 ? '' : 's'}`
+              )}
+            </div>
           </div>
-          {modo === 'listado' && (
-            <button type="button" className="obras-pager-btn" onClick={cargarDestacadas}>
-              <i className="fas fa-rotate-left" /> Volver
+          {modo === 'busqueda' ? (
+            <button type="button" className="obras-pager-btn" onClick={volverAlCatalogo}>
+              <i className="fas fa-rotate-left" /> Ver todas
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="obras-pager-btn"
+              disabled={catalogo.cargando}
+              onClick={() => {
+                setPagina(1)
+                refrescarCatalogo()
+              }}
+            >
+              <i className="fas fa-rotate" /> Actualizar
             </button>
           )}
         </div>
 
-        {error && <Aviso tono="err">{error}</Aviso>}
+        {(error || catalogo.error) && <Aviso tono="err">{error || catalogo.error}</Aviso>}
 
-        {filas.length === 0 && !cargando && !error && (
-          <div className="obras-vacio">Sin resultados. Probá con otro nombre o con el id.</div>
+        {visibles.length === 0 && !cargando && !error && !catalogo.error && (
+          <div className="obras-vacio">
+            {modo === 'busqueda'
+              ? 'Sin resultados. Probá con otro nombre o con el id.'
+              : 'El tablero no tiene obras.'}
+          </div>
         )}
 
-        {filas.map((f) => (
+        {visibles.map((f) => (
           <button key={f.id} type="button" className="obra-row" onClick={() => void abrir(f.id)}>
             <span className="obra-row-main">
               <span className="obra-row-name">{f.nombre}</span>
@@ -274,11 +305,7 @@ export function ObrasView() {
         <div className="obras-pager">
           <span className="obras-page-size">
             Mostrar
-            <select
-              value={tamano}
-              onChange={(e) => cambiarTamano(Number(e.target.value))}
-              disabled={cargando}
-            >
+            <select value={tamano} onChange={(e) => cambiarTamano(Number(e.target.value))}>
               {TAMANOS_PAGINA.map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -291,16 +318,16 @@ export function ObrasView() {
           <button
             type="button"
             className="obras-pager-btn"
-            onClick={volverAlPrincipio}
-            disabled={modo === 'destacadas' || historial.length === 0 || cargando}
+            onClick={irAnterior}
+            disabled={pagina === 1 || buscando}
           >
-            <i className="fas fa-angles-left" /> Primera página
+            <i className="fas fa-angle-left" /> {modo === 'catalogo' ? 'Anterior' : 'Primera página'}
           </button>
           <button
             type="button"
             className="obras-pager-btn"
             onClick={() => void irSiguiente()}
-            disabled={!cursor || cargando}
+            disabled={!hayMas || buscando}
           >
             Siguiente <i className="fas fa-angle-right" />
           </button>

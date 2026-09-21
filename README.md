@@ -104,7 +104,7 @@ respaldo poniéndola vacía.
 
 | # | Etapa | Qué hace | Columnas del tablero |
 | --- | --- | --- | --- |
-| 1 | **Obra** | Buscador + lista paginada (15/25). Arranca con la obra de trabajo; el resto se trae buscando por nombre o por id de ítem. | — |
+| 1 | **Obra** | Buscador + el tablero entero, traído de a lotes y paginado en memoria (25/50). | — |
 | 2 | **Orden ETMO** | Carga el PDF de ETMO, lo lee y escribe las observaciones, una caja por abertura. | `file_mktkkjnj`, `text_mm73nvda` |
 | 3 | **OP Final** | Botón *Leer documento* (habilitado sólo con ETMO adjunto) → webhook de Make → espera a que el tablero traiga el documento. | `color_mm72nxsj`, `file_mm72n55y` |
 | 4 | **Envío al cliente** | Elige destinatario y vía, manda la OP por WhatsApp con el enlace al formulario de confirmación. | `color_mm12ez80`, `color_mktzfcdt`, `color_mm0h8j4m`, `color_mm5jsjea` |
@@ -165,6 +165,15 @@ un `text_xxxxx` suelto.
   no cambia de forma. Volver a leer el documento **no pisa** lo ya escrito: aporta la lista, no el
   texto. A diferencia de los otros escenarios, éste no deja nada en el tablero —contesta en la
   respuesta del webhook—, así que si la respuesta no llega no hay nada que ir a buscar.
+- **La lista de obras se trae de a lotes y se guarda en memoria** (`features/obras/catalogoObras.ts`).
+  El tablero tiene ~570 obras y esperarlas todas deja la pantalla vacía varios segundos. Se pide un
+  primer lote de 25, se dibuja, y el resto sigue llegando por detrás. Medido contra Monday, el
+  tamaño del lote casi no cambia la demora (~1,3 s con 25, ~1,8 s con 100): lo que cuesta es el
+  viaje, no los ítems. Por eso la carga **empieza en la pantalla de inicio**, mientras se elige el
+  proceso: son los mismos segundos, pero ya no se esperan mirando una lista vacía.
+  La **búsqueda tiene prioridad**: mientras hay una en curso el fondo no pide lotes nuevos, y al
+  terminar sigue desde el cursor donde quedó. Lo traído vale **8 minutos**, así que entrar a una
+  obra y volver no vuelve a pedir nada.
 - **Antes de disparar un escenario se verifica lo que ese escenario filtra** (`features/op/requisitos.ts`).
   El de lectura de observaciones exige dirección, celular a coordinar y archivo adjunto; si corta en
   su filtro no llega a su módulo de respuesta y Make contesta `Accepted`, sin lista y sin explicación.
