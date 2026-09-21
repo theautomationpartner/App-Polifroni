@@ -149,6 +149,11 @@ un `text_xxxxx` suelto.
   no cambia de forma. Volver a leer el documento **no pisa** lo ya escrito: aporta la lista, no el
   texto. A diferencia de los otros escenarios, éste no deja nada en el tablero —contesta en la
   respuesta del webhook—, así que si la respuesta no llega no hay nada que ir a buscar.
+- **Antes de disparar un escenario se verifica lo que ese escenario filtra** (`features/op/requisitos.ts`).
+  El de lectura de observaciones exige dirección, celular a coordinar y archivo adjunto; si corta en
+  su filtro no llega a su módulo de respuesta y Make contesta `Accepted`, sin lista y sin explicación.
+  Y como ese escenario cambia el estado de la obra ANTES del filtro, una corrida que no sirvió para
+  nada igual deja rastro en el tablero. Por eso se verifica de este lado primero.
 - **A cada etapa se entra por el estado del tablero, no por dónde pasó el usuario** (`lib/pasos`):
   a **Envío al cliente** y a **Confirmación y taller** se llega con la OP final generada, y la
   condición se **encadena** (la etapa bloqueada informa el primer requisito que falta, no el
