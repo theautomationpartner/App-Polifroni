@@ -143,6 +143,10 @@ un `text_xxxxx` suelto.
   CORS y firma la URL como descarga; el proxy quita esa cabecera para que el visor pueda mostrarlos.
 - **La app no escribe updates en el ítem.** El historial queda para lo que informan los escenarios;
   ante un error se muestra el update de ESA corrida, nunca los de corridas viejas.
+- **El documento y sus observaciones se borran juntos.** Las aberturas SON las de ese ETMO: las
+  armó su lectura. Dejarlas al cambiar de archivo haría escribir contra un dibujo que ya no está, y
+  el documento nuevo puede traer otra cantidad y otros nombres. Quitar el documento con
+  observaciones escritas pide confirmación; sin nada escrito, no molesta.
 - **Las observaciones son opcionales, y se editan por abertura** (`features/op/observaciones.ts`).
   No hay campo libre: no se puede escribir hasta que el documento se leyó, porque quién sabe cuántas
   aberturas tiene es el documento. Si al cargarlo se dijo que no, el botón *Leer documento* queda
@@ -160,12 +164,15 @@ un `text_xxxxx` suelto.
   Y como ese escenario cambia el estado de la obra ANTES del filtro, una corrida que no sirvió para
   nada igual deja rastro en el tablero. Por eso se verifica de este lado primero.
 - **A cada etapa se entra por el estado del tablero, no por dónde pasó el usuario** (`lib/pasos`):
-  a **Envío al cliente** y a **Confirmación y taller** se llega con la OP final generada, y la
-  condición se **encadena** (la etapa bloqueada informa el primer requisito que falta, no el
-  último). Entrar al paso 5 **no** exige la confirmación: ésa es justamente la pantalla donde se
-  mira si el cliente contestó, y cerrarla mientras se espera dejaría sin dónde verlo. Lo que la
-  confirmación gobierna es el **botón** de despacho al taller (`puedeDespacharAlTaller`): con
-  `color_mm73rxg7` en *Pend de Confirmar* se entra igual, pero no se manda.
+  a **Envío al cliente** y a **Confirmación y taller** se llega con la OP final generada **o** con
+  el envío ya hecho (`color_mm0h8j4m` en *Enviando* / *Enviado*). Lo segundo no es redundante: el
+  escenario de observaciones borra el archivo de la OP al correr, y mirando sólo el archivo una
+  obra ya enviada quedaría encerrada fuera de las dos pantallas que hablan de ella. La condición se
+  **encadena**: la etapa bloqueada informa el primer requisito que falta, no el último.
+  Entrar al paso 5 **no** exige la confirmación: ésa es la pantalla donde se mira si el cliente
+  contestó. Lo que la confirmación gobierna es el **botón** de despacho al taller
+  (`puedeDespacharAlTaller`): con `color_mm73rxg7` en *Pend de Confirmar* se entra igual pero no se
+  manda, y con *NO CONFIRMAOD* no se manda nunca.
 - **El recorrido se hace con el selector de acción, no con el stepper.** La barra de etapas informa
   —dónde estás, cuánto falta— y no navega: un círculo apagado no sabe explicar por qué está
   apagado. El selector (`AccionSelect`, la caja de configuración de La Batea) lista las cinco

@@ -99,6 +99,8 @@ export function EtmoView() {
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'err'; texto: string } | null>(null)
   /** Se abre al cargar el documento: leerlo es una corrida, se pregunta antes de gastarla. */
   const [proponerLectura, setProponerLectura] = useState(false)
+  /** Se abre al quitar el documento CUANDO hay observaciones escritas que se van a perder. */
+  const [confirmarQuitar, setConfirmarQuitar] = useState(false)
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
@@ -166,19 +168,43 @@ export function EtmoView() {
     }
   }
 
+  /**
+   * Quita el documento Y las observaciones.
+   *
+   * Van juntos porque las aberturas SON las de ese documento: la lista la armó su lectura. Dejarlas
+   * al cambiar de archivo haría escribir observaciones contra un dibujo que ya no está, y el
+   * documento nuevo puede traer otra cantidad y otros nombres.
+   */
   const quitar = async () => {
+    setConfirmarQuitar(false)
     setQuitando(true)
     setAviso(null)
     try {
       await limpiarArchivos(obra.id, COL.ordenEtmo)
+      await guardarObservaciones(obra.id, '')
+      ultimoGuardado.current = ''
+      setAberturas([])
+      setIndice(0)
+      setGuardado('limpio')
+      lectura.limpiar()
       await refrescar()
-      setAviso({ tono: 'ok', texto: 'Se quitó el documento de la obra.' })
+      setAviso({
+        tono: 'ok',
+        texto: 'Se quitó el documento y sus observaciones. Cargá el nuevo y volvé a generarlas.',
+      })
     } catch {
       setAviso({ tono: 'err', texto: 'No se pudo quitar el documento.' })
       dispatch({ type: 'errorMonday', accion: 'quitar la Orden ETMO' })
     } finally {
       setQuitando(false)
     }
+  }
+
+  /* Se pregunta sólo si hay algo escrito que perder. Sacar un archivo recién subido, sin
+     observaciones todavía, no necesita una ventana en el medio. */
+  const pedirQuitar = () => {
+    if (aberturas.some((a) => a.texto.trim())) setConfirmarQuitar(true)
+    else void quitar()
   }
 
   /** Dispara el escenario que lee el documento y arma una caja por abertura. */
@@ -242,8 +268,18 @@ export function EtmoView() {
               <ListaArchivos
                 archivos={obra.ordenEtmo}
                 quitando={quitando}
-                onQuitar={() => void quitar()}
+                onQuitar={pedirQuitar}
               />
+              {/* La columna del tablero admite varios archivos, pero el escenario lee UNO. Con más
+                  de uno, cuál se lee deja de ser evidente. */}
+              {obra.ordenEtmo.length > 1 && (
+                <div style={{ marginTop: 12 }}>
+                  <Aviso tono="warn">
+                    Hay {obra.ordenEtmo.length} documentos adjuntos y la automatización lee uno
+                    solo. Quitalos y dejá únicamente el que corresponde.
+                  </Aviso>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -366,6 +402,27 @@ export function EtmoView() {
           titulo="Leyendo el documento"
           detalle={`Buscando las aberturas del ETMO… ${reloj(lectura.estado.segundos)}`}
         />
+      )}
+
+      {confirmarQuitar && (
+        <Modal
+          title="¿Quitar el documento?"
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setConfirmarQuitar(false)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setConfirmarQuitar(false)}>
+                Volver
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => void quitar()}>
+                Quitar igual
+              </button>
+            </>
+          }
+        >
+          Se borran también las <strong>observaciones cargadas</strong>: son las de este documento.
+          El que cargues después puede traer otras aberturas.
+        </Modal>
       )}
 
       {proponerLectura && (
