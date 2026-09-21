@@ -31,7 +31,14 @@ interface PasoNavProps {
   bloqueado?: boolean
   /** Por qué no se puede avanzar, o qué conviene hacer antes. */
   nota?: string
-  onSiguiente?: () => void
+  /**
+   * Se ejecuta al tocar "siguiente", ANTES de navegar.
+   *
+   * Devolver `false` frena la navegación: el paso se queda a cargo de ella. Lo usa la etapa que
+   * necesita preguntar algo antes de dejar pasar —o guardar primero y navegar después—, que es
+   * algo que no se puede hacer si el pie navega igual apenas se lo llama.
+   */
+  onSiguiente?: () => boolean | void
 }
 
 /** Pie de cada etapa: volver a la anterior y avanzar a la siguiente. */
@@ -61,7 +68,7 @@ export function PasoNav({ siguiente, bloqueado = false, nota, onSiguiente }: Pas
             className="btn btn-primary"
             disabled={bloqueado || !proximo}
             onClick={() => {
-              onSiguiente?.()
+              if (onSiguiente?.() === false) return
               if (proximo) dispatch({ type: 'goto', paso: proximo })
             }}
           >

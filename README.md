@@ -147,6 +147,13 @@ un `text_xxxxx` suelto.
   armó su lectura. Dejarlas al cambiar de archivo haría escribir contra un dibujo que ya no está, y
   el documento nuevo puede traer otra cantidad y otros nombres. Quitar el documento con
   observaciones escritas pide confirmación; sin nada escrito, no molesta.
+- **Las observaciones no se guardan mientras se escriben.** Se completan las que se quieran, en el
+  orden que se quiera, y se vuelcan al tablero al salir del paso. Al tocar "Generar la OP final" se
+  avisa CUÁLES quedaron sin escribir y se deja decidir: no toda abertura lleva observación, así que
+  la pregunta es una advertencia, no un freno. Si están todas, no se pregunta nada.
+  Al guardar, **las aberturas sin observación no se escriben**: un renglón "Modelo V3:" vacío
+  viajaría a la orden sin decir nada. La contracara es que la lista vive en ese campo, así que las
+  que queden vacías desaparecen y se recuperan volviendo a leer el documento.
 - **Las observaciones son opcionales, y se editan por abertura** (`features/op/observaciones.ts`).
   No hay campo libre: no se puede escribir hasta que el documento se leyó, porque quién sabe cuántas
   aberturas tiene es el documento. Si al cargarlo se dijo que no, el botón *Leer documento* queda

@@ -16,7 +16,7 @@ import {
 import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
-import { fusionar, parsear, serializar, type Abertura } from './observaciones'
+import { fusionar, parsear, rotuloAbertura, serializar, sinCompletar, type Abertura } from './observaciones'
 import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
 
@@ -98,6 +98,8 @@ export function EtmoView() {
   const [proponerLectura, setProponerLectura] = useState(false)
   /** Se abre al quitar el documento CUANDO hay observaciones escritas que se van a perder. */
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
+  /** Aberturas sin escribir al intentar avanzar; mientras tenga valor, hay una pregunta abierta. */
+  const [faltantes, setFaltantes] = useState<string[] | null>(null)
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
@@ -129,33 +131,11 @@ export function EtmoView() {
      cuales ordenarlo— pero tampoco se puede esconder: generar las observaciones lo reemplaza. */
   const textoViejo = tieneAberturas ? '' : obra.observaciones.trim()
 
-  /* Se guarda solo. No hay botón: guardar no es una decisión —nadie escribe una observación para
-     descartarla— y un botón de guardar sólo sirve para olvidarse de apretarlo. Se espera a que la
-     escritura se frene para no mandar una consulta por tecla. */
-  useEffect(() => {
-    if (!tieneAberturas || texto === ultimoGuardado.current) return
-    pendiente.current = texto
-    const t = setTimeout(() => {
-      void (async () => {
-        setGuardado('guardando')
-        try {
-          await guardarObservaciones(obra.id, texto)
-          ultimoGuardado.current = texto
-          pendiente.current = null
-          setGuardado('guardado')
-          await refrescar()
-        } catch {
-          setGuardado('error')
-          dispatch({ type: 'errorMonday', accion: 'guardar las observaciones' })
-        }
-      })()
-    }, 900)
-    return () => clearTimeout(t)
-  }, [texto, tieneAberturas, obra.id, dispatch, refrescar])
+  /* Lo escrito NO se guarda mientras se escribe: se completan las que se quieran, en el orden que
+     se quiera, y recién al salir del paso se vuelca al tablero. `pendiente` es lo último tecleado,
+     y el efecto de abajo lo manda al desmontar la pantalla —se salga por donde se salga—. */
+  pendiente.current = texto === ultimoGuardado.current ? null : texto
 
-  /* Al salir de la pantalla, lo que quedó a medio guardar se manda igual. Sin esto, escribir una
-     observación y cambiar de etapa en menos de un segundo la perdía: el temporizador se cancela
-     con el componente. No se espera la respuesta —ya no hay dónde mostrarla—, pero el pedido sale. */
   useEffect(() => {
     return () => {
       const ultimo = pendiente.current
@@ -220,6 +200,46 @@ export function EtmoView() {
   const pedirQuitar = () => {
     if (aberturas.some((a) => a.texto.trim())) setConfirmarQuitar(true)
     else void quitar()
+  }
+
+  /** Vuelca al tablero lo que haya escrito. Las aberturas vacías no se escriben. */
+  const guardar = async (): Promise<boolean> => {
+    if (texto === ultimoGuardado.current) return true
+    setGuardado('guardando')
+    try {
+      await guardarObservaciones(obra.id, texto)
+      ultimoGuardado.current = texto
+      pendiente.current = null
+      setGuardado('guardado')
+      await refrescar()
+      return true
+    } catch {
+      setGuardado('error')
+      dispatch({ type: 'errorMonday', accion: 'guardar las observaciones' })
+      return false
+    }
+  }
+
+  const guardarYAvanzar = async () => {
+    setFaltantes(null)
+    if (await guardar()) dispatch({ type: 'goto', paso: 'op-final' })
+  }
+
+  /**
+   * Qué pasa al tocar "Generar la OP final".
+   *
+   * Si están todas escritas, no hay nada que preguntar: se guarda y se pasa. Si falta alguna, se
+   * dice CUÁLES y se deja decidir —puede ser a propósito, no toda abertura lleva observación—.
+   * Devolver `false` frena al pie: la navegación la hace `guardarYAvanzar`.
+   */
+  const alAvanzar = (): boolean => {
+    if (!tieneAberturas) return true
+    if (sinCompletar(aberturas).length === 0) {
+      void guardarYAvanzar()
+      return false
+    }
+    setFaltantes(sinCompletar(aberturas).map((a) => rotuloAbertura(a.nombre)))
+    return false
   }
 
   /** Dispara el escenario que lee el documento y arma una caja por abertura. */
@@ -409,6 +429,7 @@ export function EtmoView() {
 
       <PasoNav
         siguiente="Generar la OP final"
+        onSiguiente={alAvanzar}
         bloqueado={!tieneEtmo}
         nota={
           tieneEtmo ? undefined : 'Cargá la Orden ETMO para poder pedir la generación de la OP final.'
@@ -427,6 +448,44 @@ export function EtmoView() {
           titulo="Leyendo el documento"
           detalle="Buscando las aberturas del ETMO…"
         />
+      )}
+
+      {faltantes && (
+        <Modal
+          title={
+            faltantes.length === aberturas.length
+              ? '¿Seguir sin observaciones?'
+              : '¿Seguir sin completarlas todas?'
+          }
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setFaltantes(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setFaltantes(null)}>
+                Completarlas
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void guardarYAvanzar()}
+              >
+                Continuar igual
+              </button>
+            </>
+          }
+        >
+          {faltantes.length === aberturas.length ? (
+            <>
+              No escribiste ninguna de las <strong>{aberturas.length}</strong> aberturas. La orden
+              se genera igual, sin observaciones.
+            </>
+          ) : (
+            <>
+              Te falta{faltantes.length === 1 ? '' : 'n'}{' '}
+              <strong>{faltantes.join(', ')}</strong>. Las aberturas sin observación no se guardan.
+            </>
+          )}
+        </Modal>
       )}
 
       {confirmarQuitar && (

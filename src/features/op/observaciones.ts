@@ -35,14 +35,23 @@ export const rotuloAbertura = (nombre: string): string => `Modelo ${normalizarNo
 /**
  * De las cajas al campo del tablero.
  *
- * Se escriben TODAS las aberturas, también las que quedaron sin observación: son el índice de lo
- * que el documento tiene, y borrarlas haría perder la lista al recargar.
+ * Sólo se escriben las aberturas QUE TIENEN observación. Una línea "Modelo V3:" sin nada detrás no
+ * es información: es un renglón vacío que después viaja a la Orden de Producción.
+ *
+ * El costo de esto hay que saberlo: la lista de aberturas vive en este campo, así que las que
+ * quedan sin escribir desaparecen, y para recuperarlas hay que volver a leer el documento. Es la
+ * contracara de no ensuciar la orden.
  */
 export function serializar(aberturas: Abertura[]): string {
   return aberturas
-    .map((a) => `Modelo ${normalizarNombre(a.nombre)}: ${a.texto.trim()}`.trimEnd())
+    .filter((a) => a.texto.trim())
+    .map((a) => `Modelo ${normalizarNombre(a.nombre)}: ${a.texto.trim()}`)
     .join('\n')
 }
+
+/** Las que todavía no tienen nada escrito, en el orden del documento. */
+export const sinCompletar = (aberturas: Abertura[]): Abertura[] =>
+  aberturas.filter((a) => !a.texto.trim())
 
 /**
  * Del campo del tablero a las cajas.
