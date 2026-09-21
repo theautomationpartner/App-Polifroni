@@ -12,16 +12,6 @@ export interface Acceso {
 const LIBRE: Acceso = { ok: true, motivo: '' }
 
 /**
- * El envío al cliente ya ocurrió, o está ocurriendo.
- *
- * Se mira el ESTADO del envío (`🤖 Estado de Envío OP`) y no el archivo: el tablero es el que
- * recuerda que la orden salió, y ese recuerdo sobrevive a que el documento desaparezca.
- */
-const yaSeEnvio = (obra: Obra): boolean =>
-  obra.estadoEnvioOp.texto === ETIQUETA.envioEnviado ||
-  obra.estadoEnvioOp.texto === ETIQUETA.envioEnviando
-
-/**
  * La condición PROPIA de una etapa, sin mirar las anteriores.
  *
  * Las condiciones no son del estado de la app: se leen del tablero. Una obra a la que todavía no
@@ -30,32 +20,36 @@ const yaSeEnvio = (obra: Obra): boolean =>
  */
 function requisitoPropio(paso: Paso, obra: Obra): Acceso {
   switch (paso) {
-    /* Elegir la obra, cargar el ETMO y pedir la generación se pueden hacer siempre: son
-       justamente los pasos que llevan a la obra al estado que las etapas siguientes exigen. */
+    /* Elegir la obra y cargar el ETMO se pueden hacer siempre: son los pasos que llevan a la obra
+       al estado que las etapas siguientes exigen. */
     case 'obra':
     case 'etmo':
-    case 'op-final':
       return LIBRE
 
-    /* Las dos últimas etapas hablan del MISMO documento: sin nada que mandar, no hay nada que
-       hacer en ninguna de las dos.
+    /* Generar la OP es LEER el ETMO: sin el documento no hay nada que leer. */
+    case 'op-final':
+      return obra.ordenEtmo.length > 0
+        ? LIBRE
+        : {
+            ok: false,
+            motivo: 'Primero hay que cargar la Orden ETMO: es el documento que lee la automatización.',
+          }
 
-       "Nada que mandar" NO es sólo "no está el archivo". Una obra que YA se envió pasó por acá,
-       y su documento puede no estar hoy —lo borra el escenario de observaciones al correr—; si
-       sólo se mirara el archivo, una obra enviada y esperando respuesta quedaría encerrada fuera
-       de las dos pantallas que hablan de ella. Por eso también abre el estado del envío.
+    /* Las dos últimas etapas hablan del MISMO documento: la OP final adjunta. Sin ella no hay
+       nada que mandar al cliente ni nada que despachar al taller, y el archivo tiene que estar
+       —no alcanza con que la obra figure como enviada alguna vez—.
 
-       Entrar al paso 5 sin la confirmación del cliente es válido y necesario: es justamente la
-       pantalla donde se mira si contestó. Lo que la confirmación gobierna es el BOTÓN de despacho
-       al taller (ver `puedeDespacharAlTaller`), no el acceso. */
+       Entrar al paso 5 sin la confirmación del cliente sí es válido: es la pantalla donde se mira
+       si contestó. Lo que la confirmación gobierna es el BOTÓN de despacho al taller (ver
+       `puedeDespacharAlTaller`), no el acceso. */
     case 'envio':
-    case 'confirmacion': {
-      if (obra.opFinal.length > 0 || yaSeEnvio(obra)) return LIBRE
-      return {
-        ok: false,
-        motivo: 'Primero hay que generar la OP final: es el documento que se le manda al cliente.',
-      }
-    }
+    case 'confirmacion':
+      return obra.opFinal.length > 0
+        ? LIBRE
+        : {
+            ok: false,
+            motivo: 'Falta la OP final adjunta: es el documento que se le manda al cliente y al taller.',
+          }
 
     default:
       return LIBRE

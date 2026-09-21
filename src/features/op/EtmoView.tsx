@@ -20,9 +20,6 @@ import { fusionar, parsear, serializar, type Abertura } from './observaciones'
 import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
 
-/** Los segundos como "1:05", que es como se lee una espera. */
-const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
 /** Archivos ya adjuntos en la columna: se abren, y se quitan si se cargó el equivocado. */
 function ListaArchivos({
   archivos,
@@ -351,7 +348,7 @@ export function EtmoView() {
             >
               {lectura.leyendo ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> Leyendo… {reloj(lectura.estado.segundos)}
+                  <i className="fas fa-circle-notch spin" /> Leyendo el documento…
                 </>
               ) : (
                 <>
@@ -428,7 +425,7 @@ export function EtmoView() {
       {lectura.leyendo && (
         <ModalCargando
           titulo="Leyendo el documento"
-          detalle={`Buscando las aberturas del ETMO… ${reloj(lectura.estado.segundos)}`}
+          detalle="Buscando las aberturas del ETMO…"
         />
       )}
 

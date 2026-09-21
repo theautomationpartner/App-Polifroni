@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
 import { ESCENARIO } from '@/services/make'
-import { ETIQUETA, getActividadDesde, getEstadoEnvio } from '@/services/monday'
+import { COL, ETIQUETA, getActividadDesde, getEstadoEnvio } from '@/services/monday'
 import type { Obra } from '@/types'
 
 /**
@@ -52,6 +52,8 @@ export function useEnviarOp(obra: Obra) {
       celCliente: obra.celCliente,
       celArquitecto: obra.celArquitecto,
       accion: 'enviar-op-cliente',
+      /* Ver la nota en `useEnviarTaller`: el escenario lo reenvía al hook que cierra el estado. */
+      columnId: COL.estadoEnvioOp,
     },
     mirar,
   })

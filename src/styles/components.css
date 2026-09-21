@@ -43,13 +43,19 @@
   user-select: none;
 }
 /* El alto lo fija la caja y el ancho lo pone la imagen (`width: auto` + `object-fit: contain`):
-   así entra COMPLETA, sin recorte ni deformación, con cualquier proporción de archivo. */
+   así entra COMPLETA, sin recorte ni deformación, con cualquier proporción de archivo.
+
+   El `invert` NO es un efecto: el archivo de marca es BLANCO sobre transparente —está hecho para
+   fondos oscuros— y sobre esta barra blanca no se veía nada. Es monocromo puro (se midió: la
+   diferencia máxima entre R, G y B es 0), así que invertirlo lo deja negro sin ensuciar ningún
+   color. Con un archivo oscuro, esta línea se borra y listo. */
 .marca-img {
-  height: 40px;
+  height: 44px;
   width: auto;
-  max-width: 120px;
+  max-width: 190px;
   object-fit: contain;
-  object-position: center;
+  object-position: left center;
+  filter: invert(1);
 }
 .marca-txt {
   display: flex;
@@ -92,8 +98,8 @@
     padding-right: 14px;
   }
   .marca-img {
-    height: 30px;
-    max-width: 90px;
+    height: 32px;
+    max-width: 130px;
   }
   .marca-n {
     font-size: 14px;

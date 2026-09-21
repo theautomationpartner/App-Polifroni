@@ -9,9 +9,6 @@ import { fechaHora, htmlATexto } from '@/lib/texto'
 import { ETIQUETA, RESPONSABLE_RECHAZO } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
 
-/** Los segundos como "1:05", que es como se lee una espera. */
-const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
 /**
  * Paso 5 · Confirmación del cliente y despacho al taller.
  *
@@ -144,7 +141,7 @@ export function ConfirmacionView() {
             >
               {enCurso ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> {reloj(estado.segundos)}
+                  <i className="fas fa-circle-notch spin" /> Enviando…
                 </>
               ) : (
                 <>
@@ -165,20 +162,20 @@ export function ConfirmacionView() {
             )}
             {noArranco && (
               <Aviso tono="warn">
-                Pasaron {reloj(estado.segundos)} y el tablero no registró ningún movimiento del
+                El tablero todavía no registró ningún movimiento del
                 envío al taller. El escenario no tomó el pedido: revisá que esté activo en Make.
                 Sigo mirando.
               </Aviso>
             )}
             {estado.fase === 'trabajando' && (
               <Aviso tono="info">
-                Mandando la orden al taller ({reloj(estado.segundos)}). Podés dejar la pantalla
+                Mandando la orden al taller. Podés dejar la pantalla
                 abierta: cuando termine, el estado cambia solo.
               </Aviso>
             )}
             {estado.fase === 'listo' && (
               <Aviso tono="ok">
-                La orden salió al taller de fabricación en {reloj(estado.segundos)}.
+                La orden salió al taller de fabricación.
                 <span className="origen">
                   {' '}
                   · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}
@@ -188,8 +185,8 @@ export function ConfirmacionView() {
             {estado.fase === 'demorado' && (
               <>
                 <Aviso tono="warn">
-                  Pasaron 5 minutos y el tablero todavía no confirma el envío. La corrida sigue en
-                  Make: dejé de preguntar, no de esperar.
+                  El tablero todavía no confirma el envío. La corrida sigue en Make: dejé de
+                  preguntar, no de esperar.
                 </Aviso>
                 <div className="acciones-fila">
                   <button

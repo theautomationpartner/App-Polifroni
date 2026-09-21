@@ -163,16 +163,19 @@ un `text_xxxxx` suelto.
   su filtro no llega a su módulo de respuesta y Make contesta `Accepted`, sin lista y sin explicación.
   Y como ese escenario cambia el estado de la obra ANTES del filtro, una corrida que no sirvió para
   nada igual deja rastro en el tablero. Por eso se verifica de este lado primero.
-- **A cada etapa se entra por el estado del tablero, no por dónde pasó el usuario** (`lib/pasos`):
-  a **Envío al cliente** y a **Confirmación y taller** se llega con la OP final generada **o** con
-  el envío ya hecho (`color_mm0h8j4m` en *Enviando* / *Enviado*). Lo segundo no es redundante: el
-  escenario de observaciones borra el archivo de la OP al correr, y mirando sólo el archivo una
-  obra ya enviada quedaría encerrada fuera de las dos pantallas que hablan de ella. La condición se
-  **encadena**: la etapa bloqueada informa el primer requisito que falta, no el último.
+- **A cada etapa se entra por lo que la obra TIENE ADJUNTO** (`lib/pasos`): al paso 3 con la Orden
+  ETMO (`file_mktkkjnj`), y a los pasos 4 y 5 con la OP final (`file_mm72n55y`). Los dos archivos,
+  no el estado: una obra marcada "Enviado" pero sin la OP adjunta no tiene qué mandar. La condición
+  se **encadena**, así que la etapa bloqueada informa el primer requisito que falta, no el último.
   Entrar al paso 5 **no** exige la confirmación: ésa es la pantalla donde se mira si el cliente
   contestó. Lo que la confirmación gobierna es el **botón** de despacho al taller
   (`puedeDespacharAlTaller`): con `color_mm73rxg7` en *Pend de Confirmar* se entra igual pero no se
   manda, y con *NO CONFIRMAOD* no se manda nunca.
+- **Las esperas no muestran cuánto tardan.** Un contador de segundos en una corrida cuya duración
+  no conocemos no informa: sólo mide la ansiedad. Se muestra que está trabajando y en qué.
+- **Los escenarios reciben `event.columnId`.** Disparados desde el botón de Monday ese dato viene
+  solo, y alguno lo reenvía al hook que después cierra el estado. Sin él, el envío al taller se
+  quedaba en *Enviando* para siempre porque nadie sabía qué columna cerrar.
 - **El recorrido se hace con el selector de acción, no con el stepper.** La barra de etapas informa
   —dónde estás, cuánto falta— y no navega: un círculo apagado no sabe explicar por qué está
   apagado. El selector (`AccionSelect`, la caja de configuración de La Batea) lista las cinco
@@ -181,5 +184,6 @@ un `text_xxxxx` suelto.
 ## Pendientes
 
 - Autenticación (hoy la app entra directo).
-- El archivo del logo. Va en `public/logo-polifroni.png`; mientras no esté, la barra dibuja el
-  nombre en texto y se ve terminada igual.
+- El logo de `public/logo-polifroni.png` es la versión **blanca** (pensada para fondos oscuros).
+  Sobre la barra blanca no se veía, así que se invierte por CSS: es monocromo puro, y al invertirlo
+  queda negro limpio. Con el archivo en oscuro, se borra el `filter: invert(1)` de `.marca-img`.

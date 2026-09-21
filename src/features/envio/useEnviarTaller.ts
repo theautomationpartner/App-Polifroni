@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
 import { ESCENARIO } from '@/services/make'
-import { ETIQUETA, getActividadDesde, getEstadoTaller } from '@/services/monday'
+import { COL, ETIQUETA, getActividadDesde, getEstadoTaller } from '@/services/monday'
 import type { Obra } from '@/types'
 
 /**
@@ -43,6 +43,10 @@ export function useEnviarTaller(obra: Obra) {
       obra: obra.nombre,
       tipo: obra.tipo.texto,
       accion: 'enviar-op-taller',
+      /* El escenario reenvía `event.columnId` al hook que después marca el resultado. Disparado
+         desde el tablero ese dato viene solo; disparado desde acá hay que mandarlo, o el estado
+         se queda en "Enviando" para siempre porque nadie sabe qué columna cerrar. */
+      columnId: COL.estadoEnvioTaller,
     },
     mirar,
   })

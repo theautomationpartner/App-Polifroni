@@ -15,9 +15,6 @@ import { useEnviarOp } from './useEnviarOp'
 const DESTINATARIOS = ['Cliente', 'Constructor', 'Ambos'] as const
 const VIAS = ['Whatsapp', 'Email', 'Ambos'] as const
 
-/** Los segundos como "1:05", que es como se lee una espera. */
-const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
 /**
  * Paso 4 · Envío de la OP final al cliente.
  *
@@ -45,6 +42,16 @@ export function EnvioClienteView() {
   ].filter(Boolean)
   const sinTelefono = telefonos.length === 0
   const puedeEnviar = hayOp && !!destinatario && !sinTelefono && !enCurso
+  /* Por qué no se puede mandar. Son las mismas condiciones que el escenario valida por su cuenta:
+     sin ellas corta en su filtro, deja la obra en "Error de Envío" y no manda nada. Dicho en el
+     botón, se entiende sin tener que leer los carteles de arriba. */
+  const motivoSinEnvio = !hayOp
+    ? 'Falta la OP final adjunta.'
+    : !destinatario
+      ? 'Elegí a quién se le manda la orden.'
+      : sinTelefono
+        ? 'El destinatario elegido no tiene celular de WhatsApp cargado en el tablero.'
+        : ''
   const accesoALaConfirmacion = accesoAlPaso('confirmacion', obra)
 
   const cambiarColumna = async (columna: string, etiqueta: string) => {
@@ -63,9 +70,9 @@ export function EnvioClienteView() {
     estado.fase === 'disparando'
       ? 'Avisándole a la automatización…'
       : estado.fase === 'esperando'
-        ? `Esperando que la automatización tome el pedido… ${reloj(estado.segundos)}`
+        ? 'Esperando que la automatización tome el pedido…'
         : estado.fase === 'trabajando'
-          ? `Enviando el mensaje por WhatsApp… ${reloj(estado.segundos)}`
+          ? 'Enviando el mensaje por WhatsApp…'
           : null
 
   return (
@@ -180,11 +187,12 @@ export function EnvioClienteView() {
               type="button"
               className="btn btn-green"
               disabled={!puedeEnviar}
+              title={motivoSinEnvio || undefined}
               onClick={() => void correr()}
             >
               {enCurso ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> {reloj(estado.segundos)}
+                  <i className="fas fa-circle-notch spin" /> Enviando…
                 </>
               ) : (
                 <>
@@ -213,19 +221,19 @@ export function EnvioClienteView() {
             )}
             {noArranco && (
               <Aviso tono="warn">
-                Pasaron {reloj(estado.segundos)} y el tablero no registró ningún movimiento del
+                El tablero todavía no registró ningún movimiento del
                 envío. El escenario no tomó el pedido: revisá que esté activo en Make. Sigo mirando.
               </Aviso>
             )}
             {estado.fase === 'trabajando' && (
               <Aviso tono="info">
-                Mandando el mensaje ({reloj(estado.segundos)}). Podés dejar la pantalla abierta:
+                Mandando el mensaje. Podés dejar la pantalla abierta:
                 cuando termine, el estado cambia solo.
               </Aviso>
             )}
             {estado.fase === 'listo' && (
               <Aviso tono="ok">
-                Mensaje enviado en {reloj(estado.segundos)}. El cliente recibe la OP final y el
+                Mensaje enviado. El cliente recibe la OP final y el
                 enlace al formulario para confirmar o rechazar.
                 <span className="origen">
                   {' '}
@@ -236,8 +244,8 @@ export function EnvioClienteView() {
             {estado.fase === 'demorado' && (
               <>
                 <Aviso tono="warn">
-                  Pasaron 5 minutos y el tablero todavía no confirma el envío. La corrida sigue en
-                  Make: dejé de preguntar, no de esperar.
+                  El tablero todavía no confirma el envío. La corrida sigue en Make: dejé de
+                  preguntar, no de esperar.
                 </Aviso>
                 <div className="acciones-fila">
                   <button

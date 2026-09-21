@@ -11,9 +11,6 @@ import { useDispatch } from '@/state/hooks'
 import { puedeGenerar, requisitosOp } from './requisitos'
 import { useGenerarOp } from './useGenerarOp'
 
-/** Los segundos como "1:05", que es como se lee una espera. */
-const reloj = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
 /**
  * Paso 3 · Generación de la Orden de Producción final.
  *
@@ -46,9 +43,9 @@ export function OpFinalView() {
     estado.fase === 'disparando'
       ? 'Avisándole a la automatización…'
       : estado.fase === 'esperando'
-        ? `Esperando que la automatización tome el pedido… ${reloj(estado.segundos)}`
+        ? 'Esperando que la automatización tome el pedido…'
         : estado.fase === 'trabajando'
-          ? `Generando la Orden de Producción… ${reloj(estado.segundos)}`
+          ? 'Generando la Orden de Producción…'
           : null
 
   return (
@@ -88,7 +85,7 @@ export function OpFinalView() {
             >
               {enCurso ? (
                 <>
-                  <i className="fas fa-circle-notch spin" /> {reloj(estado.segundos)}
+                  <i className="fas fa-circle-notch spin" /> Generando…
                 </>
               ) : (
                 <>
@@ -113,22 +110,23 @@ export function OpFinalView() {
             )}
             {noArranco && (
               <Aviso tono="warn">
-                Pasaron {reloj(estado.segundos)} y el tablero no se movió. El escenario no tomó el
-                pedido: revisá que esté activo en Make. Sigo mirando.
+                El tablero todavía no se movió. El escenario no tomó el pedido: revisá que esté
+                activo en Make. Sigo mirando.
               </Aviso>
             )}
             {estado.fase === 'trabajando' && (
               <Aviso tono="info">
-                Generando ({reloj(estado.segundos)}). Cuando termine, el documento aparece solo.
+                Generando. Cuando termine, el documento aparece solo.
               </Aviso>
             )}
             {estado.fase === 'listo' && (
-              <Aviso tono="ok">Orden generada en {reloj(estado.segundos)}.</Aviso>
+              <Aviso tono="ok">Orden de Producción generada y adjunta a la obra.</Aviso>
             )}
             {estado.fase === 'demorado' && (
               <>
                 <Aviso tono="warn">
-                  Pasaron 5 minutos y todavía no hay documento. La corrida sigue en Make.
+                  Todavía no hay documento. La corrida sigue en Make: dejé de preguntar, no de
+                  esperar.
                 </Aviso>
                 <div className="acciones-fila">
                   <button
