@@ -17,6 +17,7 @@ import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
 import { fusionar, parsear, serializar, type Abertura } from './observaciones'
+import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
 
 /** Los segundos como "1:05", que es como se lee una espera. */
@@ -119,6 +120,9 @@ export function EtmoView() {
   const tieneAberturas = aberturas.length > 0
   const texto = serializar(aberturas)
   const tieneEtmo = obra.ordenEtmo.length > 0
+  /* Lo mismo que filtra el router del escenario. Si falta algo, la corrida se cortaría sin avisar
+     —y de paso ya habría tocado el estado de la obra—, así que el botón no se habilita. */
+  const falta = faltaParaLeer(obra)
 
   /* Se guarda solo. No hay botón: guardar no es una decisión —nadie escribe una observación para
      descartarla— y un botón de guardar sólo sirve para olvidarse de apretarlo. Se espera a que la
@@ -149,9 +153,11 @@ export function EtmoView() {
     setAviso(null)
     try {
       await subirArchivo(obra.id, COL.ordenEtmo, archivo)
-      await refrescar()
+      const fresca = await refrescar()
       setArchivo(null)
-      setProponerLectura(true)
+      /* Sólo se ofrece leer si el escenario va a poder: proponerlo para que después falle en su
+         filtro es hacerle perder el tiempo a quien dijo que sí. */
+      setProponerLectura(fresca ? !faltaParaLeer(fresca) : false)
     } catch {
       setAviso({ tono: 'err', texto: 'No se pudo adjuntar el archivo en Monday.' })
       dispatch({ type: 'errorMonday', accion: 'adjuntar la Orden ETMO' })
@@ -285,8 +291,8 @@ export function EtmoView() {
             <button
               type="button"
               className="btn btn-out btn--sm"
-              disabled={!tieneEtmo || lectura.leyendo}
-              title={tieneEtmo ? undefined : 'Primero cargá la Orden ETMO.'}
+              disabled={!!falta || lectura.leyendo}
+              title={falta || undefined}
               onClick={() => void leerDocumento()}
             >
               {lectura.leyendo ? (
@@ -325,6 +331,12 @@ export function EtmoView() {
               </span>
             )}
           </div>
+
+          {falta && tieneEtmo && (
+            <div style={{ marginTop: 14 }}>
+              <Aviso tono="warn">{falta} El escenario los necesita para poder leer el documento.</Aviso>
+            </div>
+          )}
 
           {lectura.estado.fase === 'error' && (
             <div style={{ marginTop: 14 }}>

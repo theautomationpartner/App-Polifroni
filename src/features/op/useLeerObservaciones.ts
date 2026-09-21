@@ -78,10 +78,15 @@ export function useLeerObservaciones(itemId: string) {
 
       const aberturas = aAberturas(respuesta.cuerpo)
       if (!aberturas) {
+        /* El caso típico: Make contesta "Accepted". Eso significa que TOMÓ el pedido pero el
+           escenario terminó antes de su módulo de respuesta —su router filtra por dirección,
+           celular y archivo adjunto—, así que no hay lista que devolver. Decirlo evita que se
+           busque el problema de este lado. */
         setEstado((e) => ({
           ...e,
           fase: 'error',
-          problema: 'El escenario contestó, pero no con la lista de aberturas.',
+          problema:
+            'El escenario tomó el pedido pero no devolvió la lista de aberturas. Suele ser que cortó en su filtro: revisá que la obra tenga la Orden ETMO adjunta, la ubicación y el celular a coordinar.',
         }))
         return null
       }
