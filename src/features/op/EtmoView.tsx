@@ -109,6 +109,8 @@ export function EtmoView() {
 
   /** Lo último que quedó escrito en el tablero. Es lo que separa "lo mío" de "lo de afuera". */
   const ultimoGuardado = useRef(obra.observaciones)
+  /** Lo escrito que todavía no llegó al tablero, para no perderlo al salir de la pantalla. */
+  const pendiente = useRef<string | null>(null)
 
   /* Si el tablero cambia por afuera (volver de otra etapa, otra persona editando), los campos toman
      lo que quedó ahí. Lo que ACABAMOS de guardar nosotros no cuenta como cambio de afuera: releer
@@ -125,18 +127,24 @@ export function EtmoView() {
   /* Lo mismo que filtra el router del escenario. Si falta algo, la corrida se cortaría sin avisar
      —y de paso ya habría tocado el estado de la obra—, así que el botón no se habilita. */
   const falta = faltaParaLeer(obra)
+  /* Texto que ya estaba en la columna y NO tiene el formato por abertura: lo escribió alguien a
+     mano, o quedó de antes de esta pantalla. No se puede editar acá —no hay aberturas contra las
+     cuales ordenarlo— pero tampoco se puede esconder: generar las observaciones lo reemplaza. */
+  const textoViejo = tieneAberturas ? '' : obra.observaciones.trim()
 
   /* Se guarda solo. No hay botón: guardar no es una decisión —nadie escribe una observación para
      descartarla— y un botón de guardar sólo sirve para olvidarse de apretarlo. Se espera a que la
      escritura se frene para no mandar una consulta por tecla. */
   useEffect(() => {
     if (!tieneAberturas || texto === ultimoGuardado.current) return
+    pendiente.current = texto
     const t = setTimeout(() => {
       void (async () => {
         setGuardado('guardando')
         try {
           await guardarObservaciones(obra.id, texto)
           ultimoGuardado.current = texto
+          pendiente.current = null
           setGuardado('guardado')
           await refrescar()
         } catch {
@@ -147,6 +155,16 @@ export function EtmoView() {
     }, 900)
     return () => clearTimeout(t)
   }, [texto, tieneAberturas, obra.id, dispatch, refrescar])
+
+  /* Al salir de la pantalla, lo que quedó a medio guardar se manda igual. Sin esto, escribir una
+     observación y cambiar de etapa en menos de un segundo la perdía: el temporizador se cancela
+     con el componente. No se espera la respuesta —ya no hay dónde mostrarla—, pero el pedido sale. */
+  useEffect(() => {
+    return () => {
+      const ultimo = pendiente.current
+      if (ultimo !== null) void guardarObservaciones(obra.id, ultimo).catch(() => {})
+    }
+  }, [obra.id])
 
   /** Sube el documento a la obra y, con él arriba, ofrece leerlo. */
   const cargar = async () => {
@@ -317,7 +335,7 @@ export function EtmoView() {
               <i className="fas fa-wand-magic-sparkles" />
               <p>
                 {tieneEtmo
-                  ? 'Leé el documento y se arma una caja por cada abertura.'
+                  ? 'Generá las observaciones y se arma una caja por cada abertura.'
                   : 'Primero cargá la Orden ETMO: las aberturas salen del documento.'}
               </p>
             </div>
@@ -367,6 +385,16 @@ export function EtmoView() {
               </span>
             )}
           </div>
+
+          {textoViejo && (
+            <div style={{ marginTop: 14 }}>
+              <Aviso tono="warn">
+                La obra ya tiene esto escrito, sin el formato por abertura:{' '}
+                <strong>{textoViejo.length > 120 ? `${textoViejo.slice(0, 120)}…` : textoViejo}</strong>
+                . Si generás las observaciones, se reemplaza.
+              </Aviso>
+            </div>
+          )}
 
           {falta && tieneEtmo && (
             <div style={{ marginTop: 14 }}>
