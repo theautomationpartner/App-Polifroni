@@ -1,15 +1,6 @@
-import { COL } from '@/services/monday'
+import { COL } from '@/services/monday/columns'
 import type { Obra } from '@/types'
-import { parsear, tieneAlgunaObservacion } from './observaciones'
-
-/**
- * Formato que el escenario le exige a la observación.
- *
- * Es la MISMA expresión que valida el módulo de IA del escenario (`^Modelo V\d+:`), copiada tal
- * cual. Si allá cambia, acá tiene que cambiar: dos reglas distintas para la misma cosa serían peor
- * que no validar nada, porque la app diría que está bien algo que después falla.
- */
-export const FORMATO_OBSERVACION = /^Modelo V\d+:/
+import { parsear } from './observaciones'
 
 /** Un requisito para poder pedir la generación de la OP final. */
 export interface Requisito {
@@ -32,11 +23,6 @@ export interface Requisito {
 export function requisitosOp(obra: Obra): Requisito[] {
   const observacion = obra.observaciones.trim()
   const aberturas = parsear(observacion)
-  /* No alcanza con que el texto EMPIECE bien: un documento leído deja una línea por abertura y
-     todas pueden estar vacías. Eso pasa el formato y no tiene nada que volcar en la orden. */
-  const conTexto = aberturas.length > 0 ? tieneAlgunaObservacion(aberturas) : observacion.length > 0
-  const formatoOk = FORMATO_OBSERVACION.test(observacion) && conTexto
-
   const escritas = aberturas.filter((a) => a.texto.trim()).length
 
   return [
@@ -50,17 +36,16 @@ export function requisitosOp(obra: Obra): Requisito[] {
       columna: COL.ordenEtmo,
     },
     {
-      ok: formatoOk,
-      titulo: 'Observaciones cargadas',
-      detalle: formatoOk
-        ? aberturas.length > 0
-          ? `${escritas} de ${aberturas.length} aberturas con observación`
-          : observacion.split('\n')[0]
-        : !observacion
-          ? 'Todavía no hay ninguna. Se escriben en el paso anterior.'
-          : !conTexto
-            ? 'Las aberturas están listadas pero ninguna tiene observación.'
-            : 'Tienen que empezar con "Modelo V1:".',
+      /* Las observaciones NUNCA frenan la generación: una obra puede no tener ninguna nota de
+         fabricación, y el escenario ya resuelve el caso por su cuenta. Este renglón está para
+         decir con qué se va a generar, no para pedir permiso. */
+      ok: true,
+      titulo: 'Observaciones',
+      detalle: !observacion
+        ? 'Sin observaciones. La orden se genera igual.'
+        : aberturas.length > 0
+          ? `${escritas} ${escritas === 1 ? 'abertura' : 'aberturas'} con observación`
+          : observacion.split('\n')[0],
       columna: COL.observaciones,
     },
   ]

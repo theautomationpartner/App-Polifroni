@@ -92,7 +92,12 @@ export function useLeerObservaciones(itemId: string) {
     setEstado({ fase: 'leyendo', segundos: 0, problema: '' })
 
     try {
-      const respuesta = await dispararEscenario(ESCENARIO.leerObservaciones, itemId)
+      /* `observaciones: []` va siempre vacío, a propósito. El escenario lo espera en su entrada
+         (`ifempty(1.observaciones; "Sin Observaciones")`) y resuelve el caso por su cuenta: lo que
+         acá se pide es que LEA el documento, no que reciba lo que ya había. */
+      const respuesta = await dispararEscenario(ESCENARIO.leerObservaciones, itemId, {
+        observaciones: [],
+      })
 
       if (respuesta.sinRespuesta) {
         setEstado((e) => ({

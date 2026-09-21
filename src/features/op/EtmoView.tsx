@@ -110,6 +110,15 @@ export function EtmoView() {
   const ultimoGuardado = useRef(obra.observaciones)
   /** Lo escrito que todavía no llegó al tablero, para no perderlo al salir de la pantalla. */
   const pendiente = useRef<string | null>(null)
+  /**
+   * Si en ESTA visita alguien tocó el texto.
+   *
+   * Sin esto, el guardado al salir depende de comparar dos cadenas, y cualquier camino que deje
+   * la lista vacía sin que nadie haya escrito —abrir la obra a medio cargar, un estado que se
+   * reinicia— termina escribiendo un campo vacío sobre lo que había. Guardar sólo cuando hubo
+   * una edición de verdad hace que ese borrado silencioso no pueda ocurrir.
+   */
+  const edito = useRef(false)
 
   /* Si el tablero cambia por afuera (volver de otra etapa, otra persona editando), los campos toman
      lo que quedó ahí. Lo que ACABAMOS de guardar nosotros no cuenta como cambio de afuera: releer
@@ -134,7 +143,7 @@ export function EtmoView() {
   /* Lo escrito NO se guarda mientras se escribe: se completan las que se quieran, en el orden que
      se quiera, y recién al salir del paso se vuelca al tablero. `pendiente` es lo último tecleado,
      y el efecto de abajo lo manda al desmontar la pantalla —se salga por donde se salga—. */
-  pendiente.current = texto === ultimoGuardado.current ? null : texto
+  pendiente.current = edito.current && texto !== ultimoGuardado.current ? texto : null
 
   useEffect(() => {
     return () => {
@@ -178,6 +187,8 @@ export function EtmoView() {
       await limpiarArchivos(obra.id, COL.ordenEtmo)
       await guardarObservaciones(obra.id, '')
       ultimoGuardado.current = ''
+      pendiente.current = null
+      edito.current = false
       setAberturas([])
       setIndice(0)
       setGuardado('limpio')
@@ -210,6 +221,7 @@ export function EtmoView() {
       await guardarObservaciones(obra.id, texto)
       ultimoGuardado.current = texto
       pendiente.current = null
+      edito.current = false
       setGuardado('guardado')
       await refrescar()
       return true
@@ -249,6 +261,7 @@ export function EtmoView() {
     const leidas = await lectura.leer()
     if (!leidas) return
     /* Lo ya escrito manda: la lectura aporta la LISTA, no pisa observaciones hechas a mano. */
+    edito.current = true
     setAberturas((previas) => fusionar(leidas, previas))
     setIndice(0)
   }
@@ -342,7 +355,10 @@ export function EtmoView() {
               onIndice={setIndice}
               disabled={lectura.leyendo}
               onTexto={(i, valor) =>
-                setAberturas((prev) => prev.map((a, n) => (n === i ? { ...a, texto: valor } : a)))
+                setAberturas((prev) => {
+                  edito.current = true
+                  return prev.map((a, n) => (n === i ? { ...a, texto: valor } : a))
+                })
               }
             />
           ) : (
