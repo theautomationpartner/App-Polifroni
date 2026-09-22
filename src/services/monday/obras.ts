@@ -195,21 +195,33 @@ export async function getObra(itemId: string): Promise<Obra | null> {
 }
 
 /** Fila de la lista: sólo lo que se ve en el listado. */
-function aFila(item: MondayItem): ObraFila {
+const COLS_FILA = [
+  COL.idObra,
+  COL.ctaCteCliente,
+  COL.ubicacion,
+  COL.tipo,
+  COL.etapaProduccion,
+  COL.etapaVenta,
+]
+
+function aFila(item: MondayItem, estructura: Record<string, ColumnaBoard>): ObraFila {
   const c = byId(item)
   return {
     id: item.id,
     nombre: item.name,
+    idObra: limpiar(c[COL.idObra]?.text ?? ''),
     cliente: limpiar(valor(c[COL.ctaCteCliente]) ?? ''),
-    tipo: limpiar(c[COL.tipo]?.text ?? ''),
-    etapaProduccion: limpiar(c[COL.etapaProduccion]?.text ?? ''),
+    ubicacion: limpiar(c[COL.ubicacion]?.text ?? ''),
+    tipo: estado(c, estructura, COL.tipo),
+    etapaProduccion: estado(c, estructura, COL.etapaProduccion),
+    etapaVenta: estado(c, estructura, COL.etapaVenta),
   }
 }
 
 const CAMPOS_FILA = `
   id
   name
-  column_values(ids: ${JSON.stringify([COL.ctaCteCliente, COL.tipo, COL.etapaProduccion])}) {
+  column_values(ids: ${JSON.stringify(COLS_FILA)}) {
     id
     text
     ... on BoardRelationValue { display_value }
@@ -239,7 +251,8 @@ export async function buscarObras(termino: string, limite: number): Promise<Pagi
       `query ($ids: [ID!]) { items(ids: $ids) { ${CAMPOS_FILA} } }`,
       { ids: [t] },
     )
-    return { filas: (d.items ?? []).map(aFila), cursor: null }
+    const estructura = await getEstructuraBoard()
+    return { filas: (d.items ?? []).map((i) => aFila(i, estructura)), cursor: null }
   }
 
   const queryParams = t
@@ -260,8 +273,9 @@ export async function buscarObras(termino: string, limite: number): Promise<Pagi
     { limit: limite, q: queryParams },
   )
 
+  const estructura = await getEstructuraBoard()
   const page = d.boards[0]?.items_page
-  return { filas: (page?.items ?? []).map(aFila), cursor: page?.cursor ?? null }
+  return { filas: (page?.items ?? []).map((i) => aFila(i, estructura)), cursor: page?.cursor ?? null }
 }
 
 /** Página siguiente de una búsqueda ya empezada (el cursor lo devolvió la anterior). */
@@ -275,8 +289,9 @@ export async function siguientePaginaObras(cursor: string, limite: number): Prom
     }`,
     { cursor, limit: limite },
   )
+  const estructura = await getEstructuraBoard()
   const page = d.next_items_page
-  return { filas: (page?.items ?? []).map(aFila), cursor: page?.cursor ?? null }
+  return { filas: (page?.items ?? []).map((i) => aFila(i, estructura)), cursor: page?.cursor ?? null }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────

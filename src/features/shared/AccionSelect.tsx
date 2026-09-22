@@ -41,11 +41,12 @@ export function AccionSelect() {
               if (accesoAlPaso(destino, obra).ok) dispatch({ type: 'goto', paso: destino })
             }}
           >
-            {opciones.map(({ paso: p, acceso }, i) => (
-              /* El candado y no la palabra "bloqueada": un `option` no admite íconos, y el
-                 símbolo se lee de un vistazo sin alargar el renglón. */
+            {/* Sin número y sin candado: el número ya lo lleva la barra de etapas, y una opción a
+                la que no se puede entrar se ve apagada —que es como se ve en cualquier desplegable—.
+                El renglón de abajo dice qué falta, que es lo que un símbolo no sabe explicar. */}
+            {opciones.map(({ paso: p, acceso }) => (
               <option key={p} value={p} disabled={!acceso.ok}>
-                {`${i + 1}. ${ACCIONES_PASO[p]}${acceso.ok ? '' : '  🔒'}`}
+                {ACCIONES_PASO[p]}
               </option>
             ))}
           </select>

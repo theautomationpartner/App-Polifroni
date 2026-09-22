@@ -3,7 +3,11 @@ import type { ReactNode } from 'react'
 interface ModalProps {
   title: string
   icon?: ReactNode
-  children: ReactNode
+  /**
+   * El cuerpo. Es OPCIONAL: hay ventanas cuyo título ya es toda la pregunta, y ahí un párrafo de
+   * relleno no aclara nada —sólo pone algo entre la pregunta y los botones que la contestan—.
+   */
+  children?: ReactNode
   actions?: ReactNode
   onClose: () => void
 }

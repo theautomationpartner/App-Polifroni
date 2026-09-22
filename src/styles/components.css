@@ -55,7 +55,6 @@
   max-width: 190px;
   object-fit: contain;
   object-position: left center;
-  filter: invert(1);
 }
 .marca-txt {
   display: flex;
@@ -358,55 +357,75 @@
   margin: 0 -24px;
   /* Sin padding ARRIBA: la barra arranca pegada al tope del panel. El aire de abajo lo mantiene
      separada del filete que la cierra. */
-  padding: 0 24px 10px;
+  padding: 6px 24px 10px;
 }
 .paso-header-in {
   display: flex;
   align-items: center;
-  /* `flex-wrap: wrap` es la clave del arreglo: cuando el ancho no alcanza para los selectores + el
-     stepper en la misma fila, el stepper BAJA a una línea nueva en vez de desbordar su caja y
-     pintarse encima de los selectores. El `row-gap` (8px) es el "padding-top" que separa el stepper
-     de los elementos de arriba SÓLO cuando rebalsa (una sola fila no lo aplica). El `column-gap`
-     (24px) separa los grupos cuando comparten fila. */
-  flex-wrap: wrap;
-  gap: 8px 24px;
+  /* UNA SOLA FILA, SIEMPRE. El envolver que había antes mandaba la barra de etapas abajo apenas
+     faltaba ancho, y ahí el encabezado dejaba de ser una barra para volverse un bloque de dos
+     pisos que empujaba todo el contenido. Ahora nada baja: lo que falta de ancho lo ceden los
+     controles, que saben encogerse (el nombre de la obra se recorta con puntos suspensivos) y la
+     barra de etapas, que en pantallas chicas se queda con los círculos y suelta los rótulos. */
+  flex-wrap: nowrap;
+  gap: 24px;
   max-width: 1480px;
   margin: 0 auto;
-  /* `space-between` es lo que resuelve la alineación en las DOS situaciones, sin tener que
-     adivinar a qué ancho se produce el salto: `justify-content` se aplica por LÍNEA, no al
-     contenedor entero. Compartiendo fila hay dos ítems y los separa a los extremos (selectores a
-     la izquierda, stepper a la derecha); cuando el stepper baja, queda solo en su línea y un
-     único ítem con `space-between` se ancla al INICIO, o sea a la izquierda. */
-  justify-content: space-between;
 }
 /* Contexto de la transacción: los selectores del header conservan EXACTAMENTE el estilo de la
    pantalla de inicio (etiqueta oscura arriba, caja azul con borde y ancho 220×38, chevron). Sólo se
    quita el margen inferior del grupo para que entre en la barra de contexto; el resto se hereda del base. */
 .paso-header-sel {
-  /* Antes `0 0 auto` (no encogía): forzaba al stepper a un hueco demasiado chico y lo hacía
-     desbordar. Ahora puede encoger y su barra interna (`.topsel`, ya con `flex-wrap`) envuelve
-     sus propios controles cuando falta ancho. */
-  flex: 0 1 auto;
+  /* Crece y encoge: es el lado elástico de la barra. El `min-width: 0` es lo que habilita a sus
+     hijos a recortarse; sin él, un nombre de obra largo fija un ancho mínimo enorme y vuelve a
+     empujar a la barra de etapas. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 .paso-header-sel .topsel {
   margin-bottom: 0;
+  /* Tampoco envuelve por dentro: si envolviera, la barra crecería a lo alto, que es justo lo que
+     no tiene que pasar. */
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.paso-header-sel .topsel-item {
+  min-width: 0;
+}
+/* Los selectores ceden ancho antes que nadie, y el texto se recorta con puntos suspensivos.
+   El `width: 240px` fijo que traen de la pantalla de inicio pasa acá a ser un TECHO: si se deja
+   fijo, los controles no encogen, el lado izquierdo de la barra reclama más ancho del que hay y la
+   barra de etapas —que no baja de línea— termina dibujándose encima de ellos. */
+.paso-header-sel .topsel-item {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.paso-header-sel .selbox,
+.paso-header-sel .selbox--fix {
+  width: auto;
+  max-width: 240px;
+  min-width: 0;
+}
+/* La marca también cede: primero el nombre, y si hace falta se queda en el isotipo. */
+.paso-header-sel .marca {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.paso-header-sel .selbox-val-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* El avance vive a la DERECHA mientras comparte fila con los selectores, y a la IZQUIERDA cuando
    baja a su propia línea. De eso se ocupa el `space-between` del contenedor. */
 .paso-header-steps {
-  /* NO crece (`flex-grow: 0`): la caja mide lo que mide el stepper. Con `flex-grow: 1` ocupaba
-     toda su línea al envolver y el `justify-content: flex-end` de adentro lo mantenía pegado a la
-     derecha, que es exactamente lo que había que corregir. Midiendo por contenido, el
-     `space-between` del contenedor lo lleva al inicio de la línea. */
-  flex: 0 1 auto;
+  /* A la DERECHA DEL TODO, sin excepción: no crece, no encoge por debajo de su contenido y el
+     `margin-left: auto` lo empuja contra el borde aunque los selectores midan poco. */
+  flex: 0 0 auto;
+  margin-left: auto;
   display: flex;
   justify-content: flex-end;
-  min-width: 0;
-  /* Aire propio arriba y abajo de la barra de etapas, para que nunca quede pegada ni a los
-     selectores (al envolver, donde además se suma el `row-gap` del contenedor) ni al filete que
-     cierra la cabecera. Va simétrico a propósito: con `align-items: center`, un padding sólo
-     arriba desplazaba el stepper hacia abajo cuando comparte fila con los selectores. */
   padding: 15px 0;
 }
 .paso-header-steps .stepper {
@@ -1404,4 +1423,75 @@ td {
    mayúsculas lo deletrearía como una sigla—. */
 .btn-mayus {
   text-transform: uppercase;
+}
+
+
+/* ── La barra de etapas, cuando el ancho aprieta ──────────────────────────────
+   Antes de desaparecer o de bajar de línea, suelta lo que menos hace falta: primero los rótulos
+   —el número del círculo ya identifica la etapa— y después los conectores. Así sigue estando a la
+   derecha, diciendo en cuál de las cinco estás, incluso en un teléfono. */
+@media (max-width: 1180px) {
+  .paso-header-steps .step-nro {
+    display: none;
+  }
+  .paso-header-steps .sline {
+    width: 16px;
+    max-width: 16px;
+  }
+}
+@media (max-width: 860px) {
+  .paso-header-in {
+    gap: 12px;
+  }
+  .paso-header-sel .selbox,
+  .paso-header-sel .selbox--fix {
+    max-width: 170px;
+  }
+  .paso-header-steps {
+    padding: 10px 0;
+  }
+  .paso-header-steps .sline {
+    display: none;
+  }
+  .paso-header-steps .stepper {
+    gap: 4px;
+  }
+}
+/* Más angosto que esto, la marca se queda sólo con el isotipo: el nombre completo empujaría a los
+   selectores por debajo de lo usable. */
+@media (max-width: 620px) {
+  .paso-header-sel .topsel {
+    gap: 10px;
+  }
+  .paso-header-sel .selbox,
+  .paso-header-sel .selbox--fix {
+    max-width: 120px;
+  }
+  /* El nombre escrito de la marca se va: el isotipo solo sigue llevando al inicio. */
+  .paso-header-sel .marca-txt {
+    display: none;
+  }
+  .marca-img {
+    height: 28px;
+    max-width: 92px;
+  }
+}
+
+/* ── La frase que decide, dentro de una ventana ───────────────────────────────
+   Cuando la ventana confirma algo que va a PASAR —generar la orden final—, lo que va a pasar se
+   lee primero y en negro: el resto del cuerpo es contexto y puede leerse después, o no leerse. */
+.modal-clave {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.modal-nota {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--o-text-soft, #64748b);
+}
+/* Aviso que aparece sobre el paso sin empujar nada, para un fallo que no bloquea la pantalla. */
+.paso-aviso-flot {
+  margin-top: 12px;
 }

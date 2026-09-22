@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { VisorPdf } from '@/components/ui/VisorPdf'
-import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
+import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
@@ -90,7 +90,6 @@ export function EnvioClienteView() {
         }
       />
 
-      <ObraFicha obra={obra} />
 
       <div className="paso-grid">
         <div className="card">

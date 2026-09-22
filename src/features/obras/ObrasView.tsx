@@ -1,42 +1,45 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Aviso } from '@/components/ui/Aviso'
+import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
+import { useTitulos } from '@/features/shared/useTitulos'
 import { TAMANOS_PAGINA } from '@/lib/config'
-import { buscarObras, getObra, mondayHabilitado, siguientePaginaObras } from '@/services/monday'
+import { buscarObras, getObra, mondayHabilitado } from '@/services/monday'
+import { COL } from '@/services/monday/columns'
 import { useDispatch } from '@/state/hooks'
 import type { ObraFila } from '@/types'
-import {
-  asegurarCatalogo,
-  conPrioridad,
-  refrescarCatalogo,
-  useCatalogoObras,
-} from './catalogoObras'
+import { asegurarCatalogo, conPrioridad, useCatalogoObras } from './catalogoObras'
 
-type Modo = 'catalogo' | 'busqueda'
+/** Sin acentos y en minúsculas, para que "Peru" encuentre "Perú". */
+const plano = (t: string) =>
+  t
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
 
 /**
  * Paso 1 · Elegir la obra.
  *
- * La lista es el tablero ENTERO, pero no se espera a tenerlo entero para mostrar algo: el catálogo
- * (`catalogoObras`) trae lotes y la pantalla los va dibujando a medida que llegan. Lo que se pagina
- * acá es lo ya traído, así que pasar de página es instantáneo.
+ * **Acá no se lista el tablero.** Hasta que no se busca algo, no hay resultados en pantalla: 573
+ * obras ordenadas por lo que el tablero devuelva primero no son una lista, son un ruido que hay
+ * que recorrer, y la obra que se viene a abrir se sabe de antemano.
  *
- * El buscador sí va al tablero —encuentra obras que todavía no llegaron, y por id de ítem también—
- * y se dispara con prioridad sobre la carga de fondo.
+ * Lo que sí sigue pasando por detrás es la carga del catálogo (`catalogoObras`), que ahora tiene un
+ * solo propósito: ser el ÍNDICE de la búsqueda. Con el tablero en memoria se busca sin pedirle nada
+ * a Monday —el resultado aparece mientras se escribe— y además se puede buscar por cosas por las
+ * que la consulta del tablero no filtra: el cliente, la ubicación o el ID de obra. Mientras el
+ * índice todavía se está armando, la búsqueda va al tablero como antes, así nunca se pierde nada.
  */
 export function ObrasView() {
   const dispatch = useDispatch()
   const catalogo = useCatalogoObras()
+  const titulo = useTitulos()
 
   const [termino, setTermino] = useState('')
   const [errorInput, setErrorInput] = useState('')
-  const [modo, setModo] = useState<Modo>('catalogo')
-  /** Término con el que se trajo lo que se está viendo (no el que se está tecleando). */
-  const [terminoActivo, setTerminoActivo] = useState('')
+  /** Término con el que se trajo lo que se ve. Vacío = todavía no se buscó nada. */
+  const [buscado, setBuscado] = useState('')
   const [resultados, setResultados] = useState<ObraFila[]>([])
-  /** Cursor de la página SIGUIENTE de la búsqueda; `null` = no hay más. */
-  const [cursor, setCursor] = useState<string | null>(null)
   const [tamano, setTamano] = useState<number>(TAMANOS_PAGINA[0])
   const [pagina, setPagina] = useState(1)
   const [buscando, setBuscando] = useState(false)
@@ -49,34 +52,48 @@ export function ObrasView() {
     if (!sinToken) asegurarCatalogo()
   }, [sinToken])
 
-  /* Lo que se ve: el catálogo se pagina en memoria; la búsqueda, como la trae el tablero. */
-  const filas = modo === 'catalogo' ? catalogo.filas : resultados
-  const total = filas.length
-  const visibles = useMemo(() => {
-    if (modo === 'busqueda') return resultados
-    const desde = (pagina - 1) * tamano
-    return catalogo.filas.slice(desde, desde + tamano)
-  }, [modo, resultados, catalogo.filas, pagina, tamano])
+  const visibles = useMemo(
+    () => resultados.slice((pagina - 1) * tamano, pagina * tamano),
+    [resultados, pagina, tamano],
+  )
+  const hayMas = pagina * tamano < resultados.length
 
-  const hayMasLocal = modo === 'catalogo' && pagina * tamano < total
-  const hayMas = modo === 'catalogo' ? hayMasLocal : !!cursor
-  const cargando = modo === 'catalogo' ? catalogo.cargando : buscando
+  /** Contra el índice en memoria: nombre, cliente, ubicación, id de ítem o de obra. */
+  const enElIndice = (texto: string): ObraFila[] => {
+    const t = plano(texto)
+    return catalogo.filas.filter(
+      (f) =>
+        plano(f.nombre).includes(t) ||
+        plano(f.cliente).includes(t) ||
+        plano(f.ubicacion).includes(t) ||
+        f.id.includes(t) ||
+        plano(f.idObra).includes(t),
+    )
+  }
 
-  /** Primera página de una búsqueda. Le gana a la carga de fondo. */
-  const buscar = async (texto: string, limite = tamano) => {
-    setBuscando(true)
+  const buscar = async (texto: string) => {
     setError('')
+    setPagina(1)
+    setBuscado(texto)
+
+    /* Con el índice completo no se le pide nada a Monday: el resultado es inmediato y encuentra
+       por campos que la consulta del tablero no sabe filtrar. */
+    if (catalogo.completo) {
+      setResultados(enElIndice(texto))
+      return
+    }
+
+    setBuscando(true)
     try {
-      const { filas: encontradas, cursor: proximo } = await conPrioridad(() =>
-        buscarObras(texto, limite),
-      )
-      setResultados(encontradas)
-      setCursor(proximo)
-      setPagina(1)
-      setModo('busqueda')
-      setTerminoActivo(texto)
+      const { filas } = await conPrioridad(() => buscarObras(texto, 100))
+      /* Se suma lo que el índice ya tenga: la consulta del tablero filtra sólo por nombre, así que
+         sin esto una búsqueda por cliente no encontraría nada hasta que termine de cargar. */
+      const porId = new Map(filas.map((f) => [f.id, f]))
+      for (const f of enElIndice(texto)) porId.set(f.id, f)
+      setResultados([...porId.values()])
     } catch {
       setError('No se pudo buscar en Monday. Probá de nuevo en unos segundos.')
+      setResultados([])
     } finally {
       setBuscando(false)
     }
@@ -85,60 +102,19 @@ export function ObrasView() {
   const onBuscar = () => {
     const t = termino.trim()
     if (!t) {
-      setErrorInput('Escribí el nombre de la obra o su id para buscar.')
+      setErrorInput('Escribí el nombre de la obra, el cliente o el id.')
       return
     }
     setErrorInput('')
     void buscar(t)
   }
 
-  const volverAlCatalogo = () => {
-    setModo('catalogo')
-    setTerminoActivo('')
-    setResultados([])
-    setCursor(null)
-    setPagina(1)
+  const limpiar = () => {
     setTermino('')
-    /* Por si la carga quedó a medio camino o venció mientras se buscaba. */
-    asegurarCatalogo()
-  }
-
-  const irSiguiente = async () => {
-    if (modo === 'catalogo') {
-      setPagina((p) => p + 1)
-      return
-    }
-    if (!cursor) return
-    setBuscando(true)
-    try {
-      const { filas: siguientes, cursor: proximo } = await conPrioridad(() =>
-        siguientePaginaObras(cursor, tamano),
-      )
-      setResultados(siguientes)
-      setCursor(proximo)
-      setPagina((p) => p + 1)
-    } catch {
-      setError('No se pudo traer la página siguiente.')
-    } finally {
-      setBuscando(false)
-    }
-  }
-
-  /* Monday pagina hacia adelante con cursores de un solo uso: en una BÚSQUEDA no hay "anterior",
-     y volver a la primera se hace rehaciendo la consulta. En el catálogo, en cambio, todo lo
-     traído está en memoria, así que se retrocede sin pedir nada. */
-  const irAnterior = () => {
-    if (modo === 'catalogo') {
-      setPagina((p) => Math.max(1, p - 1))
-      return
-    }
-    void buscar(terminoActivo)
-  }
-
-  const cambiarTamano = (nuevo: number) => {
-    setTamano(nuevo)
+    setBuscado('')
+    setResultados([])
+    setError('')
     setPagina(1)
-    if (modo === 'busqueda') void buscar(terminoActivo, nuevo)
   }
 
   /** Abre la obra: se trae el ítem COMPLETO, que es lo que necesitan las etapas siguientes. */
@@ -173,7 +149,6 @@ export function ObrasView() {
         </Aviso>
       )}
 
-      {/* Buscador: mismo patrón que el de cliente en La Batea (campo ancho + botón sólido). */}
       <div className="card unified-toolbar">
         <div className="search-container">
           <div className="search-wrapper">
@@ -192,7 +167,7 @@ export function ObrasView() {
             <input
               type="text"
               className="search-input"
-              placeholder="Buscar obra por nombre o id..."
+              placeholder="Buscar obra por nombre, cliente, ubicación o id..."
               autoComplete="off"
               value={termino}
               disabled={sinToken}
@@ -203,6 +178,7 @@ export function ObrasView() {
               onKeyDown={(e) => e.key === 'Enter' && !buscando && onBuscar()}
             />
           </div>
+          {/* El renglón se monta siempre: reserva su lugar para que el error no empuje lo de abajo. */}
           <span
             className={`search-helper ${errorInput ? 'search-helper--error' : ''}`}
             role="status"
@@ -212,7 +188,12 @@ export function ObrasView() {
           </span>
         </div>
 
-        <button type="button" className="btn-buscar" onClick={onBuscar} disabled={buscando || sinToken}>
+        <button
+          type="button"
+          className="btn-buscar"
+          onClick={onBuscar}
+          disabled={buscando || sinToken}
+        >
           {buscando ? (
             <>
               <i className="fas fa-spinner fa-spin" /> Buscando...
@@ -225,114 +206,114 @@ export function ObrasView() {
         </button>
       </div>
 
-      <div className="card">
-        <div className="obras-lista-cab">
-          <div>
-            <div className="obras-lista-t">
-              {modo === 'catalogo' ? 'Obras' : `Resultados de "${terminoActivo}"`}
+      {error && <Aviso tono="err">{error}</Aviso>}
+
+      {/* Antes de buscar no hay lista, hay una indicación. */}
+      {!buscado && !error && (
+        <div className="card obras-arranque">
+          <i className="fas fa-magnifying-glass obras-arranque-ic" />
+          <p className="obras-arranque-t">Buscá la obra para empezar</p>
+          <p className="obras-arranque-s">
+            Por nombre, por cliente, por ubicación o pegando el id del ítem.
+          </p>
+        </div>
+      )}
+
+      {buscado && !error && (
+        <div className="card">
+          <div className="obras-lista-cab">
+            <div>
+              <div className="obras-lista-t">
+                {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'}
+              </div>
+              <div className="obras-lista-sub">
+                Para «{buscado}»
+                {resultados.length > tamano && ` · página ${pagina}`}
+              </div>
             </div>
-            <div className="obras-lista-sub">
-              {modo === 'catalogo' ? (
-                <>
-                  {total} obra{total === 1 ? '' : 's'}
-                  {catalogo.cargando && (
-                    <>
-                      {' '}
-                      <i className="fas fa-circle-notch spin" /> trayendo el resto…
-                    </>
-                  )}
-                </>
-              ) : (
-                `Página ${pagina} · ${visibles.length} obra${visibles.length === 1 ? '' : 's'}`
-              )}
-            </div>
+            <button type="button" className="obras-pager-btn" onClick={limpiar}>
+              <i className="fas fa-xmark" /> Limpiar
+            </button>
           </div>
-          {modo === 'busqueda' ? (
-            <button type="button" className="obras-pager-btn" onClick={volverAlCatalogo}>
-              <i className="fas fa-rotate-left" /> Ver todas
+
+          {resultados.length === 0 && !buscando && (
+            <div className="obras-vacio">
+              Sin resultados. Probá con parte del nombre, con el cliente o con el id.
+            </div>
+          )}
+
+          {visibles.map((f) => (
+            <button key={f.id} type="button" className="obra-row" onClick={() => void abrir(f.id)}>
+              <span className="obra-row-main">
+                <span className="obra-row-name">{f.nombre}</span>
+                <span className="obra-row-meta">
+                  <span>
+                    <i className="fas fa-hashtag" /> {f.idObra || f.id}
+                  </span>
+                  {f.ubicacion && (
+                    <span>
+                      <i className="fas fa-location-dot" /> {f.ubicacion}
+                    </span>
+                  )}
+                </span>
+              </span>
+              <span className="obra-row-cliente">
+                <span className="obra-row-cl-l">{titulo(COL.ctaCteCliente, 'Cliente')}</span>
+                <span className="obra-row-cl-v">{f.cliente || 'Sin cuenta corriente'}</span>
+              </span>
+              <span className="obra-row-chips">
+                <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={f.tipo} />
+                <EstadoBadge
+                  label={titulo(COL.etapaProduccion, 'Producción')}
+                  estado={f.etapaProduccion}
+                />
+                <EstadoBadge label={titulo(COL.etapaVenta, 'Venta')} estado={f.etapaVenta} />
+              </span>
+              <span className="obra-row-ir">
+                Abrir <i className="fas fa-arrow-right" />
+              </span>
             </button>
-          ) : (
-            <button
-              type="button"
-              className="obras-pager-btn"
-              disabled={catalogo.cargando}
-              onClick={() => {
-                setPagina(1)
-                refrescarCatalogo()
-              }}
-            >
-              <i className="fas fa-rotate" /> Actualizar
-            </button>
+          ))}
+
+          {resultados.length > TAMANOS_PAGINA[0] && (
+            <div className="obras-pager">
+              <span className="obras-page-size">
+                Mostrar
+                <select
+                  value={tamano}
+                  onChange={(e) => {
+                    setTamano(Number(e.target.value))
+                    setPagina(1)
+                  }}
+                >
+                  {TAMANOS_PAGINA.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                por página
+              </span>
+              <button
+                type="button"
+                className="obras-pager-btn"
+                onClick={() => setPagina((p) => Math.max(1, p - 1))}
+                disabled={pagina === 1}
+              >
+                <i className="fas fa-angle-left" /> Anterior
+              </button>
+              <button
+                type="button"
+                className="obras-pager-btn"
+                onClick={() => setPagina((p) => p + 1)}
+                disabled={!hayMas}
+              >
+                Siguiente <i className="fas fa-angle-right" />
+              </button>
+            </div>
           )}
         </div>
-
-        {(error || catalogo.error) && <Aviso tono="err">{error || catalogo.error}</Aviso>}
-
-        {visibles.length === 0 && !cargando && !error && !catalogo.error && (
-          <div className="obras-vacio">
-            {modo === 'busqueda'
-              ? 'Sin resultados. Probá con otro nombre o con el id.'
-              : 'El tablero no tiene obras.'}
-          </div>
-        )}
-
-        {visibles.map((f) => (
-          <button key={f.id} type="button" className="obra-row" onClick={() => void abrir(f.id)}>
-            <span className="obra-row-main">
-              <span className="obra-row-name">{f.nombre}</span>
-              <span className="obra-row-meta">
-                <span>
-                  <i className="fas fa-hashtag" /> {f.id}
-                </span>
-                {f.etapaProduccion && (
-                  <span>
-                    <i className="fas fa-industry" /> {f.etapaProduccion}
-                  </span>
-                )}
-              </span>
-            </span>
-            <span className="obra-row-cliente">
-              <i className="fas fa-user" /> {f.cliente || 'Sin cuenta corriente'}
-            </span>
-            <span className="sbadge">{f.tipo || 'Sin tipo'}</span>
-            <span />
-            <span className="obra-row-ir">
-              Abrir <i className="fas fa-arrow-right" />
-            </span>
-          </button>
-        ))}
-
-        <div className="obras-pager">
-          <span className="obras-page-size">
-            Mostrar
-            <select value={tamano} onChange={(e) => cambiarTamano(Number(e.target.value))}>
-              {TAMANOS_PAGINA.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            por página
-          </span>
-
-          <button
-            type="button"
-            className="obras-pager-btn"
-            onClick={irAnterior}
-            disabled={pagina === 1 || buscando}
-          >
-            <i className="fas fa-angle-left" /> {modo === 'catalogo' ? 'Anterior' : 'Primera página'}
-          </button>
-          <button
-            type="button"
-            className="obras-pager-btn"
-            onClick={() => void irSiguiente()}
-            disabled={!hayMas || buscando}
-          >
-            Siguiente <i className="fas fa-angle-right" />
-          </button>
-        </div>
-      </div>
+      )}
 
       {abriendo && (
         <ModalCargando titulo="Abriendo la obra" detalle="Leyendo los datos del tablero…" />

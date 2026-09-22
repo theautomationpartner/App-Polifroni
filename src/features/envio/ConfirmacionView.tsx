@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { VisorPdf } from '@/components/ui/VisorPdf'
-import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
+import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { puedeDespacharAlTaller } from '@/lib/pasos'
@@ -58,7 +58,6 @@ export function ConfirmacionView() {
         }
       />
 
-      <ObraFicha obra={obra} />
 
       <div className="paso-grid">
         <div className="card">

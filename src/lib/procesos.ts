@@ -13,27 +13,27 @@ export interface ProcesoDef {
 /**
  * Catálogo de procesos, fuera de la vista que los dibuja: agregar uno es agregar una entrada acá.
  *
- * Los nombres son ACCIONES, no tableros: quien entra elige qué va a hacer ("Cargar Orden de
- * Producción"), no en qué tablero de Monday se guarda. En 🪟 Obras va a haber más de un proceso, y
- * nombrarlos por el tablero los volvería indistinguibles.
+ * Cada proceso es una VISTA propia con sus propias etapas. Hoy sólo está construido el de la Orden
+ * de Producción; los otros dos se listan apagados a propósito, porque verlos dice que existen y que
+ * todavía no están, que es más de lo que diría su ausencia.
  */
 export const PROCESOS: ProcesoDef[] = [
   {
     id: 'obras',
     icono: 'fa-file-circle-plus',
-    titulo: 'Cargar Orden de Producción',
+    titulo: 'Orden de Producción',
     detalle: '5 etapas',
   },
   {
     id: null,
     icono: 'fa-file-invoice-dollar',
-    titulo: 'Cuentas corrientes',
+    titulo: 'Presupuestar',
     detalle: 'Próximamente',
   },
   {
     id: null,
-    icono: 'fa-truck-fast',
-    titulo: 'Entregas y colocación',
+    icono: 'fa-helmet-safety',
+    titulo: 'Obra',
     detalle: 'Próximamente',
   },
 ]

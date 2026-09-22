@@ -75,9 +75,14 @@ export interface Obra {
 export interface ObraFila {
   id: string
   nombre: string
+  /** 🤖ID Obra: el número con el que se la nombra puertas adentro. */
+  idObra: string
   cliente: string
-  tipo: string
-  etapaProduccion: string
+  ubicacion: string
+  /** Los estados van con SU color del tablero, igual que en la ficha. */
+  tipo: EstadoObra
+  etapaProduccion: EstadoObra
+  etapaVenta: EstadoObra
 }
 
 /** Una entrada del historial de actividades del ítem (updates de Monday). */

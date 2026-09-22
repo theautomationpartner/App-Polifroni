@@ -25,7 +25,7 @@ function TopSel({ label, children }: { label: string; children: ReactNode }) {
 /**
  * Selector de PROCESO, el mismo control con el que La Batea elige la operación.
  *
- * Lo que se elige acá es el proceso ENTERO —"Cargar Orden de Producción", cinco etapas—, no una de
+ * Lo que se elige acá es el proceso ENTERO —"Orden de Producción", cinco etapas—, no una de
  * sus etapas: el encabezado dice en qué trabajo estás, y adentro del trabajo se elige la acción
  * (`AccionSelect`). Mezclar las dos cosas en un solo control hacía que el proceso no tuviera nombre.
  *
@@ -188,8 +188,12 @@ interface PasoTituloProps {
  * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
  */
 export function PasoTitulo({ numero, titulo, descripcion }: PasoTituloProps) {
+  /* El selector va ARRIBA y el título numerado abajo, en ese orden, porque ese número no titula la
+     pantalla: titula el trabajo que viene justo debajo de él. Al revés, el "1" quedaba señalando al
+     selector de acción, que no es el paso 1 de nada. */
   return (
     <>
+      <AccionSelect />
       <header className="header-section">
         <div className="step-indicator-main">
           <div className="step-badge-main">{numero}</div>
@@ -199,7 +203,6 @@ export function PasoTitulo({ numero, titulo, descripcion }: PasoTituloProps) {
           </div>
         </div>
       </header>
-      <AccionSelect />
     </>
   )
 }

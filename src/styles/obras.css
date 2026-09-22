@@ -378,7 +378,7 @@
 }
 .obra-row {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) auto auto auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, auto) auto;
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
@@ -542,24 +542,35 @@
 }
 /* ===== Etiqueta de estado (chip) =====
    Calcada de las etiquetas de La Batea: caja tenue del color de la letra, esquinas apenas
-   redondeadas. Acá van TODAS en azul —el color no codifica nada, lo dice el texto— y con la misma
-   jerarquía que los datos de la ficha: rótulo chico en mayúsculas, valor en oscuro y con peso. */
+   redondeadas. Llevan EL color que la etiqueta tiene en Monday, bien diluido de fondo y entero en
+   un punto, y la misma jerarquía que los datos de la ficha: rótulo chico en mayúsculas —el nombre
+   real de la columna— y valor en oscuro con peso. */
 .chip {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 7px;
   padding: 6px 12px;
   border-radius: 6px;
   background: var(--o-badge-blue-bg);
+  border: 1px solid transparent;
   font-size: 13px;
   line-height: 1.3;
+}
+/* El color de Monday, concentrado en un punto. El fondo lo lleva muy diluido (lo calcula
+   `EstadoBadge`): así la fila se lee como una fila y no como un semáforo, pero cada etiqueta sigue
+   teniendo EL color con el que se la conoce en el tablero. */
+.chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 .chip-l {
   font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--o-badge-blue-text);
+  color: #64748b;
   flex: 0 0 auto;
 }
 .chip-v {
@@ -1624,4 +1635,121 @@
 .pdftool-pags {
   white-space: nowrap;
   opacity: 0.8;
+}
+
+/* ── Bloques con nombre dentro de la ficha ────────────────────────────────────
+   "Datos del cliente" y "Datos de la obra". Antes era una sola tirada de tarjetas y había que
+   leerla entera para saber si un teléfono era del cliente o de la obra; el título lo resuelve de
+   un vistazo y no cuesta casi nada de alto. */
+.obra-bloque {
+  padding-top: 12px;
+}
+.obra-bloque + .obra-bloque {
+  padding-top: 10px;
+}
+.obra-bloque-t {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+
+/* ── Antes de buscar ──────────────────────────────────────────────────────────
+   La pantalla NO abre con el tablero volcado: abre diciendo qué hacer. Una lista de 573 obras
+   ordenadas por lo que Monday devuelva primero no ayuda a encontrar una, y la obra que se viene a
+   abrir ya se sabe cuál es. */
+.obras-arranque {
+  text-align: center;
+  padding: 34px 20px;
+}
+.obras-arranque-ic {
+  font-size: 22px;
+  color: #cbd5e1;
+}
+.obras-arranque-t {
+  margin: 10px 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.obras-arranque-s {
+  margin: 0;
+  font-size: 13px;
+  color: var(--o-text-soft);
+}
+
+/* ── El renglón de resultado ──────────────────────────────────────────────────
+   Trae más que antes: además del nombre, el ID de obra y la ubicación abajo, el cliente con el
+   nombre real de su columna, y los tres estados con SU color de Monday. */
+.obra-row-cl-l {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.obra-row-cl-v {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--o-text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.obra-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.obra-row-chips .chip {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.obra-row-chips .chip-l {
+  font-size: 9.5px;
+}
+/* En pantallas angostas el renglón se apila en vez de comprimirse hasta ser ilegible. */
+@media (max-width: 1000px) {
+  .obra-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .obra-row-cliente,
+  .obra-row-chips {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+/* ── Alto: que la etapa entre en una pantalla ─────────────────────────────────
+   La ficha es lo que más ocupa y casi todo era aire. Se aprieta el interlineado de los bloques,
+   no su contenido: sigue estando todo, pero el paso 2 completo entra sin tener que bajar. */
+.obra-ficha {
+  padding: 14px 16px;
+}
+.obra-ficha-badges {
+  gap: 6px;
+}
+.plata {
+  padding: 10px 0;
+}
+.plata-cards {
+  gap: 10px;
+}
+.plata-card {
+  padding: 8px 12px;
+}
+.obra-bloque {
+  padding-top: 8px;
+}
+.obra-bloque + .obra-bloque {
+  padding-top: 6px;
+}
+.obra-bloque-t {
+  margin-bottom: 6px;
 }

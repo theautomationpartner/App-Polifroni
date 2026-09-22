@@ -6,6 +6,7 @@ import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
+import { useGenerarOp } from './useGenerarOp'
 import {
   COL,
   getUrlArchivo,
@@ -98,8 +99,11 @@ export function EtmoView() {
   const [proponerLectura, setProponerLectura] = useState(false)
   /** Se abre al quitar el documento CUANDO hay observaciones escritas que se van a perder. */
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
-  /** Aberturas sin escribir al intentar avanzar; mientras tenga valor, hay una pregunta abierta. */
-  const [faltantes, setFaltantes] = useState<string[] | null>(null)
+  /** Con valor = hay una confirmación abierta. Adentro, las aberturas que quedaron sin escribir. */
+  const [confirmarGenerar, setConfirmarGenerar] = useState<string[] | null>(null)
+  /* La OP final se genera DESDE ACÁ. Antes había que pasar al paso 3 y apretar otro botón: dos
+     pantallas para una decisión que ya se tomó al tocar "Generar la OP final". */
+  const generacion = useGenerarOp(obra)
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
@@ -232,25 +236,33 @@ export function EtmoView() {
     }
   }
 
-  const guardarYAvanzar = async () => {
-    setFaltantes(null)
-    if (await guardar()) dispatch({ type: 'goto', paso: 'op-final' })
+  /** Guarda lo escrito y le pide a la automatización la Orden de Producción final. */
+  const generar = async () => {
+    setConfirmarGenerar(null)
+    if (!(await guardar())) return
+    await generacion.correr()
   }
+
+  /* Generada la orden, la etapa 3 ya no tiene nada que pedir: sólo muestra el documento. Se pasa
+     sola, que es lo que se pidió al apretar el botón. */
+  useEffect(() => {
+    if (generacion.estado.fase === 'listo') dispatch({ type: 'goto', paso: 'op-final' })
+  }, [generacion.estado.fase, dispatch])
 
   /**
    * Qué pasa al tocar "Generar la OP final".
    *
-   * Si están todas escritas, no hay nada que preguntar: se guarda y se pasa. Si falta alguna, se
-   * dice CUÁLES y se deja decidir —puede ser a propósito, no toda abertura lleva observación—.
-   * Devolver `false` frena al pie: la navegación la hace `guardarYAvanzar`.
+   * Siempre se pregunta antes, incluso con todo completo. No es un paso más del formulario: dispara
+   * una automatización de un minuto que REEMPLAZA la orden que la obra tuviera. Y si quedaron
+   * aberturas sin escribir se dice CUÁLES en la misma ventana, porque después de generar ya no
+   * entran en el documento.
+   *
+   * Devuelve `false` siempre: al paso 3 se llega cuando la orden está hecha, no al apretar.
    */
   const alAvanzar = (): boolean => {
-    if (!tieneAberturas) return true
-    if (sinCompletar(aberturas).length === 0) {
-      void guardarYAvanzar()
-      return false
-    }
-    setFaltantes(sinCompletar(aberturas).map((a) => rotuloAbertura(a.nombre)))
+    setConfirmarGenerar(
+      tieneAberturas ? sinCompletar(aberturas).map((a) => rotuloAbertura(a.nombre)) : [],
+    )
     return false
   }
 
@@ -375,24 +387,29 @@ export function EtmoView() {
           )}
 
           <div className="obs-pie">
-            <button
-              type="button"
-              className="btn btn-out btn--sm"
-              disabled={!!falta || lectura.leyendo}
-              title={falta || undefined}
-              onClick={() => void leerDocumento()}
-            >
-              {lectura.leyendo ? (
-                <>
-                  <i className="fas fa-circle-notch spin" /> Leyendo el documento…
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-wand-magic-sparkles" />{' '}
-                  {tieneAberturas ? 'Volver a generar observaciones' : 'Generar observaciones'}
-                </>
-              )}
-            </button>
+            {/* El botón existe mientras haya algo que generar. Con las cajas ya armadas se va: su
+                trabajo está hecho y lo único que podría hacer es volver a leer el documento
+                encima de lo escrito. Para empezar de cero se quita el ETMO, que es la acción que
+                de verdad corresponde —y ésa sí avisa de lo que borra—. */}
+            {!tieneAberturas && (
+              <button
+                type="button"
+                className="btn btn-out btn--sm"
+                disabled={!!falta || lectura.leyendo}
+                title={falta || undefined}
+                onClick={() => void leerDocumento()}
+              >
+                {lectura.leyendo ? (
+                  <>
+                    <i className="fas fa-circle-notch spin" /> Leyendo el documento…
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-wand-magic-sparkles" /> Generar observaciones
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Que se guarda solo hay que decirlo: sin botón, el silencio se lee como "no se
                 guardó". */}
@@ -466,42 +483,53 @@ export function EtmoView() {
         />
       )}
 
-      {faltantes && (
+      {/* El doble chequeo antes de generar. Lo primero que se lee es QUÉ va a pasar —en negro y
+          grande, porque es lo que hay que decidir—, y recién debajo lo que falta, si falta algo. */}
+      {confirmarGenerar && (
         <Modal
-          title={
-            faltantes.length === aberturas.length
-              ? '¿Seguir sin observaciones?'
-              : '¿Seguir sin completarlas todas?'
-          }
-          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
-          onClose={() => setFaltantes(null)}
+          title="Se generará la OP Final"
+          icon={<i className="fas fa-file-circle-check modal-icon--info" />}
+          onClose={() => setConfirmarGenerar(null)}
           actions={
             <>
-              <button type="button" className="btn btn-out" onClick={() => setFaltantes(null)}>
-                Completarlas
-              </button>
               <button
                 type="button"
-                className="btn btn-primary"
-                onClick={() => void guardarYAvanzar()}
+                className="btn btn-out"
+                onClick={() => setConfirmarGenerar(null)}
               >
-                Continuar igual
+                Volver
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => void generar()}>
+                <i className="fas fa-wand-magic-sparkles" /> Generar la OP final
               </button>
             </>
           }
         >
-          {faltantes.length === aberturas.length ? (
-            <>
-              No escribiste ninguna de las <strong>{aberturas.length}</strong> aberturas. La orden
-              se genera igual, sin observaciones.
-            </>
-          ) : (
-            <>
-              Te falta{faltantes.length === 1 ? '' : 'n'}{' '}
-              <strong>{faltantes.join(', ')}</strong>. Las aberturas sin observación no se guardan.
-            </>
+          <p className="modal-clave">Se genera el documento final de esta obra.</p>
+          {confirmarGenerar.length > 0 && (
+            <p className="modal-nota">
+              {confirmarGenerar.length === aberturas.length
+                ? `No escribiste ninguna de las ${aberturas.length} aberturas: la orden sale sin observaciones.`
+                : `Quedan sin escribir ${confirmarGenerar.join(', ')}. No entran en el documento.`}
+            </p>
           )}
         </Modal>
+      )}
+
+      {generacion.enCurso && (
+        <ModalCargando
+          titulo="Generando la Orden de Producción final"
+          detalle="La automatización está armando el documento…"
+        />
+      )}
+
+      {generacion.estado.fase === 'error' && (
+        <div className="paso-aviso-flot">
+          <Aviso tono="err">
+            No se pudo generar la Orden de Producción final. Revisá el update que dejó la
+            automatización en la obra y volvé a intentar.
+          </Aviso>
+        </div>
       )}
 
       {confirmarQuitar && (
@@ -548,10 +576,7 @@ export function EtmoView() {
               </button>
             </>
           }
-        >
-          El documento ya está en la obra. Leerlo tarda un momento y deja una caja por cada
-          abertura que encuentre. Si ahora no, el botón queda disponible en el paso.
-        </Modal>
+        />
       )}
     </section>
   )

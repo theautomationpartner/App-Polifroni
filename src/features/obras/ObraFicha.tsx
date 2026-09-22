@@ -1,5 +1,7 @@
 import { EstadoBadge } from '@/components/ui/Aviso'
+import { useTitulos } from '@/features/shared/useTitulos'
 import { importe } from '@/lib/format'
+import { COL } from '@/services/monday/columns'
 import { useApp } from '@/state/hooks'
 import type { Obra } from '@/types'
 
@@ -70,16 +72,17 @@ function porcentaje(obra: Obra): number | null {
 }
 
 /**
- * Ficha de la obra: está presente en TODAS las etapas del proceso.
+ * Ficha de la obra. Va SÓLO en la etapa donde se elige y se carga (la 2).
  *
- * No es decoración. Las decisiones del circuito dependen de estos datos —a qué cuenta corriente se
- * imputa, a qué celular se manda la OP, cuánto falta cobrar— y tenerlos a la vista evita la ida y
- * vuelta al tablero.
+ * En las etapas 3, 4 y 5 no aparece, y es a propósito: ahí ya está decidido sobre qué obra se
+ * trabaja —el encabezado la nombra— y repetir la ficha entera en cada pantalla es medio metro de
+ * texto que hay que saltear para llegar al único botón que importa.
  *
  * Se muestra lo que se MIRA para decidir. La fecha de creación y el inventario de adjuntos estaban
  * y se sacaron: nadie decide nada con ellos y empujaban hacia abajo lo que sí importa.
  */
 export function ObraFicha({ obra, children }: { obra: Obra; children?: React.ReactNode }) {
+  const titulo = useTitulos()
   const total = aNumero(obra.totalPactado)
   const saldo = aNumero(obra.saldo)
   const cancelado = total !== null && saldo !== null ? total - saldo : null
@@ -93,16 +96,19 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
             {obra.idObra || `ID ${obra.id}`} · {obra.grupo || 'Obras'}
           </div>
           <h2 className="obra-ficha-name">{obra.nombre}</h2>
+          {/* Los rótulos son el NOMBRE REAL de la columna en el tablero. Quien ve algo raro acá
+              lo siguiente que hace es ir a buscarlo a Monday, y un sinónimo propio convierte ese
+              viaje en una adivinanza. */}
           <div className="obra-ficha-badges">
-            <EstadoBadge label="Tipo" estado={obra.tipo} />
-            <EstadoBadge label="Producción" estado={obra.etapaProduccion} />
-            <EstadoBadge label="Venta" estado={obra.etapaVenta} />
-            <EstadoBadge label="Premarco" estado={obra.premarco} />
-            <EstadoBadge label="Cta cte" estado={obra.validacionCtaCte} />
+            <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={obra.tipo} />
+            <EstadoBadge label={titulo(COL.etapaProduccion, 'Producción')} estado={obra.etapaProduccion} />
+            <EstadoBadge label={titulo(COL.etapaVenta, 'Venta')} estado={obra.etapaVenta} />
+            <EstadoBadge label={titulo(COL.premarco, 'Premarco')} estado={obra.premarco} />
+            <EstadoBadge label={titulo(COL.validacionCtaCte, 'Cta cte')} estado={obra.validacionCtaCte} />
             {/* El estado de la OP final NO va acá: es el estado de una corrida, y en las otras
                 etapas dice cosas ("Generando") que no describen a la obra sino a lo que está
                 pasando en otro lado. Se muestra donde se opera, en el paso 3. */}
-            <EstadoBadge label="Confirmación" estado={obra.confirmacionOp} />
+            <EstadoBadge label={titulo(COL.confirmacionOp, 'Confirmación')} estado={obra.confirmacionOp} />
           </div>
         </div>
         {children && <div className="obra-ficha-acts">{children}</div>}
@@ -145,28 +151,59 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
         )}
       </div>
 
-      <div className="obra-vinculos">
-        <Vinculo
-          icono="fa-file-invoice-dollar"
-          label="Cuenta corriente del cliente"
-          valor={obra.ctaCteCliente}
-          extra={[obra.celCliente, obra.emailCliente].filter(Boolean).join(' · ')}
-        />
-        <Vinculo
-          icono="fa-compass-drafting"
-          label="Constructor / Arquitecto"
-          valor={obra.arquitecto}
-          extra={obra.celArquitecto}
-        />
-        <Vinculo icono="fa-user-gear" label="Asignado a" valor={obra.asignado} />
-      </div>
+      {/* Primero el CLIENTE y después la obra: la pregunta que se hace al abrir una obra es "¿de
+          quién es?", y recién con eso resuelto importa dónde queda y cuándo se coloca. */}
+      <section className="obra-bloque">
+        <h3 className="obra-bloque-t">Datos del cliente</h3>
+        <div className="obra-vinculos">
+          <Vinculo
+            icono="fa-file-invoice-dollar"
+            label={titulo(COL.ctaCteCliente, 'Cuenta corriente del cliente')}
+            valor={obra.ctaCteCliente}
+            extra={[obra.celCliente, obra.emailCliente].filter(Boolean).join(' · ')}
+          />
+          <Vinculo
+            icono="fa-compass-drafting"
+            label={titulo(COL.arquitecto, 'Constructor / Arquitecto')}
+            valor={obra.arquitecto}
+            extra={obra.celArquitecto}
+          />
+        </div>
+      </section>
 
-      <div className="obra-datos-grid">
-        <Dato icono="fa-location-dot" label="Ubicación de la obra" valor={obra.ubicacion} />
-        <Dato icono="fa-phone" label="Cel a coordinar" valor={obra.celCoordinar} />
-        <Dato icono="fa-calendar-check" label="Colocación pactada" valor={obra.fechaColocacion} />
-        <Dato icono="fa-truck" label="Coordinar entrega con" valor={obra.coordinarEntrega.texto} />
-      </div>
+      <section className="obra-bloque">
+        <h3 className="obra-bloque-t">Datos de la obra</h3>
+        <div className="obra-datos-grid">
+          <Dato
+            icono="fa-location-dot"
+            label={titulo(COL.ubicacion, 'Ubicación de la obra')}
+            valor={obra.ubicacion}
+          />
+          <Dato
+            icono="fa-phone"
+            label={titulo(COL.celCoordinar, 'Cel a coordinar')}
+            valor={obra.celCoordinar}
+          />
+          <Dato
+            icono="fa-calendar-check"
+            label={titulo(COL.fechaColocacion, 'Colocación pactada')}
+            valor={obra.fechaColocacion}
+          />
+          <Dato
+            icono="fa-truck"
+            label={titulo(COL.coordinarEntrega, 'Coordinar entrega con')}
+            valor={obra.coordinarEntrega.texto}
+          />
+          {/* Quién de Polifroni tiene la obra a cargo: es una columna de PERSONAS del tablero, o
+              sea un usuario del sistema, no el cliente. Por eso vive con los datos de la obra. */}
+          <Dato
+            icono="fa-user-gear"
+            label={titulo(COL.asignado, 'Asignado a')}
+            valor={obra.asignado}
+          />
+        </div>
+      </section>
+
     </div>
   )
 }

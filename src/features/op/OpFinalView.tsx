@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { Modal } from '@/components/ui/Modal'
 import { VisorPdf } from '@/components/ui/VisorPdf'
-import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
+import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
@@ -54,7 +54,6 @@ export function OpFinalView() {
 
       <PasoTitulo numero={3} titulo="Generar la Orden de Producción final" />
 
-      <ObraFicha obra={obra} />
 
       <div className="paso-grid">
         <div className="card">
