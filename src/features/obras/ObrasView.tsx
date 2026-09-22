@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
@@ -8,31 +8,22 @@ import { buscarObras, getObra, mondayHabilitado } from '@/services/monday'
 import { COL } from '@/services/monday/columns'
 import { useDispatch } from '@/state/hooks'
 import type { ObraFila } from '@/types'
-import { asegurarCatalogo, conPrioridad, useCatalogoObras } from './catalogoObras'
-
-/** Sin acentos y en minúsculas, para que "Peru" encuentre "Perú". */
-const plano = (t: string) =>
-  t
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
 
 /**
  * Paso 1 · Elegir la obra.
  *
- * **Acá no se lista el tablero.** Hasta que no se busca algo, no hay resultados en pantalla: 573
- * obras ordenadas por lo que el tablero devuelva primero no son una lista, son un ruido que hay
- * que recorrer, y la obra que se viene a abrir se sabe de antemano.
+ * **Acá no se lista ni se precarga el tablero.** No se le pide NADA a Monday hasta que alguien
+ * busca: ni al abrir la pantalla ni por detrás. 573 obras ordenadas por lo que el tablero devuelva
+ * primero no son una lista —son algo que hay que recorrer— y la obra que se viene a abrir se sabe
+ * de antemano.
  *
- * Lo que sí sigue pasando por detrás es la carga del catálogo (`catalogoObras`), que ahora tiene un
- * solo propósito: ser el ÍNDICE de la búsqueda. Con el tablero en memoria se busca sin pedirle nada
- * a Monday —el resultado aparece mientras se escribe— y además se puede buscar por cosas por las
- * que la consulta del tablero no filtra: el cliente, la ubicación o el ID de obra. Mientras el
- * índice todavía se está armando, la búsqueda va al tablero como antes, así nunca se pierde nada.
+ * El costo de no tener índice en memoria hay que saberlo: la búsqueda es la del tablero, o sea por
+ * NOMBRE (y por id de ítem pegado). Probado contra la API, Monday no acepta `contains_text` sobre
+ * la cuenta corriente ni sobre la ubicación, así que buscar por cliente sólo sería posible
+ * teniendo el tablero en memoria.
  */
 export function ObrasView() {
   const dispatch = useDispatch()
-  const catalogo = useCatalogoObras()
   const titulo = useTitulos()
 
   const [termino, setTermino] = useState('')
@@ -48,52 +39,24 @@ export function ObrasView() {
 
   const sinToken = !mondayHabilitado()
 
-  useEffect(() => {
-    if (!sinToken) asegurarCatalogo()
-  }, [sinToken])
-
   const visibles = useMemo(
     () => resultados.slice((pagina - 1) * tamano, pagina * tamano),
     [resultados, pagina, tamano],
   )
   const hayMas = pagina * tamano < resultados.length
 
-  /** Contra el índice en memoria: nombre, cliente, ubicación, id de ítem o de obra. */
-  const enElIndice = (texto: string): ObraFila[] => {
-    const t = plano(texto)
-    return catalogo.filas.filter(
-      (f) =>
-        plano(f.nombre).includes(t) ||
-        plano(f.cliente).includes(t) ||
-        plano(f.ubicacion).includes(t) ||
-        f.id.includes(t) ||
-        plano(f.idObra).includes(t),
-    )
-  }
-
   const buscar = async (texto: string) => {
     setError('')
     setPagina(1)
-    setBuscado(texto)
-
-    /* Con el índice completo no se le pide nada a Monday: el resultado es inmediato y encuentra
-       por campos que la consulta del tablero no sabe filtrar. */
-    if (catalogo.completo) {
-      setResultados(enElIndice(texto))
-      return
-    }
-
     setBuscando(true)
     try {
-      const { filas } = await conPrioridad(() => buscarObras(texto, 100))
-      /* Se suma lo que el índice ya tenga: la consulta del tablero filtra sólo por nombre, así que
-         sin esto una búsqueda por cliente no encontraría nada hasta que termine de cargar. */
-      const porId = new Map(filas.map((f) => [f.id, f]))
-      for (const f of enElIndice(texto)) porId.set(f.id, f)
-      setResultados([...porId.values()])
+      const { filas } = await buscarObras(texto, 100)
+      setResultados(filas)
+      setBuscado(texto)
     } catch {
       setError('No se pudo buscar en Monday. Probá de nuevo en unos segundos.')
       setResultados([])
+      setBuscado(texto)
     } finally {
       setBuscando(false)
     }
@@ -102,7 +65,7 @@ export function ObrasView() {
   const onBuscar = () => {
     const t = termino.trim()
     if (!t) {
-      setErrorInput('Escribí el nombre de la obra, el cliente o el id.')
+      setErrorInput('Escribí el nombre de la obra o su id para buscar.')
       return
     }
     setErrorInput('')
@@ -121,7 +84,7 @@ export function ObrasView() {
   const abrir = async (id: string) => {
     setAbriendo(true)
     try {
-      const obra = await conPrioridad(() => getObra(id))
+      const obra = await getObra(id)
       if (!obra) {
         setError('Esa obra ya no está en el tablero.')
         return
@@ -167,7 +130,7 @@ export function ObrasView() {
             <input
               type="text"
               className="search-input"
-              placeholder="Buscar obra por nombre, cliente, ubicación o id..."
+              placeholder="Buscar obra por nombre o pegando el id del ítem..."
               autoComplete="off"
               value={termino}
               disabled={sinToken}
@@ -218,19 +181,7 @@ export function ObrasView() {
             <i className="fas fa-magnifying-glass obras-arranque-ic" />
             <p className="obras-arranque-t">Buscá la obra para empezar</p>
             <p className="obras-arranque-s">
-              Por nombre, por cliente, por ubicación o pegando el id del ítem.
-            </p>
-            <p className="obras-arranque-x">
-              {catalogo.cargando ? (
-                <>
-                  <i className="fas fa-circle-notch spin" /> Preparando la búsqueda…{' '}
-                  {catalogo.filas.length} obras listas
-                </>
-              ) : catalogo.completo ? (
-                <>
-                  <i className="fas fa-bolt" /> {catalogo.filas.length} obras listas para buscar
-                </>
-              ) : null}
+              Escribí el nombre de la obra, o pegá el id del ítem, y tocá Buscar.
             </p>
           </div>
 

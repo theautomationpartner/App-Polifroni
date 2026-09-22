@@ -179,6 +179,8 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     estadoEnvioOp: estado(c, estructura, COL.estadoEnvioOp),
     mjsEnviadoCliente: estado(c, estructura, COL.mjsEnviadoCliente),
     confirmacionOp: estado(c, estructura, COL.confirmacionOp),
+    confirmacionTaller: estado(c, estructura, COL.confirmacionTaller),
+    combina: estado(c, estructura, COL.combina),
     estadoEnvioTaller: estado(c, estructura, COL.estadoEnvioTaller),
   }
 }

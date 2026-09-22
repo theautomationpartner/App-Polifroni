@@ -68,6 +68,9 @@ export interface Obra {
   estadoEnvioOp: EstadoObra
   mjsEnviadoCliente: EstadoObra
   confirmacionOp: EstadoObra
+  confirmacionTaller: EstadoObra
+  /** Marca: sólo tiene valor cuando la obra es combinada. */
+  combina: EstadoObra
   estadoEnvioTaller: EstadoObra
 }
 

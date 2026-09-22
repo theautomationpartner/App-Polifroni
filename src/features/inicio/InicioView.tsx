@@ -1,8 +1,5 @@
-import { useEffect } from 'react'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
-import { asegurarCatalogo } from '@/features/obras/catalogoObras'
 import { PROCESOS } from '@/lib/procesos'
-import { mondayHabilitado } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 
 /**
@@ -14,13 +11,6 @@ import { useDispatch } from '@/state/hooks'
  */
 export function InicioView() {
   const dispatch = useDispatch()
-
-  /* La lista de obras se empieza a traer ACÁ, mientras se elige el proceso. Son unos segundos de
-     lectura que hasta ahora se desperdiciaban, y son justo los que después se esperaban mirando
-     una lista vacía. */
-  useEffect(() => {
-    if (mondayHabilitado()) asegurarCatalogo()
-  }, [])
 
   return (
     <section className="view obras-v2">

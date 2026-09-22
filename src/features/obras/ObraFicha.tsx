@@ -99,17 +99,36 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
           <h2 className="obra-ficha-name">{obra.nombre}</h2>
           {/* Los rótulos son el NOMBRE REAL de la columna en el tablero. Quien ve algo raro acá
               lo siguiente que hace es ir a buscarlo a Monday, y un sinónimo propio convierte ese
-              viaje en una adivinanza. */}
+              viaje en una adivinanza.
+
+              El orden lo fija el circuito, no el tablero: qué es la obra (tipo), cómo viene la
+              venta, cómo viene la producción, el premarco, quién confirmó —cliente y taller— y
+              por último si quedó registrada en cuenta corriente. */}
           <div className="obra-ficha-badges">
             <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={obra.tipo} />
-            <EstadoBadge label={titulo(COL.etapaProduccion, 'Producción')} estado={obra.etapaProduccion} />
-            <EstadoBadge label={titulo(COL.etapaVenta, 'Venta')} estado={obra.etapaVenta} />
+            <EstadoBadge label={titulo(COL.etapaVenta, 'Etapa de Venta')} estado={obra.etapaVenta} />
+            <EstadoBadge
+              label={titulo(COL.etapaProduccion, 'Etapa de Produccion')}
+              estado={obra.etapaProduccion}
+            />
             <EstadoBadge label={titulo(COL.premarco, 'Premarco')} estado={obra.premarco} />
-            <EstadoBadge label={titulo(COL.validacionCtaCte, 'Cta cte')} estado={obra.validacionCtaCte} />
-            {/* El estado de la OP final NO va acá: es el estado de una corrida, y en las otras
-                etapas dice cosas ("Generando") que no describen a la obra sino a lo que está
-                pasando en otro lado. Se muestra donde se opera, en el paso 3. */}
-            <EstadoBadge label={titulo(COL.confirmacionOp, 'Confirmación')} estado={obra.confirmacionOp} />
+            <EstadoBadge
+              label={titulo(COL.confirmacionOp, 'Confirmacion Op Cliente')}
+              estado={obra.confirmacionOp}
+            />
+            <EstadoBadge
+              label={titulo(COL.confirmacionTaller, 'Confirmacion Op Taller')}
+              estado={obra.confirmacionTaller}
+            />
+            <EstadoBadge
+              label={titulo(COL.validacionCtaCte, 'Validacion Registracion de Obra en cta cte')}
+              estado={obra.validacionCtaCte}
+            />
+            {/* Sólo cuando está puesta. Es una marca, no un estado con variantes: vacía no dice
+                "todavía no", dice "no es una obra combinada", y eso no hace falta anunciarlo. */}
+            {obra.combina.texto && (
+              <EstadoBadge label={titulo(COL.combina, 'Combina')} estado={obra.combina} />
+            )}
           </div>
         </div>
         {children && <div className="obra-ficha-acts">{children}</div>}

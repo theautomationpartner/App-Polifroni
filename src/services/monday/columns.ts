@@ -26,6 +26,12 @@ export const COL = {
   ubicacion: 'location_mksz7r97',
   /** ✋Tipo (status): Aluminio | PVC. Decide a quién se menciona ante un rechazo. */
   tipo: 'color_mkw92ypr',
+  /**
+   * Combina (status). Tiene UNA sola etiqueta —"Combinada"— y el resto de las obras la dejan
+   * vacía: no es un estado con variantes, es una marca. Por eso en pantalla aparece sólo cuando
+   * está puesta; un "Combina: sin definir" en cada obra sería una columna de ruido.
+   */
+  combina: 'color_mm7ergpj',
   /** ✋Etapa de Produccion (status). */
   etapaProduccion: 'color_mm1kddt0',
   /** ✋Etapa de Venta (status). */
@@ -86,8 +92,10 @@ export const COL = {
   mjsEnviadoCliente: 'color_mm5jsjea',
 
   /* ── Paso 4 · Confirmación y taller ───────────────────────────────────────── */
-  /** Confirmacion de la Op (status): Pend de Confirmar | CONFIRMADO OP | NO CONFIRMADO. */
+  /** 🤖Confirmacion Op Cliente (status): Pend de Confirmar | CONFIRMADO OP | NO CONFIRMADO. */
   confirmacionOp: 'color_mm73rxg7',
+  /** 🤖Confirmacion Op Taller (status). Mismas etiquetas que la del cliente. */
+  confirmacionTaller: 'color_mm7eqk41',
   /** 🤖Estado Envio OP TALLER (status): A Enviar | Enviando | Enviado | Error en Envio. */
   estadoEnvioTaller: 'color_mkzrjgcj',
 } as const

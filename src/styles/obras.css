@@ -1738,13 +1738,6 @@
     animation: none;
   }
 }
-.obras-arranque-x {
-  margin: 14px 0 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #94a3b8;
-  min-height: 18px;
-}
 .obras-arranque-ic {
   font-size: 24px;
   color: #cbd5e1;
@@ -1992,4 +1985,34 @@
 .veredicto--mal > i,
 .veredicto--mal .veredicto-t {
   color: #b42318;
+}
+
+/* ── Los rótulos, con más peso ────────────────────────────────────────────────
+   Estaban tan apagados que había que buscarlos. Un rótulo no compite con su valor por ser más
+   oscuro: lo enmarca, y ese marco es lo que hace que el dato se lea como dato y no como texto
+   suelto. El valor sigue ganando por tamaño y por peso. */
+.chip-l {
+  font-weight: 800;
+}
+.chip-v {
+  color: #0f172a;
+  font-weight: 700;
+}
+.plata-l,
+.dato-l,
+.vinculo-l {
+  color: #5b6a7d;
+  font-weight: 800;
+}
+.dato-v,
+.vinculo-v {
+  font-weight: 700;
+  color: #0f172a;
+}
+.obra-bloque-t {
+  color: #475569;
+  font-weight: 800;
+}
+.obra-row-cl-l {
+  color: #5b6a7d;
 }
