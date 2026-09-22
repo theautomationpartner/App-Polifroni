@@ -18,7 +18,7 @@ const VISTAS: Record<Paso, () => JSX.Element> = {
 }
 
 export function App() {
-  const { proceso, paso, obra } = useApp()
+  const { proceso, paso, obra, listado } = useApp()
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Cada etapa arranca desde arriba, como en una navegación real.
@@ -28,12 +28,12 @@ export function App() {
 
   /* Sin obra elegida no hay ninguna etapa que dibujar: cualquier paso cae en la lista. Es una
      salvaguarda, no un camino: el estado ya vuelve solo a `obra` cuando se sale de una. */
-  /* El listado no tiene pasos: es una consulta, entra y sale. Por eso se resuelve antes de mirar
-     `paso`, que sólo describe el circuito de la Orden de Producción. */
+  /* El listado es una consulta dentro del proceso: se abre desde el selector de acción y se sale
+     con cualquier otra acción. Por eso gana sobre `paso`, que describe el circuito. */
   const Vista =
     proceso === null
       ? InicioView
-      : proceso === 'listado'
+      : listado
         ? ListadoView
         : !obra && paso !== 'obra'
           ? ObrasView

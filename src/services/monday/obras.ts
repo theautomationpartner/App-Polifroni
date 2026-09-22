@@ -8,7 +8,7 @@
  */
 import { memoGlobal } from './cache'
 import { BOARD_OBRAS, COL } from './columns'
-import { byId, valor, type CV, type MondayItem } from './parse'
+import { byId, num, sumaMirror, valor, type CV, type MondayItem } from './parse'
 import { mondayApi, mondaySubirArchivo, urlArchivo } from './sdk'
 import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types'
 
@@ -132,6 +132,19 @@ function estado(
 }
 
 /**
+ * El saldo, calculado a mano cuando la columna fórmula no contesta.
+ *
+ * Devuelve '' si tampoco hay con qué calcularlo: inventar un cero diría "está todo cobrado", que
+ * es lo contrario de "no sé".
+ */
+function saldoDeRespaldo(c: Record<string, CV>): string {
+  const total = num(valor(c[COL.totalPactado]))
+  if (!total) return ''
+  const cancelado = sumaMirror(c[COL.canceladoEspejo])
+  return String(total - cancelado)
+}
+
+/**
  * Texto de una columna, ya limpio.
  *
  * Las columnas FÓRMULA y ESPEJO devuelven a veces la cadena literal `"null"` —cuando el cálculo
@@ -169,7 +182,11 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     coordinarEntrega: estado(c, estructura, COL.coordinarEntrega),
     fechaColocacion: txt(COL.fechaColocacion),
     totalPactado: txt(COL.totalPactado),
-    saldo: txt(COL.saldo),
+    /* El saldo sale de la fórmula del tablero; si vino en blanco —pasa mientras Monday recalcula—
+       se reconstruye con el espejo de los recibos, que es de donde sale la fórmula. Verificado
+       contra la obra de prueba: total 10.000 − espejo (70, -70, 96, 96, 96 = 288) = 9.712, que es
+       exactamente lo que devuelve la fórmula cuando devuelve algo. */
+    saldo: txt(COL.saldo) || saldoDeRespaldo(c),
     pctCancelado: txt(COL.pctCancelado),
     validacionCtaCte: estado(c, estructura, COL.validacionCtaCte),
 

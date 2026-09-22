@@ -109,6 +109,11 @@ export function EtmoView() {
      que decirlo antes, no después. */
   const yaTieneOp = obra.opFinal.length > 0
 
+  /* Se avisa al ENTRAR, no recién al apretar "generar": quien llega a esta etapa con una orden ya
+     hecha viene a rehacerla o viene por error, y las dos cosas se resuelven mejor sabiéndolo antes
+     de cargar un documento encima. Se pregunta una sola vez por visita. */
+  const [avisadoOp, setAvisadoOp] = useState(() => !yaTieneOp)
+
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
   const [aberturas, setAberturas] = useState<Abertura[]>(() => parsear(obra.observaciones))
@@ -287,7 +292,6 @@ export function EtmoView() {
       <PasoHeader />
 
       <PasoTitulo
-        numero={2}
         titulo="Orden ETMO y observaciones"
         descripcion="Cargá el PDF original que genera ETMO y escribí las observaciones."
       />
@@ -485,6 +489,37 @@ export function EtmoView() {
           titulo="Leyendo el documento"
           detalle="Buscando las aberturas del ETMO…"
         />
+      )}
+
+      {!avisadoOp && (
+        <Modal
+          title="Ya cuenta con una OP Final cargada"
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setAvisadoOp(true)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setAvisadoOp(true)}>
+                No generar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setAvisadoOp(true)
+                  void generar()
+                }}
+              >
+                <i className="fas fa-wand-magic-sparkles" /> Generar una nueva
+              </button>
+            </>
+          }
+        >
+          <p className="modal-clave">Esta obra ya tiene una Orden de Producción final.</p>
+          <p className="modal-nota">
+            Si generás una nueva, la que está cargada se reemplaza. Si no, seguí trabajando: podés
+            cambiar el documento o las observaciones y generar más tarde.
+          </p>
+        </Modal>
       )}
 
       {/* El doble chequeo antes de generar. Lo primero que se lee es QUÉ va a pasar —en negro y

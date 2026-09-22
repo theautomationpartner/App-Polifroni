@@ -5,7 +5,8 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { useTitulos } from '@/features/shared/useTitulos'
 import { buscarObras, getObra, mondayHabilitado } from '@/services/monday'
 import { COL } from '@/services/monday/columns'
-import { useDispatch } from '@/state/hooks'
+import { ACCIONES_PASO } from '@/state/appState'
+import { useApp, useDispatch } from '@/state/hooks'
 import type { ObraFila } from '@/types'
 
 /**
@@ -27,7 +28,13 @@ import type { ObraFila } from '@/types'
  */
 export function ObrasView() {
   const dispatch = useDispatch()
+  const { paso } = useApp()
   const titulo = useTitulos()
+
+  /* Se eligió una acción pero todavía no hay obra: la app cayó acá sola. Decirlo evita que la
+     pantalla se lea como "se perdió lo que elegí" —la acción sigue elegida, y se retoma sola en
+     cuanto haya una obra—. */
+  const accionPendiente = paso !== 'obra' ? ACCIONES_PASO[paso] : ''
 
   const [termino, setTermino] = useState('')
   const [errorInput, setErrorInput] = useState('')
@@ -119,7 +126,16 @@ export function ObrasView() {
     <section className="view paso-layout obras-v2">
       <PasoHeader />
 
-      <PasoTitulo numero={1} titulo="Seleccionar la obra" />
+      <PasoTitulo titulo="Seleccionar la obra" />
+
+      {accionPendiente && (
+        <div className="pide-obra">
+          <i className="fas fa-arrow-turn-down" />
+          <span>
+            Seleccioná una obra para continuar con <strong>{accionPendiente}</strong>.
+          </span>
+        </div>
+      )}
 
       {/* Sólo aparece corriendo en tu máquina: en el servidor el token no lo pone el navegador
           sino la función de `api/`, así que `mondayHabilitado()` ya no pregunta por él. */}

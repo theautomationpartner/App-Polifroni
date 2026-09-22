@@ -103,4 +103,4 @@ export interface Actividad {
 export type Paso = 'obra' | 'etmo' | 'envio' | 'confirmacion'
 
 /** Operaciones que ofrece la pantalla principal. */
-export type Proceso = 'obras' | 'listado'
+export type Proceso = 'obras'

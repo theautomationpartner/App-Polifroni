@@ -2212,3 +2212,57 @@
   border-color: var(--o-border);
   background: #fff;
 }
+
+/* ── Los dos anillos, uno al lado del otro ────────────────────────────────── */
+.plata-donut {
+  display: flex;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+.donut--md {
+  width: 84px;
+  height: 84px;
+}
+.donut--md .donut-in {
+  width: 66px;
+  height: 66px;
+}
+.donut--md .donut-v {
+  font-size: 17px;
+}
+
+/* ── Los íconos de los datos, más grandes ─────────────────────────────────────
+   Eran tan chicos que no ayudaban a encontrar el dato, que es lo único que un ícono hace en una
+   grilla de campos. */
+.dato-ic {
+  width: 34px;
+  height: 34px;
+  font-size: 15px;
+}
+.vinculo-ic {
+  width: 40px;
+  height: 40px;
+  font-size: 17px;
+}
+@media (max-width: 900px) {
+  .plata-donut {
+    gap: 10px;
+  }
+}
+
+/* Acción elegida sin obra todavía. No es un error: es el paso que falta. */
+.pide-obra {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -2px 0 10px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  background: #eff6ff;
+  border: 1px solid #c7ddfb;
+  font-size: 13px;
+  color: #1e40af;
+}
+.pide-obra > i {
+  color: #2563eb;
+}

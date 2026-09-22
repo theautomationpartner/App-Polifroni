@@ -53,6 +53,14 @@ export interface AppState {
    * cosas que no hizo no son información: son ruido que hay que descontar mentalmente cada vez.
    */
   entrada: Paso
+  /**
+   * Está abierto el listado de órdenes.
+   *
+   * No es un paso: es una consulta que se abre y se cierra sin mover el circuito. Por eso vive
+   * aparte del `paso` en vez de ser un valor más de `Paso` —que obligaría a que la barra de etapas
+   * y las reglas de acceso tuvieran que saltearlo en todos lados—.
+   */
+  listado: boolean
   /** Acción que falló contra Monday, para el aviso global ("no se pudo <accion>"). */
   errorMonday: string | null
 }
@@ -62,12 +70,15 @@ export const initialState: AppState = {
   paso: 'obra',
   obra: null,
   entrada: 'obra',
+  listado: false,
   errorMonday: null,
 }
 
 export type Action =
   | { type: 'setProceso'; proceso: Proceso | null }
   | { type: 'goto'; paso: Paso }
+  /** Abre la consulta de órdenes. Se sale con un `goto`. */
+  | { type: 'verListado' }
   | { type: 'setObra'; obra: Obra }
   /** Relee la obra sin tocar el paso en curso (después de escribir en el tablero). */
   | { type: 'refrescarObra'; obra: Obra }
@@ -90,13 +101,22 @@ export function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         paso: action.paso,
+        listado: false,
         entrada: state.paso === 'obra' && action.paso !== 'obra' ? action.paso : state.entrada,
       }
 
+    case 'verListado':
+      return { ...state, listado: true }
+
     /* Elegir una obra REINICIA el avance: los pasos hablan de esta obra y de ninguna otra, así que
        lo alcanzado con la anterior no se hereda. */
-    case 'setObra':
-      return { ...state, obra: action.obra, paso: 'etmo', entrada: 'etmo' }
+    /* Elegir la obra RESPETA la acción que ya se había elegido. Si alguien pidió "Enviar la OP al
+       cliente" y después buscó la obra, mandarlo igual a la primera etapa le borra la decisión que
+       acaba de tomar y lo obliga a tomarla de nuevo. Sin acción elegida, la primera del circuito. */
+    case 'setObra': {
+      const destino = state.paso === 'obra' ? 'etmo' : state.paso
+      return { ...state, obra: action.obra, paso: destino, entrada: destino }
+    }
 
     case 'refrescarObra':
       return { ...state, obra: action.obra }

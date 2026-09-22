@@ -76,7 +76,6 @@ export function ConfirmacionView() {
       <PasoHeader />
 
       <PasoTitulo
-        numero={5}
         titulo="Confirmación del cliente y taller"
         descripcion={
           <>

@@ -80,7 +80,6 @@ export function EnvioClienteView() {
       <PasoHeader />
 
       <PasoTitulo
-        numero={4}
         titulo="Enviar la OP al cliente"
         descripcion={
           <>

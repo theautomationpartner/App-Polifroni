@@ -189,6 +189,9 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
           />
         </div>
 
+        {/* Dos anillos y no uno: el que interesa cambia según para qué se mira la obra. Al taller
+            le importa cuánto se cobró; a administración, cuánto falta cobrar. Son el mismo dato
+            dicho al derecho y al revés, y tener que restar mentalmente no es gratis. */}
         <div className="plata">
           {pct !== null && (
             <div className="plata-donut">
@@ -196,6 +199,11 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
                 porcentaje={pct}
                 color={pct >= 99.5 ? '#00c875' : '#0073ea'}
                 etiqueta="Cancelado"
+              />
+              <Donut
+                porcentaje={100 - pct}
+                color={pct >= 99.5 ? '#94a3b8' : '#f0a000'}
+                etiqueta="Pendiente"
               />
             </div>
           )}
@@ -211,7 +219,7 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
               </div>
             </div>
             <div className="plata-card">
-              <div className="plata-l">{titulo(COL.saldo, 'Saldo')}</div>
+              <div className="plata-l">Pendiente de cobro</div>
               <div className="plata-v plata-v--deuda">{importe(obra.saldo) || '—'}</div>
             </div>
           </div>

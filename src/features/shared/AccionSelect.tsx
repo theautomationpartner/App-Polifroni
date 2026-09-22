@@ -15,8 +15,11 @@ import type { Paso } from '@/types'
  * pasó a un lugar donde además se puede explicar por qué una etapa no está disponible: una opción
  * bloqueada se ve apagada y el aviso de abajo dice qué falta.
  */
+/** Valor del selector que NO es una etapa, sino la consulta de órdenes. */
+const LISTADO = '__listado'
+
 export function AccionSelect() {
-  const { paso, obra } = useApp()
+  const { paso, obra, listado } = useApp()
   const dispatch = useDispatch()
 
   /* Se puede elegir CUALQUIER etapa. El selector dice a dónde querés ir, no si podés: quien elige
@@ -37,9 +40,11 @@ export function AccionSelect() {
           <select
             className="cfg-sel"
             aria-label="¿Qué acción vas a realizar?"
-            value={paso}
+            value={listado ? LISTADO : paso}
             onChange={(e) => {
-              dispatch({ type: 'goto', paso: e.target.value as Paso })
+              const v = e.target.value
+              if (v === LISTADO) dispatch({ type: 'verListado' })
+              else dispatch({ type: 'goto', paso: v as Paso })
             }}
           >
             {/* Sin número: el número ya lo lleva la barra de etapas. */}
@@ -48,13 +53,17 @@ export function AccionSelect() {
                 {ACCIONES_PASO[p]}
               </option>
             ))}
+            {/* No es una etapa: es una consulta. Vive acá y no en la pantalla de operaciones
+                porque se la busca DESDE el proceso —"¿cuáles están esperando el OK?"— y no antes
+                de entrar a él. */}
+            <option value={LISTADO}>Listar Órdenes de Producción</option>
           </select>
         </div>
       </div>
 
       {/* Por qué la próxima etapa no está disponible. Va afuera de la caja para no desalinear el
           selector, y sólo aparece cuando hay algo que resolver. */}
-      {siguienteBloqueada && (
+      {!listado && siguienteBloqueada && (
         <p className="accion-nota">
           <i className="fas fa-lock" /> {siguienteBloqueada.acceso.motivo}
         </p>

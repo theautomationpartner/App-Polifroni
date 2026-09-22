@@ -25,12 +25,6 @@ export const PROCESOS: ProcesoDef[] = [
     detalle: '4 etapas',
   },
   {
-    id: 'listado',
-    icono: 'fa-table-list',
-    titulo: 'Listar Órdenes de Producción',
-    detalle: 'Consulta',
-  },
-  {
     id: null,
     icono: 'fa-file-invoice-dollar',
     titulo: 'Presupuestar',

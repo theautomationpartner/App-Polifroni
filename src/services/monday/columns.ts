@@ -44,8 +44,17 @@ export const COL = {
   fechaColocacion: 'date_mkszfh59',
   /** ✋Total Obra Pactado (numbers). */
   totalPactado: 'deal_value',
-  /** 🤖 Saldo (formula). */
+  /** 🤖 Saldo (formula). Puede venir VACÍA mientras Monday recalcula; ver `canceladoEspejo`. */
   saldo: 'formula_mktjw331',
+  /**
+   * 🤖 Importe Total Cancelado (espejo de los recibos).
+   *
+   * Es el respaldo del saldo. La columna fórmula se queda en blanco cada tanto —no devuelve ni
+   * `text` ni `display_value`— y cuando eso pasa la pantalla mostraba "—" en Cancelado y en Saldo,
+   * y el anillo directamente desaparecía. Con este espejo el número se puede reconstruir:
+   * cancelado = suma del espejo, saldo = total − cancelado.
+   */
+  canceladoEspejo: 'lookup_mktm9fe2',
   /** 🤖 % Cancelado (formula). */
   pctCancelado: 'formula_mkty8qcx',
   /** 🤖ID Obra (item_id). */

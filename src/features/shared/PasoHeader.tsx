@@ -172,8 +172,6 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
 }
 
 interface PasoTituloProps {
-  /** El mismo número que marca el stepper. */
-  numero: number
   titulo: string
   /** Bajada. Opcional: cuando el título ya se explica solo, sobra. */
   descripcion?: ReactNode
@@ -186,12 +184,14 @@ interface PasoTituloProps {
  * El selector viene incluido acá y no lo pone cada vista: es la única forma de moverse por el
  * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
  */
-export function PasoTitulo({ numero, titulo, descripcion }: PasoTituloProps) {
+export function PasoTitulo({ titulo, descripcion }: PasoTituloProps) {
   const { paso, entrada } = useApp()
   const esPrimero = paso === 'obra'
-  /* El número que se ve es el que muestra la barra de etapas: si el proceso arranca en la 3, esa
-     es la 1. Dos numeraciones distintas para la misma etapa sería peor que no numerar. */
-  const propio = numero - indiceDe(entrada)
+  /* El número SALE del paso, no se lo pasa cada vista.
+     Antes era un `numero={4}` escrito a mano en cada pantalla, y esa copia se volvió mentira sola:
+     al fusionar dos etapas, el 5 escrito en la última se restaba contra una barra que ahora tiene
+     cuatro, y el título mostraba "-2". Calculado acá no puede desincronizarse del stepper. */
+  const propio = indiceDe(paso) - indiceDe(entrada) + 1
   /* El selector de acción va SÓLO en el paso 1: ahí es donde se decide qué se viene a hacer. En
      las etapas siguientes esa decisión ya está tomada, y repetir la pregunta en cada pantalla la
      convertía en un control de navegación disfrazado de pregunta.
