@@ -174,6 +174,14 @@ un `text_xxxxx` suelto.
   La **búsqueda tiene prioridad**: mientras hay una en curso el fondo no pide lotes nuevos, y al
   terminar sigue desde el cursor donde quedó. Lo traído vale **8 minutos**, así que entrar a una
   obra y volver no vuelve a pedir nada.
+- **Las observaciones viajan a la orden en tres formas** (`features/op/observaciones.ts`):
+  `observaciones` (el texto plano de siempre), `observacionesHtml` (una abertura por renglón,
+  cortadas con `<br>`, con el texto del usuario escapado) y `observacionesLista` (un array).
+  El `<br>` está porque la orden se arma con una plantilla HTML y ahí un salto de línea **no** es
+  un salto: se colapsa a un espacio. Probado contra la orden real: mandando `
+` las siete
+  observaciones salen pegadas en un párrafo. Para que el corte se vea, la plantilla de PDF.co tiene
+  que imprimir el valor **sin escapar** (`{{{...}}}`); escapado muestra el `<br>` como texto.
 - **Antes de disparar un escenario se verifica lo que ese escenario filtra** (`features/op/requisitos.ts`).
   El de lectura de observaciones exige dirección, celular a coordinar y archivo adjunto; si corta en
   su filtro no llega a su módulo de respuesta y Make contesta `Accepted`, sin lista y sin explicación.

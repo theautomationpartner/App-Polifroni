@@ -3,6 +3,7 @@ import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
 import { ESCENARIO } from '@/services/make'
 import { ETIQUETA, getActividadDesde, getEstadoOp } from '@/services/monday'
 import type { Obra } from '@/types'
+import { parsear, serializarHtml, serializarLista } from './observaciones'
 
 /**
  * Generación de la OP final: dispara el escenario y espera el documento.
@@ -43,7 +44,18 @@ export function useGenerarOp(obra: Obra) {
     itemId: obra.id,
     extra: {
       obra: obra.nombre,
+      /* Las observaciones van en tres formas, y cada una existe por algo:
+         - `observaciones`  el texto plano de siempre. No se toca para no cambiarle la entrada a
+                            nadie que ya la esté leyendo.
+         - `observacionesHtml`  las mismas, una por renglón, con el `<br>` que es el ÚNICO corte
+                            que una plantilla HTML respeta —probado contra la orden real: un salto
+                            de línea ahí se colapsa a un espacio y quedan todas en un párrafo—.
+         - `observacionesLista`  una entrada por abertura, si la plantilla prefiere recorrerla.
+         La app las manda listas; que se vean cortadas depende de que la plantilla imprima el
+         valor sin escapar (`{{{...}}}`), porque escapado muestra el `<br>` como texto. */
       observaciones: obra.observaciones,
+      observacionesHtml: serializarHtml(parsear(obra.observaciones)),
+      observacionesLista: serializarLista(parsear(obra.observaciones)),
       accion: 'leer-documento-etmo',
     },
     antes,

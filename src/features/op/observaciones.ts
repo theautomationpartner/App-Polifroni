@@ -96,3 +96,30 @@ export function fusionar(
 /** Hay algo escrito en alguna abertura. */
 export const tieneAlgunaObservacion = (aberturas: Abertura[]): boolean =>
   aberturas.some((a) => a.texto.trim().length > 0)
+
+/**
+ * Las observaciones tal como tienen que llegar a la Orden de Producción: una abertura por renglón.
+ *
+ * Hace falta porque el campo viaja a una plantilla HTML, y ahí un salto de línea no es un salto:
+ * el navegador lo colapsa a un espacio y las siete observaciones terminan pegadas en un párrafo
+ * corrido. El único corte que un HTML respeta es `<br>`.
+ *
+ * El texto de cada abertura se escapa. Es lo que hace que esto sea seguro de mandar como HTML: lo
+ * único que llega como marcado es el `<br>` que pone esta función; un `<` que alguien escriba en
+ * una observación se ve como un `<` y no rompe la orden.
+ */
+export function serializarHtml(aberturas: Abertura[]): string {
+  return aberturas
+    .filter((a) => a.texto.trim())
+    .map((a) => escaparHtml(`Modelo ${normalizarNombre(a.nombre)}: ${a.texto.trim()}`))
+    .join('<br>')
+}
+
+/** Una entrada por abertura escrita, por si la plantilla prefiere recorrer una lista. */
+export const serializarLista = (aberturas: Abertura[]): string[] =>
+  aberturas
+    .filter((a) => a.texto.trim())
+    .map((a) => `Modelo ${normalizarNombre(a.nombre)}: ${a.texto.trim()}`)
+
+const escaparHtml = (t: string): string =>
+  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
