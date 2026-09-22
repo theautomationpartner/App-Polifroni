@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  ORDEN DE PRODUCCION POLIFRONI  ·  template unico para PDF.co
+  ---------------------------------------------------------------------------
+  En el modulo de Make (PDF.co > HTML to PDF):
+     Paper size .......... A4    <-- NO letter
+     Orientation ......... Portrait
+     Print background .... SI
+     Margins ............. 0      <-- SIN ESTO el encabezado NO llega a los bordes
+     Header / Footer ..... VACIOS
+
+  COMO SE ACOMODA
+  ---------------
+  Cada <div class="hoja"> mide EXACTAMENTE una carilla A4. Adentro:
+     - el encabezado va pegado arriba, de borde a borde
+     - el cuerpo reparte el alto que sobra entre los renglones (1, 2 o 3)
+     - dentro de cada tarjeta, el dibujo se queda con el hueco libre
+
+  POR QUE LAS COLUMNAS QUEDAN ALINEADAS
+  -------------------------------------
+  Todas las tarjetas tienen la MISMA geometria fija:
+     codigo (1 renglon) · descripcion (alto fijo) · color · medidas · cantidad
+     · DIBUJO (lo que sobra) · bloque de vidrio+tapajuntas (alto fijo)
+     · OBSERVACION (alto fijo, solo en las hojas que tienen alguna)
+  Por eso "Color:", "Medidas:", el dibujo y los "Tap:" caen a la misma altura
+  en las tres columnas, tenga o no vidrio el modelo.
+
+  LA OBSERVACION POR MODELO  (agregado)
+  -------------------------------------
+  Va DEBAJO de los "Tap:", dentro de la tarjeta del modelo al que pertenece.
+  El modulo de JavaScript parte el texto que manda la app (el campo
+  "observaciones" del webhook, con lineas tipo "Modelo V1 DT 1: ...") y le
+  cuelga a cada modelo su propia "observacion".
+
+  El bloque se reserva SOLO en las hojas donde al menos un modelo tiene
+  observacion (el codigo marca cada modelo con "mostrarObs"). Asi una hoja sin
+  observaciones no pierde 3 centimetros de alto al pedo, y una hoja con
+  observaciones mantiene las tres columnas alineadas aunque solo una tenga
+  texto.
+
+  LAS IMAGENES DE HETMO
+  ---------------------
+  Cada modelo trae su "imgUrl" ya resuelto (el modulo de JavaScript la busca
+  por "hojaIdx"). El template no usa helpers: anda con cualquier Handlebars.
+-->
+<style>
+  @page { size: A4 portrait; margin: 0; }
+
+  :root{
+    --naranja:#F1651C;
+    --linea:#8c8c8c;
+
+    /* ---- RECORTE DEL DIBUJO -------------------------------------------
+       Que pedacito de la hoja de HETMO se ve por la ventanita. El dibujo
+       NUNCA se deforma: se agranda o achica entero.
+         --crop-h  mas CHICO = dibujo mas GRANDE
+         --crop-x  mas GRANDE = la hoja se corre a la izquierda
+         --crop-ya / --crop-yb  suben o bajan el encuadre
+       Se ajustan mirando el PDF que sale, y no se tocan mas.               */
+    --dib-ancho:31mm; /* ANCHO de la ventanita. Si entra texto de HETMO por
+                         la derecha, achicalo. Si el dibujo sale cortado a los
+                         costados, agrandalo.                              */
+    --crop-h:0.25;   /* ZOOM: cuanto MAS CHICO, MAS GRANDE el dibujo */
+    --crop-x:0.10;   /* corrimiento horizontal (mas grande = mueve a la izq) */
+    --crop-ya:0.215; /* altura del modelo de ARRIBA (slot a)  */
+    --crop-yb:0.572; /* altura del modelo de ABAJO  (slot b)  */
+
+    /* ---- OBSERVACION POR MODELO ---------------------------------------
+       Alto que se le reserva a la observacion en CADA tarjeta de las hojas
+       que tienen alguna. Es fijo a proposito: es lo que mantiene las tres
+       columnas alineadas cuando solo una tiene texto.
+         Si las observaciones salen cortadas -> agranda --obs-h
+         Si el dibujo queda muy chico        -> achica --obs-h
+       Ojo: lo que sacas de aca se lo das al dibujo, y al reves.            */
+    --obs-h:12mm;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:210mm}
+  body{
+    font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#000;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+
+  /* ================= LA HOJA ================= */
+  .hoja{
+    width:210mm;height:296mm;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    page-break-after:always;break-after:page;
+  }
+  .hoja:last-child{page-break-after:auto;break-after:auto}
+
+  /* ================= ENCABEZADO =================
+     De borde a borde, pegado arriba. El borde es mas grueso que antes.     */
+  .head{
+    flex:none;width:100%;
+    display:flex;align-items:stretch;
+    min-height:23mm;
+    border:2.2pt solid var(--naranja);
+  }
+  .head .logo{
+    width:30mm;flex:none;border-right:2.2pt solid var(--naranja);
+    display:flex;align-items:center;justify-content:center;padding:1.5mm;
+  }
+  .head .logo img{max-width:100%;max-height:20mm}
+  .head .centro{flex:1;min-width:0;padding:1.5mm 3mm;display:flex;flex-direction:column}
+  .head .titulo{text-align:center;color:var(--naranja);font-weight:bold;font-size:12.5pt;margin-bottom:1mm}
+  .head .obra{font-weight:bold;font-size:10.5pt;line-height:1.15;margin-bottom:1mm}
+  .head .dato{font-size:8.5pt;line-height:1.25}
+  .head .nro{
+    width:26mm;flex:none;display:flex;align-items:center;justify-content:center;
+    font-weight:bold;font-size:22pt;line-height:1;
+  }
+  .head .derecha{
+    width:44mm;flex:none;border-left:2.2pt solid var(--naranja);padding:1.5mm 2mm;
+    display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;
+  }
+  .head .meta{font-size:8.5pt;line-height:1.4}
+  .head .vista{font-weight:bold;font-size:11.5pt;white-space:nowrap}
+
+  /* ================= CUERPO ================= */
+  .cuerpo{
+    flex:1;min-height:0;
+    display:flex;flex-direction:column;
+    padding:0 5mm;
+  }
+
+  .fila{
+    flex:1;min-height:0;
+    display:grid;grid-template-columns:repeat(3,1fr);column-gap:3mm;
+    padding:1.5mm 0 2mm;
+  }
+  .fila + .fila{border-top:.5pt solid var(--linea)}   /* la raya va solo ENTRE filas */
+
+  .card{
+    display:flex;flex-direction:column;min-height:0;
+    padding:0 1mm;
+  }
+
+  /* --- Bloque de arriba: SIEMPRE el mismo alto en las tres columnas --- */
+  .cod{font-weight:bold;flex:none;line-height:1.2}
+  .desc{
+    font-weight:bold;text-transform:uppercase;line-height:1.12;
+    margin:.5mm 0 .8mm;
+    height:7mm;overflow:hidden;flex:none;       /* ALTO FIJO = alinea las 3 */
+  }
+  .kv{margin-bottom:.5mm;flex:none;line-height:1.2}
+  .cant{font-weight:bold;margin-top:.5mm;flex:none;line-height:1.2}
+
+  /* --- EL DIBUJO: se queda con TODO el hueco que sobra --- */
+  /* La ventanita NO ocupa todo el ancho de la tarjeta: si lo hiciera, se
+     comeria la columna de texto que HETMO pone a la derecha del dibujo.
+     Por eso tiene un ancho propio, angosto, pegado a la izquierda.        */
+  .dib{
+    flex:1;min-height:12mm;max-height:44mm;margin:1.5mm 0;
+    width:var(--dib-ancho);max-width:100%;
+    position:relative;overflow:hidden;
+  }
+  /* la hoja de HETMO, agrandada y corrida para que por la ventanita se vea
+     justo el dibujo */
+  .dib img{
+    position:absolute;left:0;top:0;max-width:none;max-height:none;
+    height:calc(100% / var(--crop-h));   /* el zoom sale de aca */
+    width:auto;                          /* auto = NO se deforma el dibujo */
+    /* el translate corre la hoja tomando como referencia el tamano de la
+       PROPIA imagen, que es lo que hace falta para que el recorte caiga bien */
+    transform:translate(calc(-100% * var(--crop-x)), calc(-100% * var(--crop-ya)));
+  }
+  .dib.slot-b img{
+    transform:translate(calc(-100% * var(--crop-x)), calc(-100% * var(--crop-yb)));
+  }
+  /* redes de seguridad */
+  .dib.slot-full img{position:static;width:100%;height:100%;object-fit:contain}
+
+  /* --- Bloque de abajo: ALTO FIJO aunque el modelo no tenga vidrio ni
+         tapajuntas. Es lo que hace que el mosquitero no desalinee la fila. --- */
+  .datos{flex:none;height:20.5mm;overflow:hidden}
+
+  .vid{margin-bottom:1mm;padding-left:3mm}
+  .vid b{margin-right:2mm}
+  .vid span{margin-left:2mm}
+
+  .taps{width:100%;border-collapse:collapse}
+  .taps td{padding:.3mm 0;white-space:nowrap}
+  .taps .l{font-weight:bold;width:9mm;padding-left:3mm}
+  .taps .c{width:16mm}
+
+  /* --- OBSERVACION DEL MODELO: va DEBAJO de los Tap ---------------------
+     Alto fijo (--obs-h) y overflow hidden: asi la tarjeta que tiene texto
+     no empuja hacia abajo y las tres columnas quedan parejas.
+     La caja se dibuja en todas las tarjetas de la hoja (aunque esten vacias)
+     para que el dibujo mida lo mismo en las tres.                          */
+  .obs{
+    flex:none;height:var(--obs-h);overflow:hidden;
+    margin-top:.6mm;padding:.8mm 1mm 0 3mm;
+    border-top:.4pt dashed var(--linea);
+    font-size:6.8pt;line-height:1.18;
+    white-space:pre-line;          /* respeta los saltos de linea del texto */
+    word-wrap:break-word;overflow-wrap:break-word;word-break:break-word;
+  }
+  .obs .et{
+    display:block;font-weight:bold;color:var(--naranja);
+    font-size:6.4pt;letter-spacing:.2px;margin-bottom:.3mm;
+  }
+  /* la caja vacia no muestra la linea de puntos: queda mas prolijo */
+  .obs.vacia{border-top-color:transparent}
+
+  /* ================= PIE ================= */
+  .pie{
+    flex:none;padding:1.5mm 5mm 2.5mm;text-align:right;
+    font-weight:bold;font-size:11pt;line-height:1.25;
+  }
+  .pie .val{display:inline-block;min-width:18mm;text-align:left}
+
+  /* observaciones que NO se pudieron colgar de ningun modelo: van al pie
+     para que no se pierda nada de lo que escribio el operario */
+  .obs-sueltas{
+    padding:0 5mm 5mm;font-weight:bold;font-size:9.5pt;line-height:1.3;
+    color:var(--naranja);text-align:left;white-space:pre-line;
+  }
+
+  /* ---- LINEA DE DIAGNOSTICO (se prende poniendo "debug": true) ---- */
+  .debug{font-size:7pt;color:#a00;padding:1mm 5mm;word-break:break-all}
+</style>
+</head>
+<body>
+
+{{#if debug}}
+<div class="debug">DIAGNOSTICO — fotos: {{cantHojas}} · primera: {{primeraHoja}} · obs asignadas: {{obsAsignadas}} de {{obsTotales}}<br>TEXTO CRUDO QUE LLEGO: {{debugCrudo}}</div>
+{{/if}}
+
+{{#each paginas}}
+<div class="hoja">
+
+  <div class="head">
+    <div class="logo"><img src="{{../logoUrl}}" alt="Polifroni"></div>
+
+    <div class="centro">
+      <div class="titulo">ORDEN DE PRODUCCION</div>
+      <div class="obra">OBRA:{{../obra}}</div>
+      <div class="dato">DIRECCION DE OBRA: {{../direccion}}</div>
+      <div class="dato">CELULAR: {{../celular}}</div>
+    </div>
+
+    <div class="nro">{{../nroOrden}}</div>
+
+    <div class="derecha">
+      <div class="meta">{{../fecha}}<br>Página {{nro}} de {{../totalPaginas}}</div>
+      <div class="vista">{{../vista}}</div>
+    </div>
+  </div>
+
+  <div class="cuerpo">
+    {{#each filas}}
+    <div class="fila">
+      {{#each this}}
+      <div class="card">
+        <div class="cod">Modelo:{{codigo}}</div>
+        <div class="desc">{{descripcion}}</div>
+        <div class="kv"><b>Color:</b> {{color}}</div>
+        <div class="kv"><b>Medidas:</b>{{ancho}} mm ,{{alto}} mm</div>
+        <div class="cant">CANTIDAD: {{cantidad}}{{#if mano}} {{mano}}{{/if}}</div>
+
+        <!-- la foto de la hoja de HETMO: el modulo de JavaScript ya le puso a
+             cada modelo su imgUrl, buscandola por hojaIdx -->
+        <div class="dib slot-{{slot}}"><img src="{{imgUrl}}" alt=""></div>
+
+        <!-- este bloque va SIEMPRE, aunque venga vacio: su alto fijo es lo que
+             mantiene las tres columnas alineadas -->
+        <div class="datos">
+          {{#if vidrio}}
+          <div class="vid"><b>Vid:</b>{{vidrio}}<span>{{vAncho}} x {{vAlto}}</span><span>ud:{{vUd}}</span></div>
+          {{/if}}
+          {{#if taps}}
+          <table class="taps">
+            {{#each taps}}
+            <tr><td class="l">Tap:</td><td class="c">{{cod}}</td><td>{{medida}} mm</td></tr>
+            {{/each}}
+          </table>
+          {{/if}}
+        </div>
+
+        <!-- OBSERVACION DEL MODELO — va justo DEBAJO de los Tap.
+             "mostrarObs" lo pone el modulo de JavaScript: es true en todos los
+             modelos de una hoja donde al menos uno tiene observacion. -->
+        {{#if mostrarObs}}
+          {{#if observacion}}
+          <div class="obs"><span class="et">OBSERVACIÓN</span>{{observacion}}</div>
+          {{else}}
+          <div class="obs vacia"></div>
+          {{/if}}
+        {{/if}}
+
+      </div>
+      {{/each}}
+    </div>
+    {{/each}}
+  </div>
+
+  {{#if esUltima}}
+  <div class="pie">
+    <div>CANT. DE ABERTURAS: <span class="val">{{#if ../mostrarTotales}}{{../totales.aberturas}}{{/if}}</span></div>
+    <div>CANT. DVH : <span class="val">{{#if ../mostrarTotales}}{{../totales.dvh}}{{/if}}</span></div>
+    <div>CANT. MOSQUITEROS: <span class="val">{{#if ../mostrarTotales}}{{../totales.mosquiteros}}{{/if}}</span></div>
+    <div>MEDIDO POR: <span class="val">{{../medidoPor}}</span></div>
+  </div>
+
+  <!-- Solo lo que NO se pudo asignar a ningun modelo. Si todas las
+       observaciones encontraron su tarjeta, este bloque no aparece. -->
+  {{#if ../observacionesSueltas}}
+  <div class="obs-sueltas">OBSERVACIÓNES:
+{{../observacionesSueltas}}</div>
+  {{/if}}
+
+  {{/if}}
+
+</div>
+{{/each}}
+
+</body>
+</html>

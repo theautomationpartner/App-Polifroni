@@ -3,9 +3,9 @@ import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ConfirmacionView } from '@/features/envio/ConfirmacionView'
 import { EnvioClienteView } from '@/features/envio/EnvioClienteView'
 import { InicioView } from '@/features/inicio/InicioView'
+import { ListadoView } from '@/features/listado/ListadoView'
 import { ObrasView } from '@/features/obras/ObrasView'
 import { EtmoView } from '@/features/op/EtmoView'
-import { OpFinalView } from '@/features/op/OpFinalView'
 import { useApp } from '@/state/hooks'
 import type { Paso } from '@/types'
 
@@ -13,7 +13,6 @@ import type { Paso } from '@/types'
 const VISTAS: Record<Paso, () => JSX.Element> = {
   obra: ObrasView,
   etmo: EtmoView,
-  'op-final': OpFinalView,
   envio: EnvioClienteView,
   confirmacion: ConfirmacionView,
 }
@@ -29,7 +28,16 @@ export function App() {
 
   /* Sin obra elegida no hay ninguna etapa que dibujar: cualquier paso cae en la lista. Es una
      salvaguarda, no un camino: el estado ya vuelve solo a `obra` cuando se sale de una. */
-  const Vista = proceso === null ? InicioView : !obra && paso !== 'obra' ? ObrasView : VISTAS[paso]
+  /* El listado no tiene pasos: es una consulta, entra y sale. Por eso se resuelve antes de mirar
+     `paso`, que sólo describe el circuito de la Orden de Producción. */
+  const Vista =
+    proceso === null
+      ? InicioView
+      : proceso === 'listado'
+        ? ListadoView
+        : !obra && paso !== 'obra'
+          ? ObrasView
+          : VISTAS[paso]
 
   return (
     <div className="scroll" ref={scrollRef}>

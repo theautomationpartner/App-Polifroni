@@ -86,6 +86,8 @@ export interface ObraFila {
   tipo: EstadoObra
   etapaProduccion: EstadoObra
   etapaVenta: EstadoObra
+  confirmacionOp: EstadoObra
+  confirmacionTaller: EstadoObra
 }
 
 /** Una entrada del historial de actividades del ítem (updates de Monday). */
@@ -98,7 +100,7 @@ export interface Actividad {
 }
 
 /** Pasos del proceso de Orden de Producción. El orden es el del stepper. */
-export type Paso = 'obra' | 'etmo' | 'op-final' | 'envio' | 'confirmacion'
+export type Paso = 'obra' | 'etmo' | 'envio' | 'confirmacion'
 
-/** Procesos que ofrece la pantalla principal. Hoy sólo Obras está implementado. */
-export type Proceso = 'obras'
+/** Operaciones que ofrece la pantalla principal. */
+export type Proceso = 'obras' | 'listado'

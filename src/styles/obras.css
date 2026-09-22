@@ -2016,3 +2016,199 @@
 .obra-row-cl-l {
   color: #5b6a7d;
 }
+
+/* ── Los tres vínculos, en un renglón ─────────────────────────────────────────
+   A quién se le factura, quién proyecta y quién la tiene a cargo acá adentro: se leen juntos
+   porque juntos contestan "¿de quién es esta obra?". */
+.obra-vinculos--3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 1000px) {
+  .obra-vinculos--3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* El de adentro de casa va en ámbar: los otros dos son de afuera, y el color dice de qué lado del
+   mostrador está cada uno sin tener que leer el rótulo. */
+.vinculo--propio {
+  background: #fffaeb;
+  border-color: #f3d9a4;
+}
+.vinculo--propio .vinculo-ic {
+  color: #b54708;
+  background: #fef0c7;
+}
+/* La grilla de datos, debajo de los vínculos, con su propio aire. */
+.obra-bloque .obra-datos-grid {
+  margin-top: 12px;
+}
+
+/* ── El desplegable de resultados ─────────────────────────────────────────────
+   Va SOBRE el campo, como en La Batea. La diferencia con una lista debajo no es estética: una
+   lista deja seguir sin haber elegido nada, y todo lo que viene después necesita una obra. */
+.search-container {
+  position: relative;
+}
+.search-wrapper--abierto {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.results {
+  position: absolute;
+  top: calc(100% - 18px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: #fff;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  margin-top: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+}
+.ritem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border: none;
+  border-bottom: 1px solid #f1f4f8;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.ritem:last-child {
+  border-bottom: none;
+}
+.ritem:hover,
+.ritem:focus-visible {
+  background: #f5f8ff;
+  outline: none;
+}
+.ritem-main {
+  min-width: 0;
+}
+.ritem-name {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--o-text-title);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ritem-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+.ritem-sub i {
+  margin-right: 3px;
+  color: #b6c2d2;
+}
+.ritem-chips {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.ritem-chips .chip {
+  padding: 3px 8px;
+  font-size: 11.5px;
+}
+.ritem-chips .chip-l {
+  font-size: 9px;
+}
+@media (max-width: 900px) {
+  .ritem-chips {
+    display: none;
+  }
+}
+
+/* Recordatorio de que hay una búsqueda hecha, para reabrirla sin repetirla. */
+.obras-retomar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  border: 1px solid var(--o-border);
+}
+.obras-retomar > i {
+  color: var(--primary-blue);
+}
+.obras-retomar-x {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.obras-retomar-x:hover {
+  color: #475569;
+}
+
+/* ── Filtros del listado ──────────────────────────────────────────────────────
+   Casillas con forma de etiqueta: marcadas toman el color que esa etiqueta tiene en el tablero, o
+   sea que el filtro se ve igual que lo que va a encontrar. */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 18px 28px;
+  padding: 14px 16px;
+}
+.filtro-l {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #5b6a7d;
+  margin-bottom: 7px;
+}
+.filtro-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filtro-op {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+}
+.filtro-op:hover {
+  border-color: #cbd5e1;
+}
+.filtro-punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+/* Renglón de listado: mismo aspecto que un resultado, pero no se puede tocar. Esta pantalla
+   informa; para trabajar sobre una obra se entra por la operación de Orden de Producción. */
+.obra-row--fija {
+  cursor: default;
+}
+.obra-row--fija:hover {
+  border-color: var(--o-border);
+  background: #fff;
+}

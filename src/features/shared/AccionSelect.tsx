@@ -19,8 +19,10 @@ export function AccionSelect() {
   const { paso, obra } = useApp()
   const dispatch = useDispatch()
 
-  /* El estado del tablero manda: una etapa a la que la obra todavía no llegó se lista, pero no se
-     puede elegir. Listarla igual es a propósito: dice que existe y que falta algo para llegar. */
+  /* Se puede elegir CUALQUIER etapa. El selector dice a dónde querés ir, no si podés: quien elige
+     "Enviar la OP al cliente" está diciendo qué vino a hacer, y frenarlo acá lo deja adivinando
+     qué le falta. Lo que falta se dice abajo, y cada etapa valida lo suyo cuando hay que actuar
+     —con una ventana que explica, no con una opción apagada—. */
   const opciones = PASOS.map((p) => ({ paso: p, acceso: accesoAlPaso(p, obra) }))
   const siguienteBloqueada = opciones.find((o) => !o.acceso.ok)
 
@@ -37,15 +39,12 @@ export function AccionSelect() {
             aria-label="¿Qué acción vas a realizar?"
             value={paso}
             onChange={(e) => {
-              const destino = e.target.value as Paso
-              if (accesoAlPaso(destino, obra).ok) dispatch({ type: 'goto', paso: destino })
+              dispatch({ type: 'goto', paso: e.target.value as Paso })
             }}
           >
-            {/* Sin número y sin candado: el número ya lo lleva la barra de etapas, y una opción a
-                la que no se puede entrar se ve apagada —que es como se ve en cualquier desplegable—.
-                El renglón de abajo dice qué falta, que es lo que un símbolo no sabe explicar. */}
-            {opciones.map(({ paso: p, acceso }) => (
-              <option key={p} value={p} disabled={!acceso.ok}>
+            {/* Sin número: el número ya lo lleva la barra de etapas. */}
+            {opciones.map(({ paso: p }) => (
+              <option key={p} value={p}>
                 {ACCIONES_PASO[p]}
               </option>
             ))}

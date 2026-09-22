@@ -104,6 +104,10 @@ export function EtmoView() {
   /* La OP final se genera DESDE ACÁ. Antes había que pasar al paso 3 y apretar otro botón: dos
      pantallas para una decisión que ya se tomó al tocar "Generar la OP final". */
   const generacion = useGenerarOp(obra)
+  /* La obra YA tiene una orden final adjunta. No frena nada —rehacerla es una operación normal—
+     pero cambia la pregunta: no es "¿generamos?" sino "¿reemplazamos la que ya está?", y eso hay
+     que decirlo antes, no después. */
+  const yaTieneOp = obra.opFinal.length > 0
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
@@ -243,10 +247,10 @@ export function EtmoView() {
     await generacion.correr()
   }
 
-  /* Generada la orden, la etapa 3 ya no tiene nada que pedir: sólo muestra el documento. Se pasa
-     sola, que es lo que se pidió al apretar el botón. */
+  /* Generada la orden, se pasa solo al envío: es donde se ve el PDF que acaba de salir y donde
+     está lo único que queda por hacer con él. */
   useEffect(() => {
-    if (generacion.estado.fase === 'listo') dispatch({ type: 'goto', paso: 'op-final' })
+    if (generacion.estado.fase === 'listo') dispatch({ type: 'goto', paso: 'envio' })
   }, [generacion.estado.fase, dispatch])
 
   /**
@@ -487,8 +491,14 @@ export function EtmoView() {
           grande, porque es lo que hay que decidir—, y recién debajo lo que falta, si falta algo. */}
       {confirmarGenerar && (
         <Modal
-          title="Se generará la OP Final"
-          icon={<i className="fas fa-file-circle-check modal-icon--info" />}
+          title={yaTieneOp ? 'Ya cuenta con una OP Final cargada' : 'Se generará la OP Final'}
+          icon={
+            yaTieneOp ? (
+              <i className="fas fa-triangle-exclamation modal-icon--warn" />
+            ) : (
+              <i className="fas fa-file-circle-check modal-icon--info" />
+            )
+          }
           onClose={() => setConfirmarGenerar(null)}
           actions={
             <>
@@ -497,15 +507,20 @@ export function EtmoView() {
                 className="btn btn-out"
                 onClick={() => setConfirmarGenerar(null)}
               >
-                Volver
+                {yaTieneOp ? 'No generar' : 'Volver'}
               </button>
               <button type="button" className="btn btn-primary" onClick={() => void generar()}>
-                <i className="fas fa-wand-magic-sparkles" /> Generar la OP final
+                <i className="fas fa-wand-magic-sparkles" />{' '}
+                {yaTieneOp ? 'Generar una nueva' : 'Generar la OP final'}
               </button>
             </>
           }
         >
-          <p className="modal-clave">Se genera el documento final de esta obra.</p>
+          <p className="modal-clave">
+            {yaTieneOp
+              ? '¿Desea generar una nueva? La que está cargada se reemplaza.'
+              : 'Se genera el documento final de esta obra.'}
+          </p>
           {confirmarGenerar.length > 0 && (
             <p className="modal-nota">
               {confirmarGenerar.length === aberturas.length

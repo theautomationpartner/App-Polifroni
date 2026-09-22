@@ -7,13 +7,20 @@
 import type { Obra, Paso, Proceso } from '@/types'
 
 /** Orden de los pasos del proceso de Orden de Producción. Manda el stepper y la navegación. */
-export const PASOS: readonly Paso[] = ['obra', 'etmo', 'op-final', 'envio', 'confirmacion']
+/**
+ * Orden de los pasos. Manda el stepper y la navegación.
+ *
+ * "OP Final" era un paso propio y se fusionó con el ETMO: eran dos pantallas para una sola
+ * decisión —cargo el documento, escribo las observaciones, emito la orden—, y la segunda no tenía
+ * nada que pedir salvo apretar un botón que ya se había decidido apretar en la primera. El PDF que
+ * mostraba se ve ahora donde se usa: en el envío al cliente.
+ */
+export const PASOS: readonly Paso[] = ['obra', 'etmo', 'envio', 'confirmacion']
 
 /** Etiqueta de cada paso, la que se lee debajo del círculo del stepper. Corta a propósito. */
 export const ETIQUETAS_PASO: Record<Paso, string> = {
   obra: 'Obra',
   etmo: 'Orden ETMO',
-  'op-final': 'OP Final',
   envio: 'Envío al cliente',
   confirmacion: 'Confirmación y taller',
 }
@@ -25,8 +32,7 @@ export const ETIQUETAS_PASO: Record<Paso, string> = {
  */
 export const ACCIONES_PASO: Record<Paso, string> = {
   obra: 'Elegir la obra',
-  etmo: 'Cargar Orden ETMO',
-  'op-final': 'Generar la OP final',
+  etmo: 'Orden ETMO · emitir la OP',
   envio: 'Enviar la OP al cliente',
   confirmacion: 'Confirmar y enviar al taller',
 }

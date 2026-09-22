@@ -22,7 +22,13 @@ export const PROCESOS: ProcesoDef[] = [
     id: 'obras',
     icono: 'fa-file-circle-plus',
     titulo: 'Orden de Producción',
-    detalle: '5 etapas',
+    detalle: '4 etapas',
+  },
+  {
+    id: 'listado',
+    icono: 'fa-table-list',
+    titulo: 'Listar Órdenes de Producción',
+    detalle: 'Consulta',
   },
   {
     id: null,

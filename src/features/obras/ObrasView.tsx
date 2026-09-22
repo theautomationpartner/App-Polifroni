@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { useTitulos } from '@/features/shared/useTitulos'
-import { TAMANOS_PAGINA } from '@/lib/config'
 import { buscarObras, getObra, mondayHabilitado } from '@/services/monday'
 import { COL } from '@/services/monday/columns'
 import { useDispatch } from '@/state/hooks'
@@ -21,6 +20,10 @@ import type { ObraFila } from '@/types'
  * NOMBRE (y por id de ítem pegado). Probado contra la API, Monday no acepta `contains_text` sobre
  * la cuenta corriente ni sobre la ubicación, así que buscar por cliente sólo sería posible
  * teniendo el tablero en memoria.
+ *
+ * Lo que devuelve la búsqueda se despliega SOBRE el campo, como en La Batea, y hay que elegir una:
+ * una lista suelta debajo deja seguir sin haber elegido nada, y todo lo que viene después necesita
+ * una obra. Elegir es el paso, no un detalle.
  */
 export function ObrasView() {
   const dispatch = useDispatch()
@@ -31,32 +34,47 @@ export function ObrasView() {
   /** Término con el que se trajo lo que se ve. Vacío = todavía no se buscó nada. */
   const [buscado, setBuscado] = useState('')
   const [resultados, setResultados] = useState<ObraFila[]>([])
-  const [tamano, setTamano] = useState<number>(TAMANOS_PAGINA[0])
-  const [pagina, setPagina] = useState(1)
+  /** El desplegable está abierto. Se cierra eligiendo, con Escape o tocando afuera. */
+  const [abierto, setAbierto] = useState(false)
   const [buscando, setBuscando] = useState(false)
   const [abriendo, setAbriendo] = useState(false)
   const [error, setError] = useState('')
 
   const sinToken = !mondayHabilitado()
 
-  const visibles = useMemo(
-    () => resultados.slice((pagina - 1) * tamano, pagina * tamano),
-    [resultados, pagina, tamano],
-  )
-  const hayMas = pagina * tamano < resultados.length
+  const caja = useRef<HTMLDivElement>(null)
+
+  /* Tocar afuera cierra, pero NO elige: lo buscado sigue ahí y el desplegable se vuelve a abrir
+     desde el renglón de abajo. Cerrar no es descartar. */
+  useEffect(() => {
+    if (!abierto) return
+    const fuera = (e: MouseEvent) => {
+      if (caja.current && !caja.current.contains(e.target as Node)) setAbierto(false)
+    }
+    const escape = (e: KeyboardEvent) => e.key === 'Escape' && setAbierto(false)
+    document.addEventListener('mousedown', fuera)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('mousedown', fuera)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [abierto])
 
   const buscar = async (texto: string) => {
     setError('')
-    setPagina(1)
     setBuscando(true)
     try {
-      const { filas } = await buscarObras(texto, 100)
+      const { filas } = await buscarObras(texto, 50)
       setResultados(filas)
       setBuscado(texto)
+      /* Se abre SIEMPRE, incluso con una sola coincidencia. Abrir la única sin preguntar ahorra un
+         click y a cambio arranca el proceso sobre una obra que nadie llegó a mirar. */
+      setAbierto(filas.length > 0)
     } catch {
       setError('No se pudo buscar en Monday. Probá de nuevo en unos segundos.')
       setResultados([])
       setBuscado(texto)
+      setAbierto(false)
     } finally {
       setBuscando(false)
     }
@@ -77,7 +95,7 @@ export function ObrasView() {
     setBuscado('')
     setResultados([])
     setError('')
-    setPagina(1)
+    setAbierto(false)
   }
 
   /** Abre la obra: se trae el ítem COMPLETO, que es lo que necesitan las etapas siguientes. */
@@ -113,8 +131,8 @@ export function ObrasView() {
       )}
 
       <div className="card unified-toolbar">
-        <div className="search-container">
-          <div className="search-wrapper">
+        <div className="search-container" ref={caja}>
+          <div className={`search-wrapper ${abierto ? 'search-wrapper--abierto' : ''}`}>
             <svg
               width="18"
               height="18"
@@ -137,6 +155,7 @@ export function ObrasView() {
               onChange={(e) => {
                 setTermino(e.target.value)
                 if (errorInput) setErrorInput('')
+                if (abierto) setAbierto(false)
               }}
               onKeyDown={(e) => e.key === 'Enter' && !buscando && onBuscar()}
             />
@@ -147,8 +166,52 @@ export function ObrasView() {
             role="status"
             aria-live="polite"
           >
-            {errorInput}
+            {errorInput ||
+              (buscado && resultados.length === 0 && !buscando
+                ? 'Sin resultados. Probá con parte del nombre o pegá el id.'
+                : '')}
           </span>
+
+          {abierto && resultados.length > 0 && (
+            <div className="results" role="listbox">
+              {resultados.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className="ritem"
+                  role="option"
+                  aria-selected="false"
+                  onClick={() => void abrir(f.id)}
+                >
+                  <span className="ritem-main">
+                    <span className="ritem-name">{f.nombre}</span>
+                    <span className="ritem-sub">
+                      <span>
+                        <i className="fas fa-hashtag" /> {f.idObra || f.id}
+                      </span>
+                      {f.cliente && (
+                        <span>
+                          <i className="fas fa-user" /> {f.cliente}
+                        </span>
+                      )}
+                      {f.ubicacion && (
+                        <span>
+                          <i className="fas fa-location-dot" /> {f.ubicacion}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  <span className="ritem-chips">
+                    <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={f.tipo} />
+                    <EstadoBadge
+                      label={titulo(COL.etapaProduccion, 'Etapa de Produccion')}
+                      estado={f.etapaProduccion}
+                    />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <button
@@ -204,100 +267,21 @@ export function ObrasView() {
         </div>
       )}
 
-      {buscado && !error && (
-        <div className="card">
-          <div className="obras-lista-cab">
-            <div>
-              <div className="obras-lista-t">
-                {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'}
-              </div>
-              <div className="obras-lista-sub">
-                Para «{buscado}»
-                {resultados.length > tamano && ` · página ${pagina}`}
-              </div>
-            </div>
-            <button type="button" className="obras-pager-btn" onClick={limpiar}>
-              <i className="fas fa-xmark" /> Limpiar
-            </button>
-          </div>
-
-          {resultados.length === 0 && !buscando && (
-            <div className="obras-vacio">
-              Sin resultados. Probá con parte del nombre, con el cliente o con el id.
-            </div>
-          )}
-
-          {visibles.map((f) => (
-            <button key={f.id} type="button" className="obra-row" onClick={() => void abrir(f.id)}>
-              <span className="obra-row-main">
-                <span className="obra-row-name">{f.nombre}</span>
-                <span className="obra-row-meta">
-                  <span>
-                    <i className="fas fa-hashtag" /> {f.idObra || f.id}
-                  </span>
-                  {f.ubicacion && (
-                    <span>
-                      <i className="fas fa-location-dot" /> {f.ubicacion}
-                    </span>
-                  )}
-                </span>
-              </span>
-              <span className="obra-row-cliente">
-                <span className="obra-row-cl-l">{titulo(COL.ctaCteCliente, 'Cliente')}</span>
-                <span className="obra-row-cl-v">{f.cliente || 'Sin cuenta corriente'}</span>
-              </span>
-              <span className="obra-row-chips">
-                <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={f.tipo} />
-                <EstadoBadge
-                  label={titulo(COL.etapaProduccion, 'Producción')}
-                  estado={f.etapaProduccion}
-                />
-                <EstadoBadge label={titulo(COL.etapaVenta, 'Venta')} estado={f.etapaVenta} />
-              </span>
-              <span className="obra-row-ir">
-                Abrir <i className="fas fa-arrow-right" />
-              </span>
-            </button>
-          ))}
-
-          {resultados.length > TAMANOS_PAGINA[0] && (
-            <div className="obras-pager">
-              <span className="obras-page-size">
-                Mostrar
-                <select
-                  value={tamano}
-                  onChange={(e) => {
-                    setTamano(Number(e.target.value))
-                    setPagina(1)
-                  }}
-                >
-                  {TAMANOS_PAGINA.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-                por página
-              </span>
-              <button
-                type="button"
-                className="obras-pager-btn"
-                onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                disabled={pagina === 1}
-              >
-                <i className="fas fa-angle-left" /> Anterior
-              </button>
-              <button
-                type="button"
-                className="obras-pager-btn"
-                onClick={() => setPagina((p) => p + 1)}
-                disabled={!hayMas}
-              >
-                Siguiente <i className="fas fa-angle-right" />
-              </button>
-            </div>
-          )}
-        </div>
+      {/* Cuando hay una búsqueda hecha, el recordatorio de abajo deja volver a abrir la lista sin
+          tener que buscar otra vez. Elegir sigue siendo obligatorio: no hay ningún camino que siga
+          sin una obra. */}
+      {buscado && resultados.length > 0 && !abierto && (
+        <button type="button" className="card obras-retomar" onClick={() => setAbierto(true)}>
+          <i className="fas fa-list-ul" />
+          <span>
+            <strong>{resultados.length}</strong>{' '}
+            {resultados.length === 1 ? 'obra encontrada' : 'obras encontradas'} para «{buscado}» ·
+            elegí una para seguir
+          </span>
+          <span className="obras-retomar-x" onClick={limpiar}>
+            Limpiar
+          </span>
+        </button>
       )}
 
       {abriendo && (

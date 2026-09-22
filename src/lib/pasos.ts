@@ -26,15 +26,6 @@ function requisitoPropio(paso: Paso, obra: Obra): Acceso {
     case 'etmo':
       return LIBRE
 
-    /* Generar la OP es LEER el ETMO: sin el documento no hay nada que leer. */
-    case 'op-final':
-      return obra.ordenEtmo.length > 0
-        ? LIBRE
-        : {
-            ok: false,
-            motivo: 'Primero hay que cargar la Orden ETMO: es el documento que lee la automatización.',
-          }
-
     /* Las dos últimas etapas hablan del MISMO documento: la OP final adjunta. Sin ella no hay
        nada que mandar al cliente ni nada que despachar al taller, y el archivo tiene que estar
        —no alcanza con que la obra figure como enviada alguna vez—.

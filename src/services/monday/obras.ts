@@ -16,12 +16,21 @@ import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types
  * Estructura del tablero (para pintar las etiquetas con SU color)
  * ──────────────────────────────────────────────────────────────────────────────── */
 
-interface ColumnaBoard {
+export interface EtiquetaBoard {
+  /** El índice es lo que la API acepta para filtrar; el texto es lo que se muestra. */
+  indice: number
+  texto: string
+  color: string
+}
+
+export interface ColumnaBoard {
   id: string
   title: string
   type: string
   /** texto de la etiqueta → color hexadecimal que le puso Monday. */
   colores: Record<string, string>
+  /** Las etiquetas en el orden del tablero, con su índice. Vacío si la columna no es de estado. */
+  etiquetas: EtiquetaBoard[]
 }
 
 interface SettingsStatus {
@@ -37,6 +46,7 @@ async function getEstructuraImpl(): Promise<Record<string, ColumnaBoard>> {
   const salida: Record<string, ColumnaBoard> = {}
   for (const c of d.boards[0]?.columns ?? []) {
     const colores: Record<string, string> = {}
+    const etiquetas: EtiquetaBoard[] = []
     if (c.type === 'status') {
       let s: SettingsStatus = {}
       try {
@@ -47,9 +57,11 @@ async function getEstructuraImpl(): Promise<Record<string, ColumnaBoard>> {
       for (const [idx, texto] of Object.entries(s.labels ?? {})) {
         const color = s.labels_colors?.[idx]?.color
         if (texto && color) colores[texto] = color
+        if (texto) etiquetas.push({ indice: Number(idx), texto, color: color ?? '' })
       }
+      etiquetas.sort((a, b) => a.indice - b.indice)
     }
-    salida[c.id] = { id: c.id, title: c.title, type: c.type, colores }
+    salida[c.id] = { id: c.id, title: c.title, type: c.type, colores, etiquetas }
   }
   return salida
 }
@@ -204,6 +216,8 @@ const COLS_FILA = [
   COL.tipo,
   COL.etapaProduccion,
   COL.etapaVenta,
+  COL.confirmacionOp,
+  COL.confirmacionTaller,
 ]
 
 function aFila(item: MondayItem, estructura: Record<string, ColumnaBoard>): ObraFila {
@@ -217,6 +231,8 @@ function aFila(item: MondayItem, estructura: Record<string, ColumnaBoard>): Obra
     tipo: estado(c, estructura, COL.tipo),
     etapaProduccion: estado(c, estructura, COL.etapaProduccion),
     etapaVenta: estado(c, estructura, COL.etapaVenta),
+    confirmacionOp: estado(c, estructura, COL.confirmacionOp),
+    confirmacionTaller: estado(c, estructura, COL.confirmacionTaller),
   }
 }
 
@@ -273,6 +289,41 @@ export async function buscarObras(termino: string, limite: number): Promise<Pagi
       }
     }`,
     { limit: limite, q: queryParams },
+  )
+
+  const estructura = await getEstructuraBoard()
+  const page = d.boards[0]?.items_page
+  return { filas: (page?.items ?? []).map((i) => aFila(i, estructura)), cursor: page?.cursor ?? null }
+}
+
+/**
+ * Obras filtradas por el valor de una o varias columnas de ESTADO.
+ *
+ * Los filtros van por ÍNDICE y no por texto: es lo único que la API acepta (`any_of`), y además
+ * sobrevive a que alguien renombre una etiqueta en el tablero. Varias columnas se combinan con Y
+ * —"confirmadas por el cliente y pendientes en el taller"—, y varios valores de una misma columna
+ * con O, que es como se lee un filtro cuando se marcan dos casillas.
+ */
+export async function listarPorEstado(
+  filtros: { columna: string; indices: number[] }[],
+  limite = 100,
+): Promise<PaginaObras> {
+  const rules = filtros
+    .filter((f) => f.indices.length > 0)
+    .map((f) => ({ column_id: f.columna, compare_value: f.indices, operator: 'any_of' }))
+
+  const d = await mondayApi<{
+    boards: { items_page: { cursor: string | null; items: MondayItem[] } }[]
+  }>(
+    `query ($limit: Int!, $q: ItemsQuery) {
+      boards(ids: [${BOARD_OBRAS}]) {
+        items_page(limit: $limit, query_params: $q) {
+          cursor
+          items { ${CAMPOS_FILA} }
+        }
+      }
+    }`,
+    { limit: limite, q: rules.length > 0 ? { operator: 'and', rules } : {} },
   )
 
   const estructura = await getEstructuraBoard()
