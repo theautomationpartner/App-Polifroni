@@ -39,6 +39,14 @@ export interface AppState {
   paso: Paso
   /** La obra en la que se está trabajando. Sin obra elegida, los pasos siguientes no se habilitan. */
   obra: Obra | null
+  /**
+   * Por dónde se entró al proceso.
+   *
+   * La barra de etapas muestra desde acá en adelante, renumerando desde 1. Quien elige "Generar la
+   * OP final" en el paso 1 no tiene por delante cinco etapas sino tres, y dos círculos verdes de
+   * cosas que no hizo no son información: son ruido que hay que descontar mentalmente cada vez.
+   */
+  entrada: Paso
   /** Acción que falló contra Monday, para el aviso global ("no se pudo <accion>"). */
   errorMonday: string | null
 }
@@ -47,6 +55,7 @@ export const initialState: AppState = {
   proceso: null,
   paso: 'obra',
   obra: null,
+  entrada: 'obra',
   errorMonday: null,
 }
 
@@ -68,19 +77,26 @@ export function reducer(state: AppState, action: Action): AppState {
 
     /* A dónde se puede ir NO lo decide por dónde pasó el usuario sino el estado de la obra en el
        tablero (ver 'lib/pasos'), así que acá no hay progreso que recordar. */
+    /* Saliendo del paso 1 se fija POR DÓNDE se entró: es la decisión que toma quien elige la
+       acción, y la que la barra de etapas usa para saber qué mostrar. Después, moverse dentro del
+       proceso no la cambia. */
     case 'goto':
-      return { ...state, paso: action.paso }
+      return {
+        ...state,
+        paso: action.paso,
+        entrada: state.paso === 'obra' && action.paso !== 'obra' ? action.paso : state.entrada,
+      }
 
     /* Elegir una obra REINICIA el avance: los pasos hablan de esta obra y de ninguna otra, así que
        lo alcanzado con la anterior no se hereda. */
     case 'setObra':
-      return { ...state, obra: action.obra, paso: 'etmo' }
+      return { ...state, obra: action.obra, paso: 'etmo', entrada: 'etmo' }
 
     case 'refrescarObra':
       return { ...state, obra: action.obra }
 
     case 'salirDeLaObra':
-      return { ...state, obra: null, paso: 'obra' }
+      return { ...state, obra: null, paso: 'obra', entrada: 'obra' }
 
     case 'errorMonday':
       return { ...state, errorMonday: action.accion }

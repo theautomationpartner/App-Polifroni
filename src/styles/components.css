@@ -1495,3 +1495,79 @@ td {
 .paso-aviso-flot {
   margin-top: 12px;
 }
+
+/* ── Caja de encabezado apagada (lo que todavía no está) ──────────────────────
+   Misma silueta que un selector, pero sin borde azul ni cursor: se ve que es el lugar de algo y
+   que ese algo no está. */
+.selbox--off {
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  cursor: default;
+  background: #f8fafc;
+}
+.selbox--off .selbox-val i {
+  color: #cbd5e1;
+}
+.selbox-soon {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #b6c2d2;
+  white-space: nowrap;
+}
+
+/* ── Anillo de avance ─────────────────────────────────────────────────────── */
+:root {
+  --donut-track: #e6e9f0;
+}
+.donut {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.donut--sm {
+  width: 44px;
+  height: 44px;
+}
+.donut--md {
+  width: 92px;
+  height: 92px;
+}
+.donut-in {
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+.donut--sm .donut-in {
+  width: 34px;
+  height: 34px;
+}
+.donut--md .donut-in {
+  width: 72px;
+  height: 72px;
+}
+.donut-v {
+  font-weight: 800;
+}
+.donut--sm .donut-v {
+  font-size: 10px;
+}
+.donut--md .donut-v {
+  font-size: 19px;
+  letter-spacing: -0.3px;
+}
+.donut-l {
+  margin-top: 2px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}

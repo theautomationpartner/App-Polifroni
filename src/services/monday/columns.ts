@@ -86,7 +86,7 @@ export const COL = {
   mjsEnviadoCliente: 'color_mm5jsjea',
 
   /* ── Paso 4 · Confirmación y taller ───────────────────────────────────────── */
-  /** Confirmacion de la Op (status): Pend de Confirmar | CONFIRMADO OP | NO CONFIRMAOD. */
+  /** Confirmacion de la Op (status): Pend de Confirmar | CONFIRMADO OP | NO CONFIRMADO. */
   confirmacionOp: 'color_mm73rxg7',
   /** 🤖Estado Envio OP TALLER (status): A Enviar | Enviando | Enviado | Error en Envio. */
   estadoEnvioTaller: 'color_mkzrjgcj',
@@ -106,7 +106,10 @@ export const ETIQUETA = {
   /* Tal cual figura en el tablero, con su error de tipeo incluido: se compara contra lo que
      Monday devuelve, no contra lo que debería decir. */
   confirmado: 'CONFIRMADO OP',
-  noConfirmado: 'NO CONFIRMAOD',
+  /* Escrito TAL CUAL está en el tablero, verificado contra `settings_str`. Estuvo un tiempo como
+     "NO CONFIRMAOD" y esa letra de más rompía en silencio la única regla que depende de ella: una
+     OP rechazada por el cliente no se detectaba como rechazada y el paso al taller quedaba abierto. */
+  noConfirmado: 'NO CONFIRMADO',
   pendConfirmar: 'Pend de Confirmar',
   tallerEnviando: 'Enviando',
   tallerEnviado: 'Enviado',

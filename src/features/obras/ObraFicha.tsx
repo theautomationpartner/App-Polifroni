@@ -1,4 +1,5 @@
 import { EstadoBadge } from '@/components/ui/Aviso'
+import { Donut } from '@/components/ui/Donut'
 import { useTitulos } from '@/features/shared/useTitulos'
 import { importe } from '@/lib/format'
 import { COL } from '@/services/monday/columns'
@@ -114,45 +115,8 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
         {children && <div className="obra-ficha-acts">{children}</div>}
       </div>
 
-      {/* La plata, que es lo primero que se mira al abrir una obra. */}
-      <div className="plata">
-        <div className="plata-cards">
-          <div className="plata-card">
-            <div className="plata-l">Total obra pactado</div>
-            <div className="plata-v">{importe(obra.totalPactado) || '—'}</div>
-          </div>
-          <div className="plata-card">
-            <div className="plata-l">Cancelado</div>
-            <div className="plata-v plata-v--ok">
-              {cancelado === null ? '—' : importe(String(cancelado))}
-            </div>
-          </div>
-          <div className="plata-card">
-            <div className="plata-l">Saldo</div>
-            <div className="plata-v plata-v--deuda">{importe(obra.saldo) || '—'}</div>
-          </div>
-        </div>
-
-        {pct !== null && (
-          <div className="plata-barra">
-            <span className="plata-barra-l">Cancelado</span>
-            {/* La barra y su número van en la MISMA línea: el porcentaje pegado al final del
-                relleno se lee de un vistazo, sin tener que buscarlo en la otra punta. */}
-            <div className="plata-track">
-              <div
-                className={`plata-fill ${pct >= 99.5 ? 'plata-fill--full' : ''}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className={`plata-pct ${pct >= 99.5 ? 'plata-pct--full' : ''}`}>
-              {pct.toFixed(pct % 1 === 0 ? 0 : 1)}%
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Primero el CLIENTE y después la obra: la pregunta que se hace al abrir una obra es "¿de
-          quién es?", y recién con eso resuelto importa dónde queda y cuándo se coloca. */}
+      {/* El CLIENTE primero. La pregunta que se hace al abrir una obra es "¿de quién es?", y recién
+          con eso resuelto importan la plata, dónde queda y cuándo se coloca. */}
       <section className="obra-bloque">
         <h3 className="obra-bloque-t">Datos del cliente</h3>
         <div className="obra-vinculos">
@@ -173,6 +137,37 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
 
       <section className="obra-bloque">
         <h3 className="obra-bloque-t">Datos de la obra</h3>
+
+        {/* La plata, con el anillo. Un anillo dice "qué parte del total es" mejor que una barra, y
+            adentro va el porcentaje y al lado el importe, que es con lo que se decide. */}
+        <div className="plata">
+          {pct !== null && (
+            <div className="plata-donut">
+              <Donut
+                porcentaje={pct}
+                color={pct >= 99.5 ? '#00c875' : '#0073ea'}
+                etiqueta="Cancelado"
+              />
+            </div>
+          )}
+          <div className="plata-cards">
+            <div className="plata-card">
+              <div className="plata-l">{titulo(COL.totalPactado, 'Total obra pactado')}</div>
+              <div className="plata-v">{importe(obra.totalPactado) || '—'}</div>
+            </div>
+            <div className="plata-card">
+              <div className="plata-l">Cancelado</div>
+              <div className="plata-v plata-v--ok">
+                {cancelado === null ? '—' : importe(String(cancelado))}
+              </div>
+            </div>
+            <div className="plata-card">
+              <div className="plata-l">{titulo(COL.saldo, 'Saldo')}</div>
+              <div className="plata-v plata-v--deuda">{importe(obra.saldo) || '—'}</div>
+            </div>
+          </div>
+        </div>
+
         <div className="obra-datos-grid">
           <Dato
             icono="fa-location-dot"

@@ -110,8 +110,11 @@ function SelectorProceso() {
  * derecha, el avance por etapas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { paso, obra } = useApp()
+  const { paso, obra, entrada } = useApp()
   const dispatch = useDispatch()
+  /* La barra muestra DESDE donde se entró, renumerando desde 1: las etapas que quedaron atrás no
+     se hicieron, se saltearon, y pintarlas de verde diría que se hicieron. */
+  const desde = indiceDe(entrada)
 
   return (
     <header className="paso-header">
@@ -128,28 +131,24 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
               <LogoEmpresa />
             </button>
 
-            <TopSel label="Proceso">
+            <TopSel label="Operación">
               <SelectorProceso />
             </TopSel>
 
-            <TopSel label="Obra">
-              {/* Es un botón: desde cualquier etapa se vuelve a la lista para cambiar de obra. */}
-              <button
-                type="button"
-                className="selbox selbox--fix selbox--btn"
-                title={obra ? 'Volver a la lista de obras' : 'Elegí una obra para empezar'}
-                onClick={() => dispatch({ type: 'salirDeLaObra' })}
-              >
-                {obra ? (
-                  <span className="selbox-val">
-                    <i className="fas fa-helmet-safety" />
-                    <span className="selbox-val-txt">{obra.nombre}</span>
-                  </span>
-                ) : (
-                  <span className="selbox-ph">Seleccionar...</span>
-                )}
-                <i className="fas fa-rotate-left" />
-              </button>
+            {/* Quién está usando la app. Todavía no hay sesión, así que la caja existe apagada: es
+                el lugar donde va a ir, y verla vacía dice eso mejor que no verla.
+
+                Acá estaba la caja de la obra, que al tocarla volvía a la lista. Se fue: parecía un
+                selector y era un "empezar de nuevo", y eso se descubría perdiendo lo que estabas
+                haciendo. Para cambiar de obra se vuelve por el pie del paso o por la marca. */}
+            <TopSel label="Usuario">
+              <div className="selbox selbox--fix selbox--off" aria-disabled="true">
+                <span className="selbox-val">
+                  <i className="fas fa-user" />
+                  <span className="selbox-val-txt">Sin sesión</span>
+                </span>
+                <span className="selbox-soon">Próximamente</span>
+              </div>
             </TopSel>
 
             {children}
@@ -161,10 +160,10 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
             disponible —cosa que un círculo apagado no sabe hacer—. */}
         <div className="paso-header-steps">
           <Stepper
-            steps={ETAPAS}
-            current={indiceDe(paso)}
+            steps={ETAPAS.slice(desde)}
+            current={indiceDe(paso) - desde}
             className="stepper--tight"
-            maxReached={topePermitido(obra)}
+            maxReached={topePermitido(obra) - desde}
           />
         </div>
       </div>
@@ -188,15 +187,23 @@ interface PasoTituloProps {
  * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
  */
 export function PasoTitulo({ numero, titulo, descripcion }: PasoTituloProps) {
-  /* El selector va ARRIBA y el título numerado abajo, en ese orden, porque ese número no titula la
-     pantalla: titula el trabajo que viene justo debajo de él. Al revés, el "1" quedaba señalando al
-     selector de acción, que no es el paso 1 de nada. */
+  const { paso, entrada } = useApp()
+  const esPrimero = paso === 'obra'
+  /* El número que se ve es el que muestra la barra de etapas: si el proceso arranca en la 3, esa
+     es la 1. Dos numeraciones distintas para la misma etapa sería peor que no numerar. */
+  const propio = numero - indiceDe(entrada)
+  /* El selector de acción va SÓLO en el paso 1: ahí es donde se decide qué se viene a hacer. En
+     las etapas siguientes esa decisión ya está tomada, y repetir la pregunta en cada pantalla la
+     convertía en un control de navegación disfrazado de pregunta.
+
+     Va ARRIBA y el título numerado abajo, en ese orden, porque ese número no titula la pantalla:
+     titula el trabajo que viene justo debajo de él. */
   return (
     <>
-      <AccionSelect />
+      {esPrimero && <AccionSelect />}
       <header className="header-section">
         <div className="step-indicator-main">
-          <div className="step-badge-main">{numero}</div>
+          <div className="step-badge-main">{propio}</div>
           <div className="step-details-main">
             <h1 className="step-title-main">{titulo}</h1>
             {descripcion && <p className="step-desc-main">{descripcion}</p>}

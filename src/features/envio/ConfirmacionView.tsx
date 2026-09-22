@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { VisorPdf } from '@/components/ui/VisorPdf'
 import { useObra } from '@/features/obras/ObraFicha'
@@ -6,7 +6,7 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { puedeDespacharAlTaller } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
-import { ETIQUETA, RESPONSABLE_RECHAZO } from '@/services/monday'
+import { ETIQUETA, RESPONSABLE_RECHAZO, getActividades } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
 
 /**
@@ -22,6 +22,8 @@ export function ConfirmacionView() {
   const refrescar = useRefrescarObra()
   const { estado, correr, seguirEsperando, enCurso, noArranco } = useEnviarTaller(obra)
   const [refrescando, setRefrescando] = useState(false)
+  /** Lo último que quedó escrito en la obra. Es donde el escenario deja el motivo del rechazo. */
+  const [motivo, setMotivo] = useState<string>('')
 
   const confirmacion = obra.confirmacionOp.texto
   const confirmada = confirmacion === ETIQUETA.confirmado
@@ -34,6 +36,31 @@ export function ConfirmacionView() {
   /* Ante un rechazo, el escenario menciona a quien sigue el material de la obra. Se anticipa acá
      para que quien está mirando la pantalla sepa a quién le llegó el aviso. */
   const responsable = RESPONSABLE_RECHAZO[obra.tipo.texto] ?? null
+
+  /* El motivo del rechazo no vive en una columna: el escenario lo deja como update de la obra.
+     Sólo se muestra el update que HABLA del rechazo. El último update a secas no sirve: en la obra
+     conviven avisos de otras automatizaciones —"⚠️Datos Faltantes"— y presentar uno de ésos bajo el
+     rótulo "Motivo" sería inventarle al cliente una razón que no dio. Si no aparece ninguno, el
+     cartel va igual sin él: que rechazó es lo que hay que ver. */
+  useEffect(() => {
+    if (!rechazada) {
+      setMotivo('')
+      return
+    }
+    let vivo = true
+    void getActividades(obra.id, 8)
+      .then((lista) => {
+        const texto =
+          lista
+            .map((a) => htmlATexto(a.body).trim())
+            .find((t) => t.length > 0 && /rechaz|no confirm|motivo/i.test(t)) ?? ''
+        if (vivo) setMotivo(texto.slice(0, 400))
+      })
+      .catch(() => {})
+    return () => {
+      vivo = false
+    }
+  }, [rechazada, obra.id])
 
   const actualizar = async () => {
     setRefrescando(true)
@@ -90,29 +117,58 @@ export function ConfirmacionView() {
             </button>
           </div>
 
+          {/* El estado de la confirmación NO es un renglón más: decide si esta obra sigue o se
+              frena. Por eso se muestra como un cartel que ocupa lugar y se lee de lejos, con una
+              sola frase arriba y el detalle abajo. */}
           <div className="resultado">
             {confirmada && (
-              <Aviso tono="ok">
-                El cliente confirmó la Orden de Producción. Ya se puede mandar al taller.
-              </Aviso>
+              <div className="veredicto veredicto--ok">
+                <i className="fas fa-circle-check" />
+                <div>
+                  <p className="veredicto-t">El cliente confirmó la orden</p>
+                  <p className="veredicto-d">Ya se puede mandar al taller.</p>
+                </div>
+              </div>
             )}
+
             {!confirmada && !rechazada && (
-              <Aviso tono="info">
-                Todavía no contestó. Cuando confirme desde el formulario, el tablero lo registra y
-                se habilita el envío al taller.
-              </Aviso>
+              <div className="veredicto veredicto--pend">
+                <i className="fas fa-hourglass-half" />
+                <div>
+                  <p className="veredicto-t">Pendiente de confirmar</p>
+                  <p className="veredicto-d">
+                    El cliente todavía no contestó, así que <strong>no se puede mandar al taller</strong>.
+                    Cuando confirme desde el formulario, el tablero lo registra y el botón se habilita.
+                  </p>
+                </div>
+              </div>
             )}
+
             {rechazada && (
-              <Aviso tono="err">
-                El cliente rechazó la orden. El motivo que cargó queda en el registro de la obra
-                {responsable ? (
-                  <>
-                    , con la mención automática a <strong>{responsable}</strong> por ser una obra de{' '}
-                    {obra.tipo.texto}
-                  </>
-                ) : null}
-                .
-              </Aviso>
+              <div className="veredicto veredicto--mal">
+                <i className="fas fa-circle-xmark" />
+                <div>
+                  <p className="veredicto-t">El cliente NO confirmó la orden</p>
+                  <p className="veredicto-d">
+                    Esta obra <strong>no se manda al taller</strong>. Hay que rehacer la orden y
+                    volver a enviarla
+                    {responsable ? (
+                      <>
+                        {' '}
+                        —el aviso ya le llegó a <strong>{responsable}</strong>, por ser una obra de{' '}
+                        {obra.tipo.texto}—
+                      </>
+                    ) : null}
+                    .
+                  </p>
+                  {motivo && (
+                    <p className="veredicto-motivo">
+                      <span className="veredicto-motivo-l">Motivo</span>
+                      {motivo}
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

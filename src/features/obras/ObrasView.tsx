@@ -208,14 +208,48 @@ export function ObrasView() {
 
       {error && <Aviso tono="err">{error}</Aviso>}
 
-      {/* Antes de buscar no hay lista, hay una indicación. */}
+      {/* Antes de buscar no hay lista: hay una indicación y, debajo, el contorno de lo que va a
+          aparecer. Los renglones fantasma no son adorno —ocupan el alto que después va a ocupar el
+          resultado, así la pantalla no pega un salto al buscar— y mientras el índice se arma dicen
+          que algo está pasando, en vez de dejar medio metro de blanco. */}
       {!buscado && !error && (
         <div className="card obras-arranque">
-          <i className="fas fa-magnifying-glass obras-arranque-ic" />
-          <p className="obras-arranque-t">Buscá la obra para empezar</p>
-          <p className="obras-arranque-s">
-            Por nombre, por cliente, por ubicación o pegando el id del ítem.
-          </p>
+          <div className="obras-arranque-in">
+            <i className="fas fa-magnifying-glass obras-arranque-ic" />
+            <p className="obras-arranque-t">Buscá la obra para empezar</p>
+            <p className="obras-arranque-s">
+              Por nombre, por cliente, por ubicación o pegando el id del ítem.
+            </p>
+            <p className="obras-arranque-x">
+              {catalogo.cargando ? (
+                <>
+                  <i className="fas fa-circle-notch spin" /> Preparando la búsqueda…{' '}
+                  {catalogo.filas.length} obras listas
+                </>
+              ) : catalogo.completo ? (
+                <>
+                  <i className="fas fa-bolt" /> {catalogo.filas.length} obras listas para buscar
+                </>
+              ) : null}
+            </p>
+          </div>
+
+          <div className="obras-fantasma" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div className="obra-sk" key={i}>
+                <span className="obra-row-main">
+                  <span className="sk sk--t" />
+                  <span className="sk sk--s" />
+                </span>
+                <span className="sk sk--m" />
+                <span className="obra-row-chips">
+                  <span className="sk sk--chip" />
+                  <span className="sk sk--chip" />
+                </span>
+                <span className="sk sk--ir" />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
