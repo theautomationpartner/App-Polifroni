@@ -12,6 +12,7 @@ import {
   getUrlArchivo,
   guardarObservaciones,
   limpiarArchivos,
+  limpiarEstado,
   subirArchivo,
 } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
@@ -251,6 +252,22 @@ export function EtmoView() {
     if (!(await guardar())) return
     await generacion.correr()
   }
+
+  /**
+   * La orden nueva todavía no se mandó a nadie.
+   *
+   * Los estados de envío hablan de un documento que ya no existe: dejarlos en "Enviado" después de
+   * regenerar hace que la etapa siguiente muestre como hecho algo que hay que volver a hacer, y
+   * ése es el tipo de error que se descubre cuando el cliente reclama. Se vacían, que no es lo
+   * mismo que ponerles "no enviado": vacío dice "acá todavía no pasó nada".
+   */
+  useEffect(() => {
+    if (generacion.estado.fase !== 'listo') return
+    void Promise.all([
+      limpiarEstado(obra.id, COL.estadoEnvioOp).catch(() => {}),
+      limpiarEstado(obra.id, COL.mjsEnviadoCliente).catch(() => {}),
+    ])
+  }, [generacion.estado.fase, obra.id])
 
   /* Generada la orden, se pasa solo al envío: es donde se ve el PDF que acaba de salir y donde
      está lo único que queda por hacer con él. */

@@ -185,8 +185,11 @@ interface PasoTituloProps {
  * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
  */
 export function PasoTitulo({ titulo, descripcion }: PasoTituloProps) {
-  const { paso, entrada } = useApp()
-  const esPrimero = paso === 'obra'
+  const { paso, obra, entrada } = useApp()
+  /* El selector se ve mientras no haya obra elegida, esté la acción elegida o no. Antes
+     desaparecía apenas se elegía una: la decisión quedaba tomada y sin forma de cambiarla, cuando
+     todavía no había pasado nada. Elegida la obra sí se va: ahí ya se está trabajando. */
+  const esPrimero = paso === 'obra' || !obra
   /* El número SALE del paso, no se lo pasa cada vista.
      Antes era un `numero={4}` escrito a mano en cada pantalla, y esa copia se volvió mentira sola:
      al fusionar dos etapas, el 5 escrito en la última se restaba contra una barra que ahora tiene

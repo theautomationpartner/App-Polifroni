@@ -434,6 +434,27 @@ export async function limpiarArchivos(itemId: string, columna: string): Promise<
   )
 }
 
+/**
+ * Deja una columna de estado SIN valor.
+ *
+ * No es lo mismo que ponerle una etiqueta de "no enviado": vacío significa "acá todavía no pasó
+ * nada", y es lo único honesto que se puede decir de una orden recién generada. Va con
+ * `change_column_value` porque borrar pide un objeto (`{}`), no un texto.
+ */
+export async function limpiarEstado(itemId: string, columna: string): Promise<void> {
+  await mondayApi(
+    `mutation ($valor: JSON!) {
+      change_column_value(
+        board_id: ${BOARD_OBRAS}
+        item_id: ${itemId}
+        column_id: "${columna}"
+        value: $valor
+      ) { id }
+    }`,
+    { valor: JSON.stringify({}) },
+  )
+}
+
 /** Cambia una columna status por su etiqueta (la etiqueta tiene que existir en el tablero). */
 export async function setEstado(itemId: string, columna: string, etiqueta: string): Promise<void> {
   await mondayApi(

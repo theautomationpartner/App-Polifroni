@@ -107,6 +107,9 @@ export function ObrasView() {
 
   /** Abre la obra: se trae el ítem COMPLETO, que es lo que necesitan las etapas siguientes. */
   const abrir = async (id: string) => {
+    /* Se cierra ANTES de empezar a traer: si no, la lista queda flotando debajo de la ventana de
+       "Abriendo la obra" y las dos se pisan. Elegida una, la lista ya no tiene nada que ofrecer. */
+    setAbierto(false)
     setAbriendo(true)
     try {
       const obra = await getObra(id)

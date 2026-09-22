@@ -6,7 +6,7 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { puedeDespacharAlTaller } from '@/lib/pasos'
 import { fechaHora, htmlATexto } from '@/lib/texto'
-import { ETIQUETA, RESPONSABLE_RECHAZO, getActividades } from '@/services/monday'
+import { ETIQUETA, getActividades } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
 
 /**
@@ -33,9 +33,6 @@ export function ConfirmacionView() {
   const despacho = puedeDespacharAlTaller(obra)
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
   const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
-  /* Ante un rechazo, el escenario menciona a quien sigue el material de la obra. Se anticipa acá
-     para que quien está mirando la pantalla sepa a quién le llegó el aviso. */
-  const responsable = RESPONSABLE_RECHAZO[obra.tipo.texto] ?? null
 
   /* El motivo del rechazo no vive en una columna: el escenario lo deja como update de la obra.
      Sólo se muestra el update que HABLA del rechazo. El último update a secas no sirve: en la obra
@@ -85,16 +82,12 @@ export function ConfirmacionView() {
       />
 
 
-      <div className="paso-grid">
+      <div className="paso-grid paso-grid--parejo">
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-clipboard-check" /> Respuesta del cliente
           </div>
-          <p className="panel-d">
-            Lo que el cliente marcó en el formulario queda en la columna{' '}
-            <strong>Confirmacion de la Op</strong>. Esta pantalla la lee del tablero: no se completa
-            a mano.
-          </p>
+          <p className="panel-d">Esta pantalla la lee del tablero: no se completa a mano.</p>
 
           <div className="obs-pie" style={{ marginTop: 0 }}>
             <EstadoBadge label="Confirmación" estado={obra.confirmacionOp} />
@@ -148,17 +141,13 @@ export function ConfirmacionView() {
                 <i className="fas fa-circle-xmark" />
                 <div>
                   <p className="veredicto-t">El cliente NO confirmó la orden</p>
+                  {/* No se nombra a quién le llegó el aviso: hoy NINGUNA automatización avisa, y
+                      decir que a alguien le llegó algo que no le llegó es peor que no decir nada
+                      —se confía en que el tema está en manos de otro y nadie lo mira—. Cuando ese
+                      aviso exista, acá vuelve el nombre. */}
                   <p className="veredicto-d">
                     Esta obra <strong>no se manda al taller</strong>. Hay que rehacer la orden y
-                    volver a enviarla
-                    {responsable ? (
-                      <>
-                        {' '}
-                        —el aviso ya le llegó a <strong>{responsable}</strong>, por ser una obra de{' '}
-                        {obra.tipo.texto}—
-                      </>
-                    ) : null}
-                    .
+                    volver a enviarla.
                   </p>
                   {motivo && (
                     <p className="veredicto-motivo">
@@ -176,11 +165,6 @@ export function ConfirmacionView() {
           <div className="panel-t">
             <i className="fas fa-screwdriver-wrench" /> Despacho al taller
           </div>
-          <p className="panel-d">
-            Se dispara el escenario con el id de esta obra. La app no toca ninguna columna: el estado
-            lo escribe el escenario, que es el que sabe si el mensaje salió.
-          </p>
-
           <div className="obs-pie" style={{ marginTop: 0, marginBottom: 12 }}>
             <EstadoBadge label="Envío al taller" estado={obra.estadoEnvioTaller} />
           </div>

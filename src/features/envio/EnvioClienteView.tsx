@@ -90,16 +90,12 @@ export function EnvioClienteView() {
       />
 
 
-      <div className="paso-grid">
+      <div className="paso-grid paso-grid--parejo">
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-paper-plane" /> Envío del documento
           </div>
-          <p className="panel-d">
-            El destinatario y la vía se guardan en el tablero, que es de donde los lee el escenario.
-          </p>
-
-          <div className="obra-vinculos" style={{ marginTop: 0 }}>
+          <div className="obra-vinculos envio-dest">
             <div className="vinculo">
               <span className="vinculo-ic">
                 <i className="fas fa-user-check" />
@@ -300,10 +296,9 @@ export function EnvioClienteView() {
       <PasoNav
         siguiente="Ver confirmación del cliente"
         bloqueado={!accesoALaConfirmacion.ok}
-        nota={
-          accesoALaConfirmacion.motivo ||
-          'El cliente confirma o rechaza desde el formulario que le llega en el mensaje.'
-        }
+        /* Sin nota cuando se puede pasar: explicar que el cliente contesta por el formulario no
+           cambia nada de lo que hay que hacer acá, y ocupa el renglón donde está el botón. */
+        nota={accesoALaConfirmacion.motivo || undefined}
       />
     </section>
   )

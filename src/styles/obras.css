@@ -2266,3 +2266,42 @@
 .pide-obra > i {
   color: #2563eb;
 }
+
+/* ── Dos columnas parejas, y el paso entero en una pantalla ───────────────────
+   En el envío, las dos cajas son una sola cosa: el documento que se manda y a quién se manda. Con
+   alturas distintas se leían como dos bloques sueltos, y encima el visor —que crecía con el
+   documento— empujaba los botones de Volver y Siguiente fuera de la pantalla.
+
+   Ahora las dos columnas miden lo mismo y el visor se acomoda al hueco que queda, así que el pie
+   del paso se ve sin tener que scrollear. El que scrollea, si el documento tiene varias hojas, es
+   el visor. */
+.paso-grid--parejo {
+  align-items: stretch;
+}
+.paso-grid--parejo > .card {
+  display: flex;
+  flex-direction: column;
+}
+.paso-grid--parejo .pdfv {
+  flex: 1;
+  min-height: 0;
+  /* Más bajo que el visor de las otras etapas: acá abajo hay un pie con los botones del paso, y es
+     a ellos a quienes les tiene que quedar lugar. */
+  height: auto;
+  max-height: none;
+}
+/* ALTO FIJO, no mínimo. Con `min-height` el visor seguía creciendo con el documento —una orden de
+   una hoja medía 808px— y empujaba el pie del paso 400px por debajo de la pantalla. Fijando la
+   caja, el que scrollea es el visor y los botones del paso quedan siempre a la vista. */
+.paso-grid--parejo > .card:last-child {
+  height: clamp(320px, 52vh, 560px);
+}
+
+/* Destinatario y vía: dos campos de la MISMA decisión —a quién y por dónde—, así que van pegados
+   y no separados como si fueran dos bloques distintos. */
+.envio-dest {
+  margin-top: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
