@@ -11,8 +11,6 @@
       rel="stylesheet"
     />
     <style>
-      /* Los mismos tokens que la app de Obras (src/styles/base.css). Si allá cambia un color,
-         cambiarlo acá: son las dos caras del mismo sistema. */
       :root {
         --primary-blue: #0073ea;
         --primary-blue-hover: #0060c2;
@@ -40,9 +38,9 @@
         min-height: 100vh;
         display: flex;
         justify-content: center;
-        /* Arriba en el teléfono (que es de donde va a entrar), centrado en pantalla grande. */
-        align-items: flex-start;
-        padding: 24px 16px 40px;
+        /* Cambiado a center para evitar empujar la caja hacia abajo y generar scroll */
+        align-items: center;
+        padding: 16px;
       }
 
       .caja {
@@ -50,34 +48,28 @@
         border: 1px solid var(--border-suave);
         border-radius: 16px;
         box-shadow: var(--sombra);
-        padding: 28px 24px;
+        /* Reducido para ahorrar espacio vertical */
+        padding: 22px 24px;
         width: 100%;
         max-width: 440px;
       }
 
       /* ===== Encabezado ===== */
-      .marca {
-        font-size: 20px;
-        font-weight: 800;
-        letter-spacing: 1.5px;
-        color: var(--primary-blue);
-        text-align: center;
-      }
       .cab {
         text-align: center;
-        padding-bottom: 20px;
-        margin-bottom: 22px;
+        padding-bottom: 12px;
+        margin-bottom: 16px;
         border-bottom: 1px solid var(--border-suave);
       }
       .cab .fecha {
-        margin-top: 10px;
+        margin-top: 8px;
         font-size: 12.5px;
         color: var(--text-gray);
       }
 
       /* ===== Saludo ===== */
       .saludo {
-        margin-bottom: 24px;
+        margin-bottom: 16px;
       }
       .saludo h1 {
         font-size: 19px;
@@ -86,9 +78,9 @@
         line-height: 1.3;
       }
       .saludo p {
-        margin-top: 10px;
+        margin-top: 8px;
         font-size: 14.5px;
-        line-height: 1.6;
+        line-height: 1.5;
         color: var(--text-gray);
       }
       .saludo strong {
@@ -104,18 +96,19 @@
         text-transform: uppercase;
         letter-spacing: 0.4px;
         color: var(--text-gray);
-        margin-bottom: 10px;
+        margin-bottom: 8px;
       }
       .opciones {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
       }
       .opcion {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 15px 16px;
+        /* Achicado para evitar scroll vertical */
+        padding: 12px 16px;
         border: 1px solid var(--border);
         border-radius: 12px;
         background: #fff;
@@ -137,8 +130,6 @@
         cursor: pointer;
         accent-color: var(--primary-blue);
       }
-      /* La opción elegida se pinta con el color de su significado, igual que las etiquetas del
-         tablero: verde lo confirmado, rojo lo rechazado. */
       .opcion:has(input:checked) {
         border-color: var(--green);
         background: #f1fbf5;
@@ -167,7 +158,7 @@
 
       /* ===== Motivo del rechazo ===== */
       .motivo {
-        margin-top: 18px;
+        margin-top: 16px;
       }
       .motivo label {
         display: block;
@@ -177,8 +168,8 @@
       }
       .motivo textarea {
         width: 100%;
-        min-height: 96px;
-        padding: 12px 14px;
+        min-height: 80px;
+        padding: 10px 14px;
         border: 1px solid var(--tint-input-bd);
         border-radius: 10px;
         background: var(--tint-input);
@@ -194,7 +185,7 @@
         background: #fff;
       }
       .motivo .ayuda {
-        margin-top: 8px;
+        margin-top: 6px;
         font-size: 12px;
         color: var(--text-gray);
         line-height: 1.5;
@@ -206,8 +197,8 @@
       /* ===== Botón ===== */
       .enviar {
         width: 100%;
-        height: 48px;
-        margin-top: 24px;
+        height: 44px;
+        margin-top: 16px;
         border: none;
         border-radius: 8px;
         background: var(--primary-blue);
@@ -228,9 +219,9 @@
       }
 
       .pie {
-        margin-top: 18px;
+        margin-top: 14px;
         font-size: 12px;
-        line-height: 1.5;
+        line-height: 1.4;
         color: var(--text-gray);
         text-align: center;
       }
@@ -239,34 +230,51 @@
   <body>
     <div class="caja">
       <div class="cab">
-        <!-- Si preferís el logo en imagen, reemplazá esta línea por:
-             <img src="URL_DEL_LOGO" alt="Polifroni" style="height:52px" /> -->
-        <div class="marca">POLIFRONI</div>
+        <!-- El logo lo publica la APP, no Drive.
+
+             Un enlace de Drive sólo sirve si el archivo está compartido con "cualquiera con el
+             enlace", y aun así Drive contesta con un redirect que el navegador del cliente no
+             sigue: por eso llegaba la imagen rota. Medido contra los dos:
+
+               drive.google.com/thumbnail?id=…  →  HTTP 302 · 0 bytes
+               app-polifroni.vercel.app/…png    →  HTTP 200 · image/png · 61.679 bytes
+
+             Ventaja de rebote: cambiar public/logo-polifroni.png en la app cambia también este
+             formulario, sin tocarlo. -->
+        <img
+          src="https://app-polifroni.vercel.app/logo-polifroni.png"
+          alt="Polifroni"
+          width="132"
+          height="46"
+          style="height: 46px; width: auto; display: block; margin: 0 auto"
+        />
         <div class="fecha">{{formatDate(now; "DD/MM/YYYY")}}</div>
       </div>
 
       <div class="saludo">
-        <h1>¡Hola<span id="saludoNombre">, {{1.nombre}}</span>! 👋</h1>
+        <h1>Estimado/a<span id="saludoNombre"> {{decodeURL(1.nombre)}}</span>,</h1>
         <p>
-          Te mandamos por WhatsApp la <strong>Orden de Producción</strong> de tu obra. Miralas con
-          calma y decinos acá abajo si está todo bien o si hay algo para corregir.
+          Le enviamos por este medio la <strong>Orden de Producción</strong> correspondiente a su obra.
         </p>
-        <p>Con tu confirmación arrancamos la fabricación.</p>
+        <p>
+          Le solicitamos revisarla con atención y confirmarnos a continuación si la información es correcta o si es necesario realizar alguna corrección.
+        </p>
+        <p>
+          Una vez recibida su confirmación, procederemos a iniciar la fabricación.
+        </p>
       </div>
 
       <form action="https://hook.us1.make.com/4p6n3jkc8ki5kcqr11a98bfmrs54cp32" method="POST">
-        <!-- Contexto de la obra. No se muestra: viaja con la respuesta para que el escenario sepa
-             de qué obra y de quién se trata, y pueda armar la pantalla de respuesta. -->
         <input type="hidden" name="itemId" value="{{1.itemId}}" />
-        <input type="hidden" name="nombre" value="{{1.nombre}}" />
+        <input type="hidden" name="nombre" value="{{decodeURL(1.nombre)}}" />
 
-        <span class="rotulo">¿Está todo bien con la orden?</span>
+        <span class="rotulo">¿La orden se encuentra correcta?</span>
         <div class="opciones">
           <label class="opcion">
             <input type="radio" name="estado_obra" value="Confirmar" required />
             <span>
               Confirmar
-              <small>Está todo correcto, pueden fabricarla</small>
+              <small>La orden es correcta, puede procederse con la fabricación</small>
             </span>
             <i>✅</i>
           </label>
@@ -274,13 +282,12 @@
             <input type="radio" name="estado_obra" value="No confirmar" required />
             <span>
               No confirmar
-              <small>Hay algo para revisar antes</small>
+              <small>Es necesario revisar algún dato antes de continuar</small>
             </span>
             <i>✖️</i>
           </label>
         </div>
 
-        <!-- Sólo aparece al rechazar: es el dato con el que se avisa a quien tiene que corregirla. -->
         <div class="motivo" id="bloqueMotivo" hidden>
           <label for="motivo">Contanos qué hay que corregir</label>
           <textarea
@@ -298,19 +305,12 @@
     </div>
 
     <script>
-      /* Make lee este HTML como plantilla y trata cualquier llave doble como una variable SUYA.
-         Por eso la marca de "variable sin mapear" se arma en dos pedazos: escrita entera, Make
-         intentaría interpretarla y rechazaría el bloque completo con "Invalid IML". */
       const SIN_MAPEAR = '{' + '{'
 
-      /* Si el nombre no viene mapeado, el saludo tiene que seguir teniendo sentido: mejor un
-         "¡Hola!" a secas que un "¡Hola, !" o, peor, las llaves de la variable a la vista. */
       const saludoNombre = document.getElementById('saludoNombre')
       const nombre = saludoNombre.textContent.replace(/^,\s*/, '').trim()
       if (!nombre || nombre.includes(SIN_MAPEAR)) saludoNombre.remove()
 
-      /* El motivo se pide SÓLO al rechazar: pedírselo a quien confirma sería ruido, y dejarlo
-         opcional al rechazar deja a la fábrica sin saber qué corregir. */
       const bloque = document.getElementById('bloqueMotivo')
       const motivo = document.getElementById('motivo')
 
@@ -324,8 +324,6 @@
         })
       }
 
-      /* Un solo envío: con conexiones lentas, el doble click manda la respuesta dos veces y en el
-         tablero quedan dos. */
       document.querySelector('form').addEventListener('submit', (e) => {
         const boton = e.target.querySelector('.enviar')
         boton.disabled = true

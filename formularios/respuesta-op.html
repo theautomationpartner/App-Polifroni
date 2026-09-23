@@ -51,15 +51,6 @@
         text-align: center;
       }
 
-      .marca {
-        font-size: 20px;
-        font-weight: 800;
-        letter-spacing: 1.5px;
-        color: var(--primary-blue);
-        padding-bottom: 20px;
-        margin-bottom: 26px;
-        border-bottom: 1px solid var(--border-suave);
-      }
 
       /* El sello: redondo, grande y del color de lo que pasó. Es lo primero que se ve. */
       .sello {
@@ -131,9 +122,24 @@
   </head>
   <body>
     <div class="caja">
-      <!-- Si preferís el logo en imagen, reemplazá esta línea por:
-           <img src="URL_DEL_LOGO" alt="Polifroni" style="height:52px" /> -->
-      <div class="marca">POLIFRONI</div>
+      <!-- El logo lo publica la APP, no Drive.
+
+           Un enlace de Drive sólo sirve si el archivo está compartido con "cualquiera con el
+           enlace", y aun así contesta con un redirect que el navegador del cliente no sigue: por
+           eso llegaba la imagen rota. Medido contra los dos:
+
+             drive.google.com/thumbnail?id=…  →  HTTP 302 · 0 bytes
+             app-polifroni.vercel.app/…png    →  HTTP 200 · image/png · 61.679 bytes
+
+           Ventaja de rebote: cambiar public/logo-polifroni.png en la app cambia también este
+           formulario, sin tocarlo. -->
+      <img
+        src="https://app-polifroni.vercel.app/logo-polifroni.png"
+        alt="Polifroni"
+        width="132"
+        height="46"
+        style="height: 46px; width: auto; display: block; margin: 0 auto 14px"
+      />
 
       <!-- Lo que respondió el cliente. Queda oculto: sólo sirve para elegir qué mensaje mostrar. -->
       <span id="respuesta" hidden>{{1.estado_obra}}</span>
