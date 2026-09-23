@@ -95,11 +95,13 @@ export function EtmoView() {
   const [subiendo, setSubiendo] = useState(false)
   const [quitando, setQuitando] = useState(false)
   const [guardado, setGuardado] = useState<'limpio' | 'guardando' | 'guardado' | 'error'>('limpio')
-  const [aviso, setAviso] = useState<{ tono: 'ok' | 'err'; texto: string } | null>(null)
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'err' | 'info'; texto: string } | null>(null)
   /** Se abre al cargar el documento: leerlo es una corrida, se pregunta antes de gastarla. */
   const [proponerLectura, setProponerLectura] = useState(false)
   /** Se abre al quitar el documento CUANDO hay observaciones escritas que se van a perder. */
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
+  /** Se está limpiando lo que quedó del ciclo anterior. */
+  const [reiniciando, setReiniciando] = useState(false)
   /** Con valor = hay una confirmación abierta. Adentro, las aberturas que quedaron sin escribir. */
   const [confirmarGenerar, setConfirmarGenerar] = useState<string[] | null>(null)
   /* La OP final se genera DESDE ACÁ. Antes había que pasar al paso 3 y apretar otro botón: dos
@@ -110,10 +112,6 @@ export function EtmoView() {
      que decirlo antes, no después. */
   const yaTieneOp = obra.opFinal.length > 0
 
-  /* Se avisa al ENTRAR, no recién al apretar "generar": quien llega a esta etapa con una orden ya
-     hecha viene a rehacerla o viene por error, y las dos cosas se resuelven mejor sabiéndolo antes
-     de cargar un documento encima. Se pregunta una sola vez por visita. */
-  const [avisadoOp, setAvisadoOp] = useState(() => !yaTieneOp)
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
      volver a esta etapa, la lista está sin tener que releer el documento. */
@@ -152,7 +150,9 @@ export function EtmoView() {
   /* Texto que ya estaba en la columna y NO tiene el formato por abertura: lo escribió alguien a
      mano, o quedó de antes de esta pantalla. No se puede editar acá —no hay aberturas contra las
      cuales ordenarlo— pero tampoco se puede esconder: generar las observaciones lo reemplaza. */
-  const textoViejo = tieneAberturas ? '' : obra.observaciones.trim()
+  /* Mientras se limpia el ciclo anterior este aviso sobra y además miente: anuncia como "ya
+     escrito" un texto que se está borrando en ese mismo momento. */
+  const textoViejo = tieneAberturas || reiniciando ? '' : obra.observaciones.trim()
 
   /* Lo escrito NO se guarda mientras se escribe: se completan las que se quieran, en el orden que
      se quiera, y recién al salir del paso se vuelca al tablero. `pendiente` es lo último tecleado,
@@ -245,6 +245,55 @@ export function EtmoView() {
       return false
     }
   }
+
+  /**
+   * Entrar acá con una orden ya emitida ARRANCA UN CICLO NUEVO.
+   *
+   * La etapa existe para cargar un ETMO y escribir sus observaciones. Si la obra ya tiene su Orden
+   * de Producción, lo que quedó cargado pertenece a la orden anterior: dejarlo puesto hace que la
+   * pantalla parezca a medio hacer —hay un documento, hay observaciones, y sin embargo hay que
+   * rehacer todo— y empuja a generar otra vez sobre el material viejo.
+   *
+   * Por eso se limpia solo, sin preguntar: quien llega hasta acá teniendo la orden hecha viene a
+   * rehacerla. Lo que NO se hace es callarlo: el aviso de abajo dice que se limpió y por qué, para
+   * que el documento no parezca haberse perdido.
+   *
+   * Se ejecuta UNA vez: el `ref` lo garantiza aunque la obra se relea en el medio.
+   */
+  const cicloReiniciado = useRef(false)
+
+  useEffect(() => {
+    if (cicloReiniciado.current) return
+    if (obra.opFinal.length === 0) return
+    if (obra.ordenEtmo.length === 0 && !obra.observaciones.trim()) return
+    cicloReiniciado.current = true
+    setReiniciando(true)
+    void (async () => {
+      try {
+        await limpiarArchivos(obra.id, COL.ordenEtmo)
+        await guardarObservaciones(obra.id, '')
+        ultimoGuardado.current = ''
+        pendiente.current = null
+        edito.current = false
+        setAberturas([])
+        setIndice(0)
+        setGuardado('limpio')
+        /* El aviso va ANTES de releer la obra, y a propósito: lo que hay que contar ya pasó —el
+           tablero quedó limpio— y si la relectura falla, callarse sería lo peor de los dos mundos,
+           el documento borrado y nadie enterado. */
+        setAviso({
+          tono: 'info',
+          texto:
+            'Esta obra ya tiene una Orden de Producción. Se limpiaron la Orden ETMO y las observaciones de la anterior: cargá el documento nuevo y generá las observaciones.',
+        })
+        await refrescar().catch(() => {})
+      } catch {
+        cicloReiniciado.current = false
+      } finally {
+        setReiniciando(false)
+      }
+    })()
+  }, [obra.id, obra.opFinal.length, obra.ordenEtmo.length, obra.observaciones, refrescar])
 
   /** Guarda lo escrito y le pide a la automatización la Orden de Producción final. */
   const generar = async () => {
@@ -506,37 +555,6 @@ export function EtmoView() {
           titulo="Leyendo el documento"
           detalle="Buscando las aberturas del ETMO…"
         />
-      )}
-
-      {!avisadoOp && (
-        <Modal
-          title="Ya cuenta con una OP Final cargada"
-          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
-          onClose={() => setAvisadoOp(true)}
-          actions={
-            <>
-              <button type="button" className="btn btn-out" onClick={() => setAvisadoOp(true)}>
-                No generar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => {
-                  setAvisadoOp(true)
-                  void generar()
-                }}
-              >
-                <i className="fas fa-wand-magic-sparkles" /> Generar una nueva
-              </button>
-            </>
-          }
-        >
-          <p className="modal-clave">Esta obra ya tiene una Orden de Producción final.</p>
-          <p className="modal-nota">
-            Si generás una nueva, la que está cargada se reemplaza. Si no, seguí trabajando: podés
-            cambiar el documento o las observaciones y generar más tarde.
-          </p>
-        </Modal>
       )}
 
       {/* El doble chequeo antes de generar. Lo primero que se lee es QUÉ va a pasar —en negro y
