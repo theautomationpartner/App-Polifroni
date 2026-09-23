@@ -200,11 +200,9 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
                 color={pct >= 99.5 ? '#00c875' : '#0073ea'}
                 etiqueta="Cancelado"
               />
-              <Donut
-                porcentaje={100 - pct}
-                color={pct >= 99.5 ? '#94a3b8' : '#f0a000'}
-                etiqueta="Pendiente"
-              />
+              {/* En ROJO, el mismo que el importe pendiente de cobro: es plata que falta entrar,
+                  y el ámbar la dejaba a mitad de camino entre un aviso y un dato. */}
+              <Donut porcentaje={100 - pct} color="#d92d20" etiqueta="Pendiente" />
             </div>
           )}
           <div className="plata-cards">
