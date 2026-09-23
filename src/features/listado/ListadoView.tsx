@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
+import { AccionSelect } from '@/features/shared/AccionSelect'
 import { useTitulos } from '@/features/shared/useTitulos'
 import { getEstructuraBoard, listarPorEstado, type EtiquetaBoard } from '@/services/monday'
 import { COL } from '@/services/monday/columns'
@@ -92,6 +93,10 @@ export function ListadoView() {
         </div>
       </header>
 
+      {/* La consulta no tiene pasos, pero sí tiene salida: el mismo selector con el que se entró.
+          Sin él, la única forma de volver era la marca, que lleva al principio de todo. */}
+      <AccionSelect />
+
       <header className="header-section">
         <div className="step-indicator-main">
           <div className="step-badge-main">
@@ -106,10 +111,16 @@ export function ListadoView() {
         </div>
       </header>
 
+      {/* Cada columna es su PROPIA caja. Sueltos en una fila, los seis botones se leían como un
+          solo filtro de seis opciones, y marcar "CONFIRMADO OP" en un lado y en el otro no es lo
+          mismo: uno pregunta por el cliente y el otro por el taller. */}
       <div className="card filtros">
-        {COLUMNAS.map((columna) => (
+        {COLUMNAS.map((columna, n) => (
           <div className="filtro-grupo" key={columna}>
-            <div className="filtro-l">{titulo(columna, 'Confirmación')}</div>
+            <div className="filtro-l">
+              <i className={`fas ${n === 0 ? 'fa-user-check' : 'fa-screwdriver-wrench'}`} />
+              {titulo(columna, 'Confirmación')}
+            </div>
             <div className="filtro-ops">
               {(etiquetas[columna] ?? []).map((e) => {
                 const activo = (marcados[columna] ?? []).includes(e.indice)
@@ -153,8 +164,13 @@ export function ListadoView() {
               {hayFiltro ? 'Con los filtros marcados' : 'Todas las obras del tablero'}
             </div>
           </div>
-          <button type="button" className="obras-pager-btn" disabled={cargando} onClick={() => void traer()}>
-            <i className="fas fa-rotate" /> Actualizar
+          <button
+            type="button"
+            className="btn-actualizar"
+            disabled={cargando}
+            onClick={() => void traer()}
+          >
+            <i className={`fas fa-rotate ${cargando ? 'spin' : ''}`} /> Actualizar
           </button>
         </div>
 
@@ -185,9 +201,12 @@ export function ListadoView() {
           filas.map((f) => (
             <div className="obra-row obra-row--fija" key={f.id}>
               <span className="obra-row-main">
-                <span className="obra-row-name">{f.nombre}</span>
+                <span className="obra-row-titulo">
+                  <i className="fas fa-helmet-safety obra-row-ic" />
+                  <span className="obra-row-name">{f.nombre}</span>
+                </span>
                 <span className="obra-row-meta">
-                  <span>
+                  <span className="idobra">
                     <i className="fas fa-hashtag" /> {f.idObra || f.id}
                   </span>
                   {f.ubicacion && (
@@ -195,12 +214,26 @@ export function ListadoView() {
                       <i className="fas fa-location-dot" /> {f.ubicacion}
                     </span>
                   )}
+                  {f.tipo.texto && (
+                    <span>
+                      <i className="fas fa-layer-group" /> {f.tipo.texto}
+                    </span>
+                  )}
                 </span>
               </span>
+
               <span className="obra-row-cliente">
-                <span className="obra-row-cl-l">{titulo(COL.ctaCteCliente, 'Cta Cte Cliente')}</span>
+                <span className="obra-row-cl-l">
+                  <i className="fas fa-user" /> {titulo(COL.ctaCteCliente, 'Cta Cte Cliente')}
+                </span>
                 <span className="obra-row-cl-v">{f.cliente || 'Sin cuenta corriente'}</span>
+                {f.etapaProduccion.texto && (
+                  <span className="obra-row-cl-x">
+                    <i className="fas fa-industry" /> {f.etapaProduccion.texto}
+                  </span>
+                )}
               </span>
+
               <span className="obra-row-chips">
                 <EstadoBadge
                   label={titulo(COL.confirmacionOp, 'Confirmacion Op Cliente')}
@@ -211,6 +244,7 @@ export function ListadoView() {
                   estado={f.confirmacionTaller}
                 />
               </span>
+
               <span />
             </div>
           ))}
