@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
+import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { useTitulos } from '@/features/shared/useTitulos'
-import { buscarObras, getObra, mondayHabilitado } from '@/services/monday'
+import {
+  buscarObras,
+  getObra,
+  guardarObservaciones,
+  limpiarArchivos,
+  mondayHabilitado,
+} from '@/services/monday'
 import { COL } from '@/services/monday/columns'
 import { ACCIONES_PASO } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
-import type { ObraFila } from '@/types'
+import type { Obra, ObraFila, Paso } from '@/types'
+import { validarEntrada, type ValidacionEntrada } from './validaciones'
 
 /**
  * Paso 1 · Elegir la obra.
@@ -35,6 +43,8 @@ export function ObrasView() {
      pantalla se lea como "se perdió lo que elegí" —la acción sigue elegida, y se retoma sola en
      cuanto haya una obra—. */
   const accionPendiente = paso !== 'obra' ? ACCIONES_PASO[paso] : ''
+  /** A dónde lleva elegir una obra ahora mismo. Sin acción elegida, a la primera etapa. */
+  const destino: Paso = paso === 'obra' ? 'etmo' : paso
 
   const [termino, setTermino] = useState('')
   const [errorInput, setErrorInput] = useState('')
@@ -46,6 +56,14 @@ export function ObrasView() {
   const [buscando, setBuscando] = useState(false)
   const [abriendo, setAbriendo] = useState(false)
   const [error, setError] = useState('')
+  /**
+   * Obra elegida que todavía NO se abrió porque hay algo que preguntar.
+   *
+   * Las validaciones del circuito se resuelven acá y no adentro de cada etapa: preguntar al entrar
+   * no agrega un paso, reemplaza el momento en que la persona se iba a dar cuenta sola tres
+   * pantallas después.
+   */
+  const [pendiente, setPendiente] = useState<{ obra: Obra; aviso: ValidacionEntrada } | null>(null)
 
   const sinToken = !mondayHabilitado()
 
@@ -117,9 +135,50 @@ export function ObrasView() {
         setError('Esa obra ya no está en el tablero.')
         return
       }
-      dispatch({ type: 'setObra', obra })
+      const aviso = validarEntrada(destino, obra)
+      if (aviso) {
+        setPendiente({ obra, aviso })
+        return
+      }
+      entrar(obra, destino)
     } catch {
       dispatch({ type: 'errorMonday', accion: 'abrir la obra' })
+    } finally {
+      setAbriendo(false)
+    }
+  }
+
+  /**
+   * Abre la obra en una etapa.
+   *
+   * El `goto` va PRIMERO y con la pantalla todavía en la lista: es lo que fija por dónde se entró
+   * al proceso, y de eso depende la numeración de la barra de etapas. Al revés, `setObra` navegaría
+   * usando el paso viejo y la barra empezaría a contar desde otro lado.
+   */
+  const entrar = (obra: Obra, paso: Paso) => {
+    dispatch({ type: 'goto', paso })
+    dispatch({ type: 'setObra', obra })
+  }
+
+  /** Aceptar la pregunta: se aplica lo que haya que aplicar y recién ahí se entra. */
+  const confirmar = async () => {
+    if (!pendiente) return
+    const { obra, aviso } = pendiente
+    setPendiente(null)
+    if (!aviso.limpiarCiclo) {
+      entrar(obra, aviso.destino)
+      return
+    }
+    setAbriendo(true)
+    try {
+      await limpiarArchivos(obra.id, COL.ordenEtmo)
+      await guardarObservaciones(obra.id, '')
+      /* Se relee para entrar con la obra como quedó: si se entrara con la copia vieja, la etapa
+         mostraría un documento y unas observaciones que en el tablero ya no existen. */
+      const fresca = await getObra(obra.id)
+      entrar(fresca ?? obra, aviso.destino)
+    } catch {
+      dispatch({ type: 'errorMonday', accion: 'preparar la obra para una orden nueva' })
     } finally {
       setAbriendo(false)
     }
@@ -301,6 +360,31 @@ export function ObrasView() {
             Limpiar
           </span>
         </button>
+      )}
+
+      {pendiente && (
+        <Modal
+          title={pendiente.aviso.titulo}
+          icon={
+            <i
+              className={`fas ${pendiente.aviso.tono === 'warn' ? 'fa-triangle-exclamation modal-icon--warn' : 'fa-circle-info modal-icon--info'}`}
+            />
+          }
+          onClose={() => setPendiente(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setPendiente(null)}>
+                {pendiente.aviso.cancelar}
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => void confirmar()}>
+                {pendiente.aviso.aceptar}
+              </button>
+            </>
+          }
+        >
+          <p className="modal-clave">{pendiente.aviso.clave}</p>
+          {pendiente.aviso.nota && <p className="modal-nota">{pendiente.aviso.nota}</p>}
+        </Modal>
       )}
 
       {abriendo && (
