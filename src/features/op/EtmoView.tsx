@@ -24,7 +24,7 @@ import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
 
 /** Datos de la medición (nro de orden, medido por, fecha). Apagado hasta que se guarden en su tablero. */
-const MOSTRAR_MEDICION = false
+const MOSTRAR_MEDICION = true
 
 /** Archivos ya adjuntos en la columna: se abren, y se quitan si se cargó el equivocado. */
 function ListaArchivos({
