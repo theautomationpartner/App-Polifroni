@@ -1,0 +1,129 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "numeroListado",
+    "version",
+    "paginas",
+    "observacion"
+  ],
+  "properties": {
+    "numeroListado": {
+      "type": ["string", "null"],
+      "description": "TEXTO. El numero del listado HETMO, del encabezado ('Numero : 9.205'), con el punto de miles tal cual aparece. Ej: 9.205. Nunca 9205. null si no se lee con seguridad."
+    },
+    "version": {
+      "type": ["string", "null"],
+      "description": "TEXTO. La version del listado HETMO, del encabezado ('Version:. 1'). Suele ser un digito suelto. El punto que a veces aparece entre los dos puntos y el numero NO es parte del valor: 'Version:. 1' es '1'. null si no se lee con seguridad."
+    },
+    "observacion": {
+      "type": ["string", "null"],
+      "description": "Campo heredado, sin uso: las observaciones por modelo las manda la app, no se extraen del documento. Devolver siempre null."
+    },
+    "paginas": {
+      "type": "array",
+      "description": "Una entrada por hoja de la orden final. Al menos una.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["nro", "esUltima", "filas"],
+        "properties": {
+          "nro": {
+            "type": "integer",
+            "description": "Numero de pagina, empezando en 1."
+          },
+          "esUltima": {
+            "type": "boolean",
+            "description": "true SOLO en la ultima pagina; false en todas las demas."
+          },
+          "filas": {
+            "type": "array",
+            "description": "Renglones de la grilla. Como maximo 3 renglones por pagina.",
+            "items": {
+              "type": "array",
+              "description": "Modelos del renglon. Como maximo 3; el ultimo renglon puede tener 1 o 2.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "codigo", "descripcion", "color", "ancho", "alto", "cantidad",
+                  "vidrio", "vAncho", "vAlto", "vUd", "taps", "hojaIdx", "slot"
+                ],
+                "properties": {
+                  "codigo": {
+                    "type": ["string", "null"],
+                    "description": "El codigo de la linea 'Modelo:'. Ej: v1, v2, V6, M6."
+                  },
+                  "descripcion": {
+                    "type": ["string", "null"],
+                    "description": "La linea que sigue a 'Uds:' + ' - ' + la linea de abajo. Si no hay segunda linea, solo la primera. Copiada tal cual, sin reescribir."
+                  },
+                  "color": {
+                    "type": ["string", "null"],
+                    "description": "El valor de la linea 'Color:'. Ej: Lenga."
+                  },
+                  "ancho": {
+                    "type": ["string", "null"],
+                    "description": "TEXTO, no numero. El PRIMER numero de 'Medidas:', con el punto de miles tal cual aparece. Solo digitos y puntos. Ej: 500, 1.530, 2.450. Nunca con coma."
+                  },
+                  "alto": {
+                    "type": ["string", "null"],
+                    "description": "TEXTO, no numero. El SEGUNDO numero de 'Medidas:', con el punto de miles. Ej: 700, 1.800, 2.020."
+                  },
+                  "cantidad": {
+                    "type": ["integer", "null"],
+                    "description": "El numero que sigue a 'Uds:'. Siempre 1 o mas."
+                  },
+                  "vidrio": {
+                    "type": ["string", "null"],
+                    "description": "El tipo de vidrio de la linea 'Vid:'. Ej: 4/12/4 INC. null en los mosquiteros, que no llevan vidrio."
+                  },
+                  "vAncho": {
+                    "type": ["string", "null"],
+                    "description": "TEXTO. Primer numero de medida del vidrio, con punto de miles. Ej: 278, 1.103. null si no hay vidrio."
+                  },
+                  "vAlto": {
+                    "type": ["string", "null"],
+                    "description": "TEXTO. Segundo numero de medida del vidrio. Ej: 478, 1.696. null si no hay vidrio."
+                  },
+                  "vUd": {
+                    "type": ["integer", "null"],
+                    "description": "El numero que sigue a 'ud:' en la linea Vid. null si no hay vidrio."
+                  },
+                  "taps": {
+                    "type": "array",
+                    "description": "Los tapajuntas del modelo. Son exactamente 4, o ninguno (lista vacia). Nunca 1, 2 ni 3.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["cod", "medida"],
+                      "properties": {
+                        "cod": {
+                          "type": ["string", "null"],
+                          "description": "TEXTO. El codigo de 5 digitos que sigue a 'Tap:'. Ej: 91305, 91316."
+                        },
+                        "medida": {
+                          "type": ["string", "null"],
+                          "description": "TEXTO, con punto de miles tal cual aparece. Ej: 570, 1.870, 2.520. Nunca con coma."
+                        }
+                      }
+                    }
+                  },
+                  "hojaIdx": {
+                    "type": "integer",
+                    "description": "En que hoja del listado de HETMO esta este modelo, EMPEZANDO A CONTAR DESDE 0. Hoja 1 = 0, hoja 2 = 1. Nunca negativo."
+                  },
+                  "slot": {
+                    "type": "string",
+                    "enum": ["a", "b", "full", "none"],
+                    "description": "Donde esta el modelo en su hoja: 'a' si esta en la mitad de arriba, 'b' si esta en la mitad de abajo. 'none' cuando la orden vino como foto y no se puede recortar el dibujo."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

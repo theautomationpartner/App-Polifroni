@@ -6,7 +6,7 @@ import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { useGenerarOp } from './useGenerarOp'
+import { datosObservaciones, useGenerarOp } from './useGenerarOp'
 import {
   COL,
   getUrlArchivo,
@@ -18,9 +18,13 @@ import {
 import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
+import { DatosMedicion, medicionInicial, type Medicion } from './DatosMedicion'
 import { fusionar, parsear, rotuloAbertura, serializar, sinCompletar, type Abertura } from './observaciones'
 import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
+
+/** Datos de la medición (nro de orden, medido por, fecha). Apagado hasta que se guarden en su tablero. */
+const MOSTRAR_MEDICION = false
 
 /** Archivos ya adjuntos en la columna: se abren, y se quitan si se cargó el equivocado. */
 function ListaArchivos({
@@ -115,6 +119,8 @@ export function EtmoView() {
      volver a esta etapa, la lista está sin tener que releer el documento. */
   const [aberturas, setAberturas] = useState<Abertura[]>(() => parsear(obra.observaciones))
   const [indice, setIndice] = useState(0)
+  /* Datos de la medición. Todavía no se guardan: van a ir a un tablero propio. */
+  const [medicion, setMedicion] = useState<Medicion>(medicionInicial)
 
   /** Lo último que quedó escrito en el tablero. Es lo que separa "lo mío" de "lo de afuera". */
   const ultimoGuardado = useRef(obra.observaciones)
@@ -223,8 +229,18 @@ export function EtmoView() {
     else void quitar()
   }
 
+  /**
+   * Lo que tiene que llegar al tablero y al escenario.
+   *
+   * Sin aberturas no hay nada que volcar DESDE ACÁ: `serializar([])` da vacío, y tomarlo como "lo
+   * escrito" borraría el texto libre que alguien haya cargado a mano en la columna. Con aberturas
+   * el vacío sí es una respuesta: significa que se borraron todas las observaciones.
+   */
+  const observacionesActuales = tieneAberturas ? texto : obra.observaciones
+
   /** Vuelca al tablero lo que haya escrito. Las aberturas vacías no se escriben. */
   const guardar = async (): Promise<boolean> => {
+    if (!tieneAberturas) return true
     if (texto === ultimoGuardado.current) return true
     setGuardado('guardando')
     try {
@@ -242,11 +258,18 @@ export function EtmoView() {
     }
   }
 
-  /** Guarda lo escrito y le pide a la automatización la Orden de Producción final. */
+  /**
+   * Guarda lo escrito y le pide a la automatización la Orden de Producción final.
+   *
+   * Las observaciones se le pasan A MANO a `correr`. No alcanza con guardarlas antes: el `extra`
+   * del hook se armó con la obra de ESTE render, que todavía tiene el texto anterior al guardado.
+   * Sin esto el escenario recibía el campo vacío aunque en Monday ya estuviera escrito, y la orden
+   * salía sin ninguna observación.
+   */
   const generar = async () => {
     setConfirmarGenerar(null)
     if (!(await guardar())) return
-    await generacion.correr()
+    await generacion.correr(datosObservaciones(observacionesActuales))
   }
 
   /**
@@ -266,10 +289,19 @@ export function EtmoView() {
   }, [generacion.estado.fase, obra.id])
 
   /* Generada la orden, se pasa solo al envío: es donde se ve el PDF que acaba de salir y donde
-     está lo único que queda por hacer con él. */
+     está lo único que queda por hacer con él.
+
+     Se RELEE la obra antes de saltar. El final de la corrida se detecta leyendo el tablero por
+     afuera del estado global, así que la obra en memoria sigue sin el archivo: saltando derecho,
+     el paso de envío se abre diciendo "todavía no hay una OP final adjunta" sobre una orden que
+     acaba de generarse, y con el botón de enviar apagado. */
   useEffect(() => {
-    if (generacion.estado.fase === 'listo') dispatch({ type: 'goto', paso: 'envio' })
-  }, [generacion.estado.fase, dispatch])
+    if (generacion.estado.fase !== 'listo') return
+    void (async () => {
+      await refrescar().catch(() => {})
+      dispatch({ type: 'goto', paso: 'envio' })
+    })()
+  }, [generacion.estado.fase, dispatch, refrescar])
 
   /**
    * Qué pasa al tocar "Generar la OP final".
@@ -311,7 +343,7 @@ export function EtmoView() {
 
       <ObraFicha obra={obra} />
 
-      <div className="paso-grid">
+      <div className="paso-grid paso-grid--etmo">
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-file-arrow-up" /> Orden Obtenida ETMO
@@ -408,11 +440,11 @@ export function EtmoView() {
           )}
 
           <div className="obs-pie">
-            {/* El botón existe mientras haya algo que generar. Con las cajas ya armadas se va: su
-                trabajo está hecho y lo único que podría hacer es volver a leer el documento
-                encima de lo escrito. Para empezar de cero se quita el ETMO, que es la acción que
-                de verdad corresponde —y ésa sí avisa de lo que borra—. */}
-            {!tieneAberturas && (
+            {/* Las observaciones se generan solas al cargar el ETMO. El botón queda sólo para el
+                caso en que el documento está cargado y todavía no se generaron (se dijo que no al
+                cargarlo, o la lectura falló). Sin documento no hay nada que leer, y con las cajas
+                ya armadas su trabajo está hecho: en los dos casos no se muestra. */}
+            {tieneEtmo && !tieneAberturas && (
               <button
                 type="button"
                 className="btn btn-out btn--sm"
@@ -478,6 +510,11 @@ export function EtmoView() {
               <Aviso tono="err">{lectura.estado.problema}</Aviso>
             </div>
           )}
+
+          {/* Oculto por ahora: se muestra cuando exista el tablero donde se van a guardar. */}
+          {MOSTRAR_MEDICION && (
+            <DatosMedicion valor={medicion} onCambio={setMedicion} disabled={lectura.leyendo} />
+          )}
         </div>
       </div>
 
@@ -508,7 +545,7 @@ export function EtmoView() {
           grande, porque es lo que hay que decidir—, y recién debajo lo que falta, si falta algo. */}
       {confirmarGenerar && (
         <Modal
-          title={yaTieneOp ? 'Ya cuenta con una OP Final cargada' : 'Se generará la OP Final'}
+          title={yaTieneOp ? 'Ya cuenta con OP generadas' : 'Se generará la OP Final'}
           icon={
             yaTieneOp ? (
               <i className="fas fa-triangle-exclamation modal-icon--warn" />
@@ -534,8 +571,10 @@ export function EtmoView() {
           }
         >
           <p className="modal-clave">
+            {/* NO dice "se reemplaza" ni "en lugar de". Una obra puede hacerse por etapas y
+                tener varias órdenes: la nueva se SUMA en «OP Final» junto a las que ya hay. */}
             {yaTieneOp
-              ? '¿Desea generar una nueva? La que está cargada se reemplaza.'
+              ? '¿Desea generar una nueva? Queda adjunta en «OP Final» con las que ya tiene generadas.'
               : 'Se genera el documento final de esta obra.'}
           </p>
           {confirmarGenerar.length > 0 && (

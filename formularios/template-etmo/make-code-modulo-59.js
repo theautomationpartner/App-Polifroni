@@ -8,6 +8,9 @@
 //  2) Se le cuelga a cada modelo su m.observacion y su m.mostrarObs.
 //  3) El templateData ahora manda "observacionesSueltas" (las que no
 //     encontraron modelo) en lugar de "observaciones".
+//  4) Numero y version del listado HETMO: se toman de los inputs nroOrdenEtmo
+//     y version (mapeados de 26.jsonResponse) y van a las dos casillas del
+//     encabezado del PDF, debajo del correlativo nroOrden.
 //  Todo lo demas quedo igual.
 // =============================================================================
 
@@ -82,6 +85,26 @@ function armarTemplateData(input) {
 
   const paginas = data.paginas || [];
   const modelos = paginas.flatMap(pagina => (pagina.filas || []).flat());
+
+  // ---------------------------------------------------------------------------
+  //  NUMERO Y VERSION DEL LISTADO HETMO
+  // ---------------------------------------------------------------------------
+  //  Son DOS numeros de orden distintos, y se usan los dos:
+  //      nroOrden       <-  {{sum(60.nroOrden; 1)}}   correlativo propio (el grande)
+  //      nroOrdenEtmo   <-  {{ifempty(26.jsonResponse.numeroListado; emptystring)}}
+  //      version        <-  {{ifempty(26.jsonResponse.version; emptystring)}}
+  //
+  //  Si el input viene vacio se usa lo que trae el JSON crudo de la IA
+  //  (26.rawResponse), que tiene los mismos dos campos. Asi anda aunque alguien
+  //  borre el mapeo del input.
+  const limpio = v => (v == null || String(v).trim() === '' ? null : String(v).trim());
+  const numeroListado = limpio(input.nroOrdenEtmo)
+    ?? limpio(input.numeroListado)
+    ?? limpio(data.numeroListado);
+  // La version en el listado figura como "Version:. 1": si la IA arrastra el
+  // punto o los dos puntos, se sacan. El valor es "1", no ". 1".
+  const versionCruda = limpio(input.version) ?? limpio(data.version);
+  const version = versionCruda ? (versionCruda.replace(/^[.:\s]+/, '') || null) : null;
 
   // Los totales del pie.
   let aberturas = 0;
@@ -186,6 +209,12 @@ function armarTemplateData(input) {
     hojasUrls: hojasUrls,
     paginas: paginas,
 
+    // Listado HETMO del que salio esta orden ("Numero : 9.205  Version:. 1").
+    // Se imprimen en las dos casillas debajo del correlativo: {{numeroListado}} y
+    // {{version}} en el template. Si no vienen, el template pone una raya.
+    numeroListado: numeroListado,
+    version: version,
+
     // NUEVO: solo lo que no se pudo colgar de ningun modelo.
     observacionesSueltas: sueltas.length ? sueltas.join('\n') : null,
 
@@ -213,7 +242,12 @@ function armarTemplateData(input) {
     obsAsignadas: obsAsignadas,
     obsSueltas: sueltas.length,
     obsCodigos: Object.keys(mapaObs).join(', '),
-    modeloCodigos: modelos.map(m => m.codigo).join(', ')
+    modeloCodigos: modelos.map(m => m.codigo).join(', '),
+
+    // Sueltos, para poder mapearlos a otros modulos (ej. escribirlos en Monday)
+    // sin tener que abrir el templateData.
+    numeroListado: numeroListado,
+    version: version
   };
 }
 

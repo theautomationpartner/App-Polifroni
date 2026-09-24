@@ -1,8 +1,10 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
-import { ESCENARIO } from '@/services/make'
+import { ESCENARIO, respondioEnviado } from '@/services/make'
 import { COL, ETIQUETA, getActividadDesde, getEstadoEnvio } from '@/services/monday'
 import type { Obra } from '@/types'
+
+const RESPUESTA_OK = respondioEnviado('msj_cliente_arquitecto')
 
 /**
  * Envío de la OP al cliente: dispara el escenario de WhatsApp y espera la confirmación.
@@ -13,8 +15,7 @@ import type { Obra } from '@/types'
  * hecho sin que se disparara nada—. Vale sólo si cambió DESPUÉS de apretar el botón, que es lo que
  * responde el `changed_at` de la columna.
  *
- * Este escenario todavía no cierra con un *Webhook response*; cuando lo tenga, el motor ya lo
- * escucha y la noticia va a llegar antes, sin tocar nada de acá.
+ * Además el escenario cierra con un *Webhook response*: cuando llega, avisa antes que el tablero.
  */
 export function useEnviarOp(obra: Obra) {
   const mirar = useCallback(
@@ -56,5 +57,7 @@ export function useEnviarOp(obra: Obra) {
       columnId: COL.estadoEnvioOp,
     },
     mirar,
+    /* El escenario cierra con un Webhook response `{ "msj_cliente_arquitecto": "enviado" }`. */
+    exito: RESPUESTA_OK,
   })
 }

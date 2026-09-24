@@ -41,11 +41,12 @@ export function validarEntrada(destino: Paso, obra: Obra): ValidacionEntrada | n
   /* Emitir sobre una obra que YA tiene su orden: no es "generar", es rehacer. */
   if (destino === 'etmo' && tieneOp) {
     return {
-      titulo: 'Ya cuenta con una OP Final cargada',
+      titulo: 'Ya cuenta con OP generadas',
       clave: '¿Desea generar una nueva?',
-      nota: hayCicloPrevio
-        ? 'Se borran la Orden ETMO y las observaciones de la anterior para empezar de cero. La orden que está cargada se reemplaza recién cuando generes la nueva.'
-        : 'La orden que está cargada se reemplaza recién cuando generes la nueva.',
+      /* Sólo avisa que ya hay OP y que se agrega otra. No menciona la limpieza de la Orden ETMO
+         y las observaciones (limpiarCiclo sigue ocurriendo igual): a quien opera no le suma y lo
+         hacía dudar. Tampoco dice "reemplaza": una obra por etapas tiene varias órdenes. */
+      nota: 'Se agrega una nueva a las OP que ya tiene esta obra.',
       cancelar: 'No generar',
       aceptar: 'Generar una nueva',
       destino: 'etmo',

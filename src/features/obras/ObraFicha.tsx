@@ -183,10 +183,11 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
           {obra.combina.texto && (
             <EstadoBadge label={titulo(COL.combina, 'Combina')} estado={obra.combina} />
           )}
-          <EstadoBadge
-            label={titulo(COL.validacionCtaCte, 'Validacion Registracion de Obra en cta cte')}
-            estado={obra.validacionCtaCte}
-          />
+          {/* Etiqueta FIJA, no la del tablero. En Monday la columna se llama "Validacion
+              Registracion de Obra en cta cte": siete palabras que ocupan media pantalla para decir
+              lo mismo que dos, y que además repiten lo que ya dice el valor ("Registrado en Cta
+              Cte"). Es la única que se acorta a mano; el resto de los nombres entran bien. */}
+          <EstadoBadge label="Validación Cta Cte" estado={obra.validacionCtaCte} />
         </div>
 
         {/* Dos anillos y no uno: el que interesa cambia según para qué se mira la obra. Al taller
@@ -195,11 +196,10 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
         <div className="plata">
           {pct !== null && (
             <div className="plata-donut">
-              <Donut
-                porcentaje={pct}
-                color={pct >= 99.5 ? '#00c875' : '#0073ea'}
-                etiqueta="Cancelado"
-              />
+              {/* En VERDE, el mismo que el importe cancelado. Antes el anillo cambiaba de azul a
+                  verde al llegar al 99,5%, y ese salto de color leía como "otro dato" en vez de
+                  como el mismo dato más avanzado. Cada anillo usa el color de su importe. */}
+              <Donut porcentaje={pct} color="#12a150" etiqueta="Cancelado" />
               {/* En ROJO, el mismo que el importe pendiente de cobro: es plata que falta entrar,
                   y el ámbar la dejaba a mitad de camino entre un aviso y un dato. */}
               <Donut porcentaje={100 - pct} color="#d92d20" etiqueta="Pendiente" />

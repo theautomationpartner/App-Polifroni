@@ -111,9 +111,42 @@
   .head .titulo{text-align:center;color:var(--naranja);font-weight:bold;font-size:12.5pt;margin-bottom:1mm}
   .head .obra{font-weight:bold;font-size:10.5pt;line-height:1.15;margin-bottom:1mm}
   .head .dato{font-size:8.5pt;line-height:1.25}
+  /* La celda del numero: arriba el numero de orden, abajo las dos casillas con
+     el listado de HETMO del que salio. Se ensancho de 26 a 34mm para que
+     "N° LISTADO" y su valor entren sin cortarse; el centro, que es flexible,
+     cede ese espacio solo. */
   .head .nro{
-    width:26mm;flex:none;display:flex;align-items:center;justify-content:center;
+    width:34mm;flex:none;
+    display:flex;flex-direction:column;
+    border-left:2.2pt solid var(--naranja);
+  }
+  /* El numero de orden se queda con TODO el alto que sobra y va centrado: es
+     el dato que se busca de lejos. */
+  .head .nro-v{
+    flex:1;min-height:0;
+    display:flex;align-items:center;justify-content:center;
     font-weight:bold;font-size:22pt;line-height:1;
+  }
+  /* Las dos casillas, lado a lado, pegadas al pie de la celda. */
+  .head .nro-etmo{
+    flex:none;display:flex;
+    border-top:1pt solid var(--naranja);
+  }
+  .head .nro-etmo > div{
+    flex:1;min-width:0;
+    padding:.7mm 1mm .9mm;
+    text-align:center;
+  }
+  .head .nro-etmo > div + div{border-left:1pt solid var(--naranja)}
+  .head .nro-l{
+    display:block;
+    font-size:5.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.3px;
+    color:var(--naranja);line-height:1.1;
+  }
+  .head .nro-n{
+    display:block;
+    font-size:9pt;font-weight:bold;line-height:1.25;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .head .derecha{
     width:44mm;flex:none;border-left:2.2pt solid var(--naranja);padding:1.5mm 2mm;
@@ -246,7 +279,23 @@
       <div class="dato">CELULAR: {{../celular}}</div>
     </div>
 
-    <div class="nro">{{../nroOrden}}</div>
+    <!-- El numero de orden (propio, del contador) y, debajo, de que listado de
+         HETMO salio esta orden. Los dos ultimos los lee la IA del encabezado del
+         listado; si no los pudo leer va una raya, que dice "no se sabe" sin
+         dejar la casilla muda. -->
+    <div class="nro">
+      <div class="nro-v">{{../nroOrden}}</div>
+      <div class="nro-etmo">
+        <div>
+          <span class="nro-l">N° Orden HETMO</span>
+          <span class="nro-n">{{#if ../numeroListado}}{{../numeroListado}}{{else}}—{{/if}}</span>
+        </div>
+        <div>
+          <span class="nro-l">Versión</span>
+          <span class="nro-n">{{#if ../version}}{{../version}}{{else}}—{{/if}}</span>
+        </div>
+      </div>
+    </div>
 
     <div class="derecha">
       <div class="meta">{{../fecha}}<br>Página {{nro}} de {{../totalPaginas}}</div>

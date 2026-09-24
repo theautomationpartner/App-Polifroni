@@ -34,13 +34,22 @@ function requisitoPropio(paso: Paso, obra: Obra): Acceso {
        si contestó. Lo que la confirmación gobierna es el BOTÓN de despacho al taller (ver
        `puedeDespacharAlTaller`), no el acceso. */
     case 'envio':
-    case 'confirmacion':
       return obra.opFinal.length > 0
         ? LIBRE
         : {
             ok: false,
             motivo: 'Falta la OP final adjunta: es el documento que se le manda al cliente y al taller.',
           }
+
+    /* A la confirmación se pasa recién con la OP ENVIADA al cliente: antes no hay nada que el
+       cliente pueda haber confirmado. El escenario del envío deja "Enviado" en la columna al
+       terminar, y la app relee la obra en cuanto llega la respuesta, así que el paso se habilita
+       solo apenas sale el mensaje. */
+    case 'confirmacion':
+      return obra.estadoEnvioOp.texto === ETIQUETA.envioEnviado ||
+        obra.mjsEnviadoCliente.texto === ETIQUETA.envioEnviado
+        ? LIBRE
+        : { ok: false, motivo: 'Primero enviá la OP al cliente.' }
 
     default:
       return LIBRE

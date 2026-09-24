@@ -1,8 +1,10 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
-import { ESCENARIO } from '@/services/make'
+import { ESCENARIO, respondioEnviado } from '@/services/make'
 import { COL, ETIQUETA, getActividadDesde, getEstadoTaller } from '@/services/monday'
 import type { Obra } from '@/types'
+
+const RESPUESTA_OK = respondioEnviado('msj_taller')
 
 /**
  * Envío de la OP al taller de fabricación.
@@ -49,5 +51,7 @@ export function useEnviarTaller(obra: Obra) {
       columnId: COL.estadoEnvioTaller,
     },
     mirar,
+    /* El escenario cierra con un Webhook response `{ "msj_taller": "enviado" }`. */
+    exito: RESPUESTA_OK,
   })
 }

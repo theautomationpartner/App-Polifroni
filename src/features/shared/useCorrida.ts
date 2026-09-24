@@ -81,6 +81,11 @@ interface Opciones {
   antes?: () => void
   /** Mira el tablero y dice si la corrida terminó. Recibe el momento del disparo. */
   mirar: (desdeMs: number) => Promise<Veredicto>
+  /**
+   * Qué respuesta del escenario cuenta como éxito. Por defecto `{estado:"true"}`, que es lo que
+   * contesta la generación de la OP; los envíos contestan cada uno con su propia clave.
+   */
+  exito?: (r: RespuestaEscenario) => boolean
 }
 
 /**
@@ -99,7 +104,7 @@ interface Opciones {
  * Mirar el tablero es, además, lo que hace que cerrar la pestaña no pierda nada: al volver a
  * entrar, la obra ya trae el resultado.
  */
-export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones) {
+export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = terminoBien }: Opciones) {
   const dispatch = useDispatch()
   const [estado, setEstado] = useState<Corrida>(INICIAL)
   /** Se apaga al desmontar: un `setState` sobre una vista que ya no está sólo trae ruido. */
@@ -108,6 +113,13 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones)
   const cerrado = useRef(false)
   /** Momento del disparo: con él se miden la espera y qué cambió DESPUÉS de apretar. */
   const t0 = useRef(0)
+  /**
+   * El webhook todavía no contestó. Mientras tanto un "Error" en el tablero NO cierra la corrida:
+   * hay escenarios que marcan la columna en error de paso y la corrigen segundos después (el del
+   * envío al cliente lo hace: Enviado → Error de Envío → Enviado). La respuesta del webhook es la
+   * que manda; el error del tablero vale recién cuando el pedido ya volvió sin decir nada útil.
+   */
+  const pedidoPendiente = useRef(false)
 
   useEffect(() => {
     vivo.current = true
@@ -154,9 +166,20 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones)
         await cerrar({ fase: 'error', updateError: update, origen: 'respuesta' })
         return
       }
-      if (terminoBien(r)) await cerrar({ fase: 'listo', origen: 'respuesta' })
+      if (exito(r)) {
+        await cerrar({ fase: 'listo', origen: 'respuesta' })
+        /* La respuesta puede llegar ANTES de que el escenario termine de escribir el tablero (el del
+           envío al cliente deja la columna en "Error de Envío" unos segundos y recién después la
+           pasa a "Enviado"). Se relee un par de veces más para que las etiquetas no queden
+           mostrando ese estado de paso. */
+        for (const ms of [15_000, 35_000]) {
+          setTimeout(() => {
+            if (vivo.current) void refrescarObra()
+          }, ms)
+        }
+      }
     },
-    [cerrar],
+    [cerrar, exito, refrescarObra],
   )
 
   /** Camino 2 · el tablero, releído hasta que aparezca el resultado. */
@@ -170,6 +193,11 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones)
       if (v.fin === 'listo') {
         await cerrar({ fase: 'listo', origen: 'tablero' })
         return
+      }
+      if (v.fin === 'error' && pedidoPendiente.current) {
+        if (vivo.current) setEstado((e) => ({ ...e, fase: 'trabajando', arranco: true }))
+        await espera(INTERVALO_CORTO)
+        continue
       }
       if (v.fin === 'error') {
         const update = v.updateId
@@ -191,8 +219,16 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones)
     }
   }, [cerrar, mirar])
 
-  /** Dispara el escenario y escucha por los dos caminos. */
-  const correr = useCallback(async () => {
+  /**
+   * Dispara el escenario y escucha por los dos caminos.
+   *
+   * `extraAhora` pisa al `extra` del hook, y existe por un motivo concreto: quien llama suele
+   * GUARDAR algo en el tablero y disparar el escenario en la misma función. El `extra` del hook se
+   * armó en el render anterior a ese guardado, así que manda el valor VIEJO —el campo llega vacío
+   * al escenario aunque en Monday ya esté escrito—. Pasando el dato acá se manda lo recién
+   * guardado, sin depender de que React haya vuelto a renderizar.
+   */
+  const correr = useCallback(async (extraAhora?: Record<string, unknown>) => {
     t0.current = Date.now()
     antes?.()
     cerrado.current = false
@@ -200,7 +236,11 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar }: Opciones)
 
     /* El pedido NO se espera antes de empezar a mirar el tablero: su respuesta llega al final del
        escenario, y hasta entonces el tablero es la única fuente de novedades. */
-    const pedido = dispararEscenario(escenario, itemId, extra)
+    pedidoPendiente.current = true
+    const pedido = dispararEscenario(escenario, itemId, { ...extra, ...extraAhora })
+      .finally(() => {
+        pedidoPendiente.current = false
+      })
       .then(leerRespuesta)
       .catch(async (e: unknown) => {
         /* Sin URL configurada no salió nada y no hay nada que esperar: se corta acá. Cualquier otro

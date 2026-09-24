@@ -1833,30 +1833,28 @@
 
 /* Seis etiquetas en dos renglones de tres, no seis anchos distintos amontonados. Cada una ocupa su
    columna, así el ojo baja en línea recta en vez de rastrear dónde empieza la siguiente. */
+/* Cada etiqueta mide LO QUE DICE, y se acomodan las que entren por renglón.
+   Antes era una grilla de tres columnas iguales: eso alineaba los bordes —se veía ordenado— pero
+   al precio de estirar "Tipo: Aluminio" hasta el ancho de la etiqueta más larga y, de paso,
+   cortar con puntos suspensivos las que no entraban en su celda. Se perdía texto para ganar una
+   línea recta. Con el ancho al contenido entran más por renglón y ninguna se corta. */
 .obra-ficha-badges {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px 8px;
   margin-top: 10px;
 }
 .obra-ficha-badges .chip {
   min-width: 0;
+  max-width: 100%;
   padding: 7px 11px;
 }
+/* Sólo por si un valor del tablero es descomunal: con el ancho al contenido, una etiqueta normal
+   nunca llega acá. */
 .obra-ficha-badges .chip-v {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-@media (max-width: 1100px) {
-  .obra-ficha-badges {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 700px) {
-  .obra-ficha-badges {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 /* La plata: el anillo a la izquierda y los tres importes al lado. */
@@ -2408,3 +2406,307 @@
   cursor: default;
 }
 
+
+/* Estado de envío y mensaje al cliente: pegados, uno al lado del otro, con aire arriba. */
+.envio-estados {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Destinatario y vía: el ícono va al lado del rótulo y el desplegable abajo, a todo el ancho.
+   Con el ícono en su propia caja a la izquierda quedaba a la altura del rótulo y no del campo, y
+   se veía corrido. */
+.envio-dest .vinculo {
+  display: block;
+  padding: 12px 14px;
+}
+.envio-dest .vinculo-l {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.envio-dest .vinculo-l > i {
+  font-size: 13px;
+  color: var(--o-badge-blue-text);
+}
+.envio-dest .vinculo .selbox--fix {
+  width: 100%;
+  max-width: none;
+}
+
+/* ── Paso ETMO: 40 / 60 y las dos cajas del mismo alto ─────────────────────────
+   El documento ocupa poco (un campo de carga y un archivo); las observaciones y los datos de la
+   medición son lo que se escribe, y por eso se llevan el ancho. Con `stretch` las dos cajas miden
+   lo mismo aunque el contenido no, y el vacío de observaciones se estira para ocupar el hueco. */
+.paso-grid--etmo {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: stretch;
+}
+.paso-grid--etmo > .card {
+  display: flex;
+  flex-direction: column;
+}
+.paso-grid--etmo > .card > .obs-vacio {
+  flex: 1;
+}
+@media (max-width: 1100px) {
+  .paso-grid--etmo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Datos de la medición ──────────────────────────────────────────────────── */
+.med {
+  margin: 18px 0 0;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--o-border);
+  min-width: 0;
+}
+.med:disabled {
+  opacity: 0.6;
+}
+/* `float` saca al legend de encima del borde del fieldset: sin esto el navegador lo monta sobre la
+   línea y la línea le pasa por detrás. */
+.med-t {
+  float: left;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin-bottom: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.med-t i {
+  color: var(--o-badge-blue-text);
+}
+.med-grid {
+  clear: both;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 12px;
+}
+@media (max-width: 760px) {
+  .med-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.med-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.med-l {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #5b6a7d;
+}
+.med-l-sub {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #94a3b8;
+}
+.med-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--tint-input-bd);
+  border-radius: 10px;
+  background: var(--tint-input);
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--o-text-main);
+  outline: none;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.med-input::placeholder {
+  color: #9aa6b6;
+}
+.med-input:hover:not(:disabled) {
+  border-color: #b9c7da;
+}
+.med-input:focus,
+.med-input:focus-visible,
+.med-sel-btn[aria-expanded='true'] {
+  border-color: var(--primary-blue);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(0, 115, 234, 0.12);
+}
+/* Ícono adentro del campo, a la izquierda. */
+.med-conic {
+  position: relative;
+}
+.med-conic > i {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+.med-conic > .med-input {
+  padding-left: 32px;
+}
+.med-fecha {
+  cursor: pointer;
+}
+.med-fecha::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+/* Selector de persona */
+.med-sel {
+  position: relative;
+}
+.med-sel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.med-sel-btn:disabled {
+  cursor: progress;
+}
+.med-sel-btn > i {
+  font-size: 11px;
+  color: #64748b;
+  transition: transform 0.15s;
+}
+.med-sel-btn[aria-expanded='true'] > i {
+  transform: rotate(180deg);
+}
+.med-sel-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.med-sel-btn--vacio .med-sel-txt {
+  color: #9aa6b6;
+}
+.med-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+}
+.med-menu-buscar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: #f4f6f9;
+}
+.med-menu-buscar i {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.med-menu-buscar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.med-menu-lista {
+  max-height: 232px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.med-op {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--o-text-main);
+  cursor: pointer;
+}
+.med-op--activo {
+  background: #eef4ff;
+}
+.med-op--elegido {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+.med-op--elegido > i {
+  font-size: 11px;
+}
+/* "Otro" separado del resto: no es una persona, es la salida para cuando no está. */
+.med-op--otro {
+  justify-content: flex-start;
+  margin-top: 4px;
+  border-top: 1px solid var(--o-border);
+  border-radius: 0 0 7px 7px;
+  padding-top: 10px;
+  color: #475569;
+}
+.med-op--otro > i {
+  font-size: 12px;
+  color: #64748b;
+}
+.med-op--otro > span {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+.med-menu-nota {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--o-text-muted);
+}
+
+/* El campo de "Otro" aparece debajo, con una entrada suave: se nota que es consecuencia de lo
+   elegido y no un campo más que estuvo siempre. */
+.med-otro {
+  margin-top: 12px;
+  animation: med-aparece 0.18s ease-out;
+}
+@keyframes med-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .med-otro {
+    animation: none;
+  }
+}

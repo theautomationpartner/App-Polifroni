@@ -13,6 +13,32 @@ import { parsear, serializarHtml, serializarLista } from './observaciones'
  * de una corrida anterior en el primer latido. Todo lo demás —el reloj, las dos vías de aviso, el
  * corte a los 5 minutos— es el motor común.
  */
+/**
+ * Las observaciones, en las tres formas en que viajan al escenario.
+ *
+ * Se arma a partir de un TEXTO y no de la obra a propósito: quien genera la OP acaba de guardar lo
+ * escrito, y el objeto `obra` del render todavía tiene el valor anterior. Pasando por acá lo que
+ * se guardó, el escenario recibe lo que la persona escribió y no lo que había antes.
+ *
+ * Cada forma existe por algo:
+ *  - `observaciones`       el texto plano de siempre. No se toca para no cambiarle la entrada a
+ *                          nadie que ya la esté leyendo.
+ *  - `observacionesHtml`   las mismas, una por renglón, con el `<br>` que es el ÚNICO corte que
+ *                          una plantilla HTML respeta —probado contra la orden real: un salto de
+ *                          línea ahí se colapsa a un espacio y quedan todas en un párrafo—.
+ *  - `observacionesLista`  una entrada por abertura, si la plantilla prefiere recorrerla.
+ * La app las manda listas; que se vean cortadas depende de que la plantilla imprima el valor sin
+ * escapar (`{{{...}}}`), porque escapado muestra el `<br>` como texto.
+ */
+export function datosObservaciones(texto: string) {
+  const aberturas = parsear(texto)
+  return {
+    observaciones: texto,
+    observacionesHtml: serializarHtml(aberturas),
+    observacionesLista: serializarLista(aberturas),
+  }
+}
+
 export function useGenerarOp(obra: Obra) {
   /** Los archivos que ya estaban al apretar. Se fotografían en `antes`, no al construir el hook. */
   const previos = useRef<Set<string>>(new Set())
@@ -42,20 +68,12 @@ export function useGenerarOp(obra: Obra) {
   return useCorrida({
     escenario: ESCENARIO.leerDocumento,
     itemId: obra.id,
+    /* Las observaciones de la obra son el piso: sirven cuando se dispara sin haber editado nada.
+       Al generar desde la pantalla se pasan las recién guardadas a `correr()`, que pisan a éstas
+       —ver `datosObservaciones`—. */
     extra: {
       obra: obra.nombre,
-      /* Las observaciones van en tres formas, y cada una existe por algo:
-         - `observaciones`  el texto plano de siempre. No se toca para no cambiarle la entrada a
-                            nadie que ya la esté leyendo.
-         - `observacionesHtml`  las mismas, una por renglón, con el `<br>` que es el ÚNICO corte
-                            que una plantilla HTML respeta —probado contra la orden real: un salto
-                            de línea ahí se colapsa a un espacio y quedan todas en un párrafo—.
-         - `observacionesLista`  una entrada por abertura, si la plantilla prefiere recorrerla.
-         La app las manda listas; que se vean cortadas depende de que la plantilla imprima el
-         valor sin escapar (`{{{...}}}`), porque escapado muestra el `<br>` como texto. */
-      observaciones: obra.observaciones,
-      observacionesHtml: serializarHtml(parsear(obra.observaciones)),
-      observacionesLista: serializarLista(parsear(obra.observaciones)),
+      ...datosObservaciones(obra.observaciones),
       accion: 'leer-documento-etmo',
     },
     antes,

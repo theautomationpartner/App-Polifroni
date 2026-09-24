@@ -100,6 +100,18 @@ export const terminoBien = (r: RespuestaEscenario): boolean =>
   String(r.cuerpo?.estado ?? '') === 'true'
 
 /**
+ * La respuesta de un envío dice "enviado" en su clave.
+ *
+ * Cada escenario de envío contesta con su propia clave, y la app mira sólo la suya:
+ *  - al cliente/arquitecto (MAKE_WEBHOOK_ENVIAR_OP):     `{ "msj_cliente_arquitecto": "enviado" }`
+ *  - al taller            (MAKE_WEBHOOK_ENVIAR_OP_TALLER): `{ "msj_taller": "enviado" }`
+ */
+export const respondioEnviado =
+  (clave: string) =>
+  (r: RespuestaEscenario): boolean =>
+    String(r.cuerpo?.[clave] ?? '').trim().toLowerCase() === 'enviado'
+
+/**
  * Dispara un escenario y espera su respuesta.
  *
  * El tiempo de espera es largo (3 minutos) porque del otro lado hay un módulo de IA leyendo un PDF.

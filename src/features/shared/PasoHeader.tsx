@@ -67,7 +67,8 @@ function SelectorProceso() {
           <span className={`ddproc ${p.id ? '' : 'ddproc--soon'}`}>
             <i className={`fas ${p.icono}`} />
             <span className="ddproc-t">{p.titulo}</span>
-            {!p.id && <span className="ddproc-x">Próximamente</span>}
+            {/* Sin rótulo "Próximamente": no entraba en el menú y le metía scroll. Deshabilitado ya
+                alcanza para saber que todavía no se puede elegir. */}
           </span>
         )}
         onSelect={elegir}

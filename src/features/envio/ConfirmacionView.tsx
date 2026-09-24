@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
+import { EstadoBadge } from '@/components/ui/Aviso'
 import { VisorPdf } from '@/components/ui/VisorPdf'
 import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { puedeDespacharAlTaller } from '@/lib/pasos'
-import { fechaHora, htmlATexto } from '@/lib/texto'
+import { htmlATexto } from '@/lib/texto'
 import { ETIQUETA, getActividades } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
+import { ultimaOpFinal } from '@/features/op/ultimaOp'
+import { ResultadoEnvio } from './ResultadoEnvio'
 
 /**
  * Paso 5 · Confirmación del cliente y despacho al taller.
@@ -20,8 +22,7 @@ import { useEnviarTaller } from './useEnviarTaller'
 export function ConfirmacionView() {
   const obra = useObra()
   const refrescar = useRefrescarObra()
-  const { estado, correr, seguirEsperando, enCurso, noArranco } = useEnviarTaller(obra)
-  const [refrescando, setRefrescando] = useState(false)
+  const { estado, correr, seguirEsperando, enCurso } = useEnviarTaller(obra)
   /** Lo último que quedó escrito en la obra. Es donde el escenario deja el motivo del rechazo. */
   const [motivo, setMotivo] = useState<string>('')
 
@@ -32,7 +33,7 @@ export function ConfirmacionView() {
      contestó. Lo que la confirmación gobierna es el DESPACHO. */
   const despacho = puedeDespacharAlTaller(obra)
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
-  const opPdf = obra.opFinal.find((a) => !a.esImagen) ?? null
+  const opPdf = ultimaOpFinal(obra)
 
   /* El motivo del rechazo no vive en una columna: el escenario lo deja como update de la obra.
      Sólo se muestra el update que HABLA del rechazo. El último update a secas no sirve: en la obra
@@ -59,14 +60,13 @@ export function ConfirmacionView() {
     }
   }, [rechazada, obra.id])
 
-  const actualizar = async () => {
-    setRefrescando(true)
-    try {
-      await refrescar()
-    } finally {
-      setRefrescando(false)
-    }
-  }
+  /* Sin botón de "consultar": mientras el cliente no contestó, la pantalla relee la obra sola cada
+     15 s. Apenas confirma o rechaza desde el formulario, el cartel cambia sin tocar nada. */
+  useEffect(() => {
+    if (confirmada || rechazada || enCurso) return
+    const cada = setInterval(() => void refrescar().catch(() => {}), 15_000)
+    return () => clearInterval(cada)
+  }, [confirmada, rechazada, enCurso, refrescar])
 
   return (
     <section className="view paso-layout obras-v2">
@@ -91,22 +91,6 @@ export function ConfirmacionView() {
 
           <div className="obs-pie" style={{ marginTop: 0 }}>
             <EstadoBadge label="Confirmación" estado={obra.confirmacionOp} />
-            <button
-              type="button"
-              className="btn btn-out btn--sm"
-              disabled={refrescando || enCurso}
-              onClick={() => void actualizar()}
-            >
-              {refrescando ? (
-                <>
-                  <i className="fas fa-circle-notch spin" /> Consultando…
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-rotate" /> Consultar respuesta
-                </>
-              )}
-            </button>
           </div>
 
           {/* El estado de la confirmación NO es un renglón más: decide si esta obra sigue o se
@@ -194,70 +178,7 @@ export function ConfirmacionView() {
             )}
           </div>
 
-          <div className="resultado">
-            {estado.fase === 'esperando' && !noArranco && (
-              <Aviso tono="info">Pedido enviado. Esperando que la automatización lo tome…</Aviso>
-            )}
-            {noArranco && (
-              <Aviso tono="warn">
-                El tablero todavía no registró ningún movimiento del
-                envío al taller. El escenario no tomó el pedido: revisá que esté activo en Make.
-                Sigo mirando.
-              </Aviso>
-            )}
-            {estado.fase === 'trabajando' && (
-              <Aviso tono="info">
-                Mandando la orden al taller. Podés dejar la pantalla
-                abierta: cuando termine, el estado cambia solo.
-              </Aviso>
-            )}
-            {estado.fase === 'listo' && (
-              <Aviso tono="ok">
-                La orden salió al taller de fabricación.
-                <span className="origen">
-                  {' '}
-                  · lo avisó {estado.origen === 'respuesta' ? 'el escenario' : 'el tablero'}
-                </span>
-              </Aviso>
-            )}
-            {estado.fase === 'demorado' && (
-              <>
-                <Aviso tono="warn">
-                  El tablero todavía no confirma el envío. La corrida sigue en Make: dejé de
-                  preguntar, no de esperar.
-                </Aviso>
-                <div className="acciones-fila">
-                  <button
-                    type="button"
-                    className="btn btn-out btn--sm"
-                    onClick={() => void seguirEsperando()}
-                  >
-                    <i className="fas fa-hourglass-half" /> Seguir esperando
-                  </button>
-                </div>
-              </>
-            )}
-            {estado.fase === 'error' && estado.problema && <Aviso tono="err">{estado.problema}</Aviso>}
-            {estado.fase === 'error' && !estado.problema && (
-              <>
-                <Aviso tono="err">
-                  El escenario no pudo mandar la orden al taller.
-                  {estado.updateError ? ' Esto es lo que informó:' : ' No dejó ningún detalle.'}
-                </Aviso>
-                {estado.updateError && (
-                  <article className="update-corrida">
-                    <div className="hist-cab">
-                      <span className="hist-autor">{estado.updateError.autor}</span>
-                      <span className="hist-fecha">{fechaHora(estado.updateError.fecha)}</span>
-                    </div>
-                    <p className="hist-txt" style={{ whiteSpace: 'pre-wrap' }}>
-                      {htmlATexto(estado.updateError.body)}
-                    </p>
-                  </article>
-                )}
-              </>
-            )}
-          </div>
+          <ResultadoEnvio estado={estado} seguirEsperando={() => void seguirEsperando()} />
         </div>
 
         <div className="card">
