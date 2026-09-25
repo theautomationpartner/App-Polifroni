@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { accesoAlPaso } from '@/lib/pasos'
 import { ACCIONES_PASO, PASOS } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
@@ -22,10 +21,9 @@ const LISTADO = '__listado'
 export function AccionSelect() {
   const { paso, obra, listado } = useApp()
   const dispatch = useDispatch()
-  /* Al arrancar no hay nada elegido y el selector lo dice ("Seleccionar..."). Mostrar "Seleccionar
-     Obra" de entrada lo hacía parecer una elección ya hecha por el usuario. */
-  const [elegida, setElegida] = useState(paso !== 'obra' || !!obra)
-  const valor = listado ? LISTADO : !elegida && paso === 'obra' ? '' : paso
+  /* "Seleccionar Obra" no es una acción que se elija: es la pantalla donde ya se está. Sin otra
+     acción elegida, el selector dice "Seleccionar...". */
+  const valor = listado ? LISTADO : paso === 'obra' ? '' : paso
 
   /* Se puede elegir CUALQUIER etapa. El selector dice a dónde querés ir, no si podés: quien elige
      "Enviar la OP al cliente" está diciendo qué vino a hacer, y frenarlo acá lo deja adivinando
@@ -48,7 +46,6 @@ export function AccionSelect() {
             value={valor}
             onChange={(e) => {
               const v = e.target.value
-              setElegida(true)
               if (v === LISTADO) dispatch({ type: 'verListado' })
               else dispatch({ type: 'goto', paso: v as Paso })
             }}
@@ -57,7 +54,9 @@ export function AccionSelect() {
               Seleccionar...
             </option>
             {/* Sin número: el número ya lo lleva la barra de etapas. */}
-            {opciones.map(({ paso: p }) => (
+            {/* Sin "Seleccionar Obra": elegir la obra es lo que se hace en esta misma pantalla, y
+                ofrecerlo como acción era redundante. */}
+            {opciones.filter(({ paso: p }) => p !== 'obra').map(({ paso: p }) => (
               <option key={p} value={p}>
                 {ACCIONES_PASO[p]}
               </option>

@@ -265,7 +265,10 @@
       </div>
 
       <form action="https://hook.us1.make.com/4p6n3jkc8ki5kcqr11a98bfmrs54cp32" method="POST">
+        <!-- itemId: la Orden de Produccion. itemIdObra: la obra. Los dos vienen en el enlace del
+             WhatsApp y se reenvían al webhook que registra la respuesta. -->
         <input type="hidden" name="itemId" value="{{1.itemId}}" />
+        <input type="hidden" name="itemIdObra" value="{{1.itemIdObra}}" />
         <input type="hidden" name="nombre" value="{{decodeURL(1.nombre)}}" />
 
         <span class="rotulo">¿La orden se encuentra correcta?</span>

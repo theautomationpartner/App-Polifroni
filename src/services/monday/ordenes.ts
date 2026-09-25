@@ -39,6 +39,8 @@ export const COL_OP = {
   nOpHetmo: 'text_mm7g5hbe',
   /** 🤖Estado De Envio OP (status): Enviando... | Enviada | Error De Envio. */
   estadoEnvio: 'color_mm7hdg10',
+  /** Link al PDF enviado (link): la URL compartida que devuelve el envío. */
+  linkPdf: 'link_mm7hmk9d',
 } as const
 
 /** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
@@ -375,6 +377,11 @@ export async function guardarNroHetmo(ordenId: string, texto: string): Promise<v
   await cambiarColumnas(ordenId, { [COL_OP.nOpHetmo]: texto })
 }
 
+/** Guarda en la OP el link al PDF que se le mandó al cliente, con el texto "Ver Orden De Produccion". */
+export async function guardarLinkOrden(ordenId: string, url: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.linkPdf]: { url, text: 'Ver Orden De Produccion' } })
+}
+
 /** Mueve el estado de envío de la OP ("Enviando..." → "Enviada" o "Error De Envio"). */
 export async function setEstadoEnvioOrden(ordenId: string, etiqueta: string): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.estadoEnvio]: { label: etiqueta } })
@@ -390,6 +397,8 @@ export interface ResumenOrden {
   nOpHetmo: string
   medidoPor: string
   fechaMedicion: string
+  /** Observación de la medición (long_text_mm7g7k7n). */
+  observacion: string
   estadoEnvio: string
   opFinal: ArchivoObra[]
 }
@@ -408,6 +417,7 @@ export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenO
     COL_OP.nOpHetmo,
     COL_OP.medidoPor,
     COL_OP.fechaMedicion,
+    COL_OP.observacion,
     COL_OP.estadoEnvio,
     COL_OP.opFinal,
   ]
@@ -433,6 +443,7 @@ export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenO
     nOpHetmo: t(COL_OP.nOpHetmo),
     medidoPor: t(COL_OP.medidoPor),
     fechaMedicion: t(COL_OP.fechaMedicion),
+    observacion: t(COL_OP.observacion),
     estadoEnvio: t(COL_OP.estadoEnvio),
     opFinal: u.opFinal,
   }

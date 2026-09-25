@@ -17,6 +17,40 @@ const RESPUESTA_OK = respondioEnviado('msj_cliente_arquitecto')
  *
  * Además el escenario cierra con un *Webhook response*: cuando llega, avisa antes que el tablero.
  */
+/** "1111 - CLIENTE TEST" → "CLIENTE TEST": el código de la cuenta no va en un saludo. */
+const sinCodigo = (nombre: string) => nombre.replace(/^\s*\d+\s*-\s*/, '').trim()
+/** Un espejo de Monday puede traer varios valores separados por coma: se usa el primero. */
+const primero = (valor: string) => valor.split(',')[0]?.trim() ?? ''
+
+/**
+ * A quién le llega el mensaje, ya resuelto: una entrada por persona, con su nombre, su WhatsApp y
+ * su mail. "Cliente" o "Constructor" → una; "Ambos" → las dos.
+ *
+ * Se arma ACÁ porque la app ya tiene esos datos a la vista. El escenario los recibe listos y no
+ * tiene que salir a buscar nombres a Monday (ni gastar operaciones en eso).
+ */
+export function destinosDe(obra: Obra) {
+  const a = obra.opDestinatario.texto || 'Cliente'
+  const destinos: { tipo: string; nombre: string; whatsapp: string; email: string }[] = []
+  if (a !== 'Constructor') {
+    destinos.push({
+      tipo: 'Cliente',
+      nombre: sinCodigo(obra.ctaCteCliente),
+      whatsapp: primero(obra.celCliente).replace(/\D/g, ''),
+      email: primero(obra.emailCliente),
+    })
+  }
+  if (a !== 'Cliente') {
+    destinos.push({
+      tipo: 'Constructor',
+      nombre: sinCodigo(obra.arquitecto),
+      whatsapp: primero(obra.celArquitecto).replace(/\D/g, ''),
+      email: '',
+    })
+  }
+  return destinos
+}
+
 export function useEnviarOp(obra: Obra) {
   const mirar = useCallback(
     async (desdeMs: number): Promise<Veredicto> => {
@@ -52,6 +86,8 @@ export function useEnviarOp(obra: Obra) {
       via: obra.opVia.texto,
       celCliente: obra.celCliente,
       celArquitecto: obra.celArquitecto,
+      /* Las personas a las que se les manda, ya con nombre: el escenario las recorre tal cual. */
+      destinos: destinosDe(obra),
       accion: 'enviar-op-cliente',
       /* Ver la nota en `useEnviarTaller`: el escenario lo reenvía al hook que cierra el estado. */
       columnId: COL.estadoEnvioOp,

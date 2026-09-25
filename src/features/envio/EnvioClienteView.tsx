@@ -7,8 +7,12 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
 import {
+  ACTIVIDAD,
   COL,
   COLOR_ENVIO_OP,
+  crearActividad,
+  guardarLinkOrden,
+  html,
   ESTADO_ENVIO_OP,
   ESTADO_OP,
   setEstado,
@@ -18,7 +22,7 @@ import {
   type ResumenOrden,
 } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
-import { useEnviarOp } from './useEnviarOp'
+import { destinosDe, useEnviarOp } from './useEnviarOp'
 import { DocumentoOrden } from './DocumentoOrden'
 import { MensajeEjemplo } from './MensajeEjemplo'
 
@@ -38,7 +42,7 @@ export function EnvioClienteView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-  const { estado, correr, seguirEsperando, enCurso } = useEnviarOp(obra)
+  const { estado, correr, seguirEsperando, enCurso, esperarRespuesta } = useEnviarOp(obra)
   const [cambiando, setCambiando] = useState(false)
   const [verMensaje, setVerMensaje] = useState(false)
 
@@ -100,10 +104,61 @@ export function EnvioClienteView() {
     marcarEnvio(ESTADO_ENVIO_OP.enviando)
     void correr({ ordenId: orden?.id ?? null })
   }
+  /**
+   * La actividad "OP Enviada" en la línea de tiempo de la obra, con todo lo del envío: cuándo, qué
+   * orden, a quién (nombre y teléfono), la medición y el link al PDF que devuelve el escenario.
+   */
+  const registrarEnvio = async () => {
+    const cuerpo = await esperarRespuesta(15_000)
+    const link = String(cuerpo?.linkPdf ?? cuerpo?.shareLink ?? cuerpo?.webContentLink ?? '').trim()
+    /* El mismo link queda en la OP (columna "Ver Orden De Produccion"). */
+    if (link && orden) {
+      void guardarLinkOrden(orden.id, link).catch((e) =>
+        console.warn('[envio] no se pudo guardar el link del PDF en la OP', e),
+      )
+    }
+    const destinos = destinosDe(obra)
+    const ahora = new Date()
+    const cuando = `${ahora.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' })} - ${ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false })} hs`
+    const fechaMed = orden?.fechaMedicion ? orden.fechaMedicion.split('-').reverse().join('/') : ''
+    const renglon = (titulo: string, valor: string) =>
+      `<p><b>${titulo}:</b> ${valor ? html(valor) : '—'}</p>`
+    /* Cada dato con su TÍTULO, el mismo de la columna del tablero Orden de Produccion: nada suelto
+       que haya que adivinar a qué se refiere. */
+    const esAluminio = /alum/i.test(orden?.tipo ?? '')
+    const contenido = [
+      renglon('Fecha De Envío', cuando),
+      renglon(esAluminio ? 'N° OP Aluminio' : 'N° OP PVC', orden?.numero ?? ''),
+      renglon('N° OP HETMO', orden?.nOpHetmo ?? ''),
+      renglon('Tipo', orden?.tipo ?? ''),
+      ...destinos.map(
+        (d) =>
+          `<p><b>Enviada A ${html(d.tipo)}:</b> ${html(d.nombre || '—')} — <b>Teléfono:</b> ${html(d.whatsapp || 'sin teléfono')}</p>`,
+      ),
+      renglon('Medido Por', orden?.medidoPor ?? ''),
+      renglon('Fecha De Medición', fechaMed),
+      renglon('Observación', orden?.observacion ?? ''),
+      link
+        ? `<p><b>Link PDF:</b> <a href="${html(link)}">${html(link)}</a></p>`
+        : renglon('Link PDF', ''),
+    ].join('')
+    await crearActividad({
+      itemId: obra.id,
+      actividadId: ACTIVIDAD.opEnviada,
+      titulo: 'OP Enviada',
+      resumen: `Enviada a ${destinos.map((d) => `${d.tipo} ${d.nombre}`.trim()).join(' y ')}`,
+      contenido,
+      url: link || undefined,
+      telefono: destinos[0]?.whatsapp || undefined,
+      cuando: ahora,
+    }).catch((e) => console.warn('[envio] no se pudo crear la actividad OP Enviada', e))
+  }
+
   useEffect(() => {
     if (estado.fase === 'listo') {
       marcarEnvio(ESTADO_ENVIO_OP.enviada)
       void sincronizarEstadoOrden(obra.id, ESTADO_OP.enviada)
+      void registrarEnvio()
     } else if (estado.fase === 'error') {
       marcarEnvio(ESTADO_ENVIO_OP.error)
     }
