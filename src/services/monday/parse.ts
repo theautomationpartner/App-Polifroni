@@ -6,6 +6,8 @@
 export interface CV {
   id: string
   text: string | null
+  /** El valor crudo en JSON (p. ej. las personas de una columna people). */
+  value?: string | null
   /** Las columnas fórmula devuelven su valor calculado acá, no en `text`. */
   display_value?: string | null
   /** Índice de la etiqueta en una columna status. Es más estable que su texto. */

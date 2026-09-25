@@ -19,10 +19,10 @@ export const PASOS: readonly Paso[] = ['obra', 'etmo', 'envio', 'confirmacion']
 
 /** Etiqueta de cada paso, la que se lee debajo del círculo del stepper. Corta a propósito. */
 export const ETIQUETAS_PASO: Record<Paso, string> = {
-  obra: 'Obra',
-  etmo: 'Orden ETMO',
-  envio: 'Envío al cliente',
-  confirmacion: 'Confirmación y taller',
+  obra: 'Seleccionar Obra',
+  etmo: 'Subir Orden Hetmo',
+  envio: 'Envío al Cliente',
+  confirmacion: 'Confirmación y Taller',
 }
 
 /**
@@ -31,10 +31,10 @@ export const ETIQUETAS_PASO: Record<Paso, string> = {
  * y "Cargar Orden ETMO" contesta esa pregunta; "Orden ETMO", no.
  */
 export const ACCIONES_PASO: Record<Paso, string> = {
-  obra: 'Elegir la obra',
-  etmo: 'Orden ETMO · emitir la OP',
-  envio: 'Enviar la OP al cliente',
-  confirmacion: 'Confirmar y enviar al taller',
+  obra: 'Seleccionar Obra',
+  etmo: 'Subir Orden Hetmo',
+  envio: 'Enviar OP al Cliente',
+  confirmacion: 'Confirmar y Enviar al Taller',
 }
 
 export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))

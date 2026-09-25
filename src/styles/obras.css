@@ -552,7 +552,7 @@
   padding: 6px 12px;
   border-radius: 6px;
   background: var(--o-badge-blue-bg);
-  border: 1px solid transparent;
+  border: 0;
   font-size: 13px;
   line-height: 1.3;
 }
@@ -1992,9 +1992,10 @@
 .chip-l {
   font-weight: 800;
 }
+/* El valor va en el color de su etiqueta (lo pone `EstadoBadge`), un punto más suave que el
+   título: nunca en negro. */
 .chip-v {
-  color: #0f172a;
-  font-weight: 700;
+  font-weight: 600;
 }
 .plata-l,
 .dato-l,
@@ -2083,10 +2084,21 @@
 .ritem:last-child {
   border-bottom: none;
 }
-.ritem:hover,
 .ritem:focus-visible {
-  background: #f5f8ff;
   outline: none;
+}
+/* La fila resaltada —por el mouse o por las flechas— es la que abre el Enter. Una sola marca para
+   los dos, con la raya a la izquierda como en La Batea. */
+.ritem--activo {
+  background: #eef4ff;
+  box-shadow: inset 3px 0 0 var(--primary-blue);
+}
+.ritem-code {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-blue);
+  font-variant-numeric: tabular-nums;
 }
 .ritem-main {
   min-width: 0;
@@ -2708,5 +2720,401 @@
 @media (prefers-reduced-motion: reduce) {
   .med-otro {
     animation: none;
+  }
+}
+
+/* Nro de orden automático: se lee como dato fijo, con el lápiz para abrirlo a mano. */
+.med-nro--fijo .med-input {
+  background: #f4f6f9;
+  border-color: var(--o-border);
+  color: var(--o-text-title);
+  font-weight: 700;
+  cursor: default;
+  padding-right: 38px;
+}
+.med-nro--fijo .med-input:focus {
+  box-shadow: none;
+  border-color: var(--o-border);
+  background: #f4f6f9;
+}
+.med-lapiz {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+}
+.med-lapiz:hover {
+  background: #e7edf6;
+  color: var(--primary-blue);
+}
+.med-area {
+  height: 40px;
+  min-height: 40px;
+  padding: 9px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+/* ══ Paso "Subir Orden Hetmo": todo en una pantalla ══════════════════════════════
+   La ficha, el documento, las observaciones y los datos de la medición tienen que verse sin
+   scrollear. Se achica el aire, no la letra: los mismos datos, con menos margen entre ellos. */
+.obras-v2 .obra-ficha--compacta {
+  padding: 14px 18px;
+  margin-bottom: 10px;
+}
+.obra-ficha--compacta .obra-ficha-cab {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.obra-ficha--compacta .obra-ficha-tit {
+  min-width: 0;
+}
+.obra-ficha--compacta .obra-ficha-id {
+  font-size: 10.5px;
+}
+.obra-ficha--compacta .obra-ficha-name {
+  font-size: 18px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* La plata, en la cabecera: dos anillos chicos y los tres importes en línea. */
+.plata-mini {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto;
+}
+.plata-mini-donuts {
+  display: flex;
+  gap: 6px;
+}
+.plata-mini .donut--sm {
+  width: 46px;
+  height: 46px;
+}
+.plata-mini .donut--sm .donut-in {
+  width: 36px;
+  height: 36px;
+}
+.plata-mini .donut-l {
+  display: none;
+}
+.plata-mini-dato {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 14px;
+  border-left: 1px solid var(--o-border);
+}
+.plata-mini .plata-l {
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.plata-mini .plata-v {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+/* Las tres personas, más bajas: ícono chico y el dato en una sola línea de alto. */
+.obra-ficha-fila {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.obra-ficha--compacta .vinculo {
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+.obra-ficha--compacta .vinculo-ic {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+.obra-ficha--compacta .vinculo-l {
+  font-size: 9.5px;
+}
+.obra-ficha--compacta .vinculo-v {
+  font-size: 13px;
+  line-height: 1.25;
+}
+.obra-ficha--compacta .vinculo-x {
+  font-size: 11px;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.obra-ficha--compacta .vinculo > div {
+  min-width: 0;
+}
+.obra-ficha--compacta .obra-datos-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--o-border);
+}
+.obra-ficha--compacta .dato {
+  align-items: center;
+  gap: 8px;
+}
+.obra-ficha--compacta .dato-ic {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+.obra-ficha--compacta .dato-l {
+  font-size: 9.5px;
+}
+.obra-ficha--compacta .dato-v {
+  font-size: 13px;
+}
+.obra-ficha--compacta .obra-ficha-badges {
+  gap: 6px;
+  margin-top: 10px;
+}
+.obra-ficha--compacta .obra-ficha-badges .chip {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.obra-ficha--compacta .obra-ficha-badges .chip-l {
+  font-size: 9.5px;
+}
+@media (max-width: 1100px) {
+  .obra-ficha--compacta .obra-ficha-cab {
+    flex-wrap: wrap;
+  }
+  .obra-ficha-fila,
+  .obra-ficha--compacta .obra-datos-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .obra-ficha-fila,
+  .obra-ficha--compacta .obra-datos-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plata-mini {
+    flex-wrap: wrap;
+  }
+}
+
+/* Las dos cajas del paso, con menos relleno y el documento más bajo. */
+.obras-v2 .paso-grid--etmo > .card {
+  padding: 16px 18px;
+  margin-bottom: 0;
+}
+.paso-grid--etmo .drop {
+  min-height: 64px;
+  padding: 10px 14px;
+}
+.paso-grid--etmo .panel-t {
+  margin-bottom: 8px;
+}
+.paso-grid--etmo .panel-sep {
+  margin: 12px 0;
+}
+.paso-grid--etmo .acciones-fila {
+  margin-top: 10px;
+}
+.paso-grid--etmo .obs-vacio {
+  min-height: 96px;
+  padding: 12px;
+}
+.paso-grid--etmo .med {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.paso-grid--etmo .med-t {
+  margin-bottom: 10px;
+}
+/* El pie del paso, más cerca: sin él a la vista, el paso "no entra". */
+.paso-layout:has(.paso-grid--etmo) .paso-nav {
+  padding: 12px 0 16px;
+}
+.paso-layout:has(.paso-grid--etmo) .header-section {
+  margin-bottom: 6px;
+}
+.paso-layout:has(.paso-grid--etmo) .step-title-main {
+  font-size: 22px;
+}
+
+.paso-grid--etmo .obs-area {
+  min-height: 84px;
+}
+.paso-grid--etmo .obs-vacio {
+  min-height: 80px;
+}
+.obra-ficha--compacta .vinculo {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.plata-mini .donut--sm {
+  width: 40px;
+  height: 40px;
+}
+.plata-mini .donut--sm .donut-in {
+  width: 31px;
+  height: 31px;
+}
+.plata-mini .donut--sm .donut-v {
+  font-size: 9.5px;
+}
+
+/* ══ Rótulos con Mayúscula Inicial ═══════════════════════════════════════════════
+   Los rótulos en MAYÚSCULAS con espaciado gritaban más que el dato que rotulan. Con mayúscula
+   inicial se leen como un nombre —"Etapa de Venta"— y el valor vuelve a ser lo que manda. Aplica a
+   las etiquetas de todo el sistema y a los rótulos de la ficha y de la medición. */
+.chip-l,
+.obras-v2 .vinculo-l,
+.obras-v2 .dato-l,
+.obras-v2 .plata-l,
+.med-l {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.chip-l {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.ritem-chips .chip-l,
+.obra-row-chips .chip-l,
+.obra-ficha--compacta .obra-ficha-badges .chip-l {
+  font-size: 11px;
+}
+.med-l {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* ══ Ficha de la obra, versión compacta y sobria ═══════════════════════════════ */
+.obra-ficha--compacta .obra-ficha-cab {
+  margin-bottom: 10px;
+}
+/* El id va en el MISMO renglón que el nombre, más chico y apagado: es una referencia. */
+.obra-ficha--compacta .obra-ficha-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 17px;
+}
+.obra-ficha--compacta .obra-ficha-name .obra-ficha-id {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  color: var(--primary-blue);
+}
+
+/* Las tres personas: tarjetas blancas con una línea de color a la izquierda, en vez de tres cajas
+   pintadas enteras. Dicen lo mismo con mucho menos peso visual. */
+.obra-ficha--compacta .vinculo {
+  position: relative;
+  gap: 9px;
+  padding: 6px 10px 6px 13px;
+  border: 1px solid var(--o-border);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: none;
+}
+.obra-ficha--compacta .vinculo::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary-blue);
+}
+.obra-ficha--compacta .vinculo--propio::before {
+  background: #f59e0b;
+}
+.obra-ficha--compacta .vinculo--falta::before {
+  background: #cbd5e1;
+}
+.obra-ficha--compacta .vinculo-ic {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  border: 0;
+  border-radius: 7px;
+  background: #eef4ff;
+}
+.obra-ficha--compacta .vinculo--propio .vinculo-ic {
+  background: #fef3c7;
+  color: #b45309;
+}
+.obra-ficha--compacta .vinculo-l {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.obra-ficha--compacta .vinculo-v {
+  font-size: 13px;
+  font-weight: 700;
+}
+.obra-ficha--compacta .dato-l {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.obra-ficha--compacta .dato-ic {
+  width: 26px;
+  height: 26px;
+}
+
+/* Al pie: las etiquetas a la izquierda y la plata a la derecha, en el mismo renglón. */
+.obra-ficha-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--o-border);
+}
+.obra-ficha-pie .obra-ficha-badges {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-top: 0;
+}
+.obra-ficha-pie .plata-mini {
+  flex: 0 0 auto;
+}
+.obra-ficha--compacta .plata-mini .plata-l {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+@media (max-width: 1200px) {
+  .obra-ficha-pie {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .obra-ficha-pie .plata-mini {
+    justify-content: flex-end;
   }
 }

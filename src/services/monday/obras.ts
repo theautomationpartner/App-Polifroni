@@ -156,6 +156,17 @@ const limpiar = (bruto: string): string => {
   return t === 'null' || t === 'undefined' ? '' : t
 }
 
+/** Los ids de las PERSONAS (no equipos) de una columna people, desde su valor JSON. */
+function personas(valorJson: string | null | undefined): string[] {
+  if (!valorJson) return []
+  try {
+    const v = JSON.parse(valorJson) as { personsAndTeams?: { id: number | string; kind?: string }[] }
+    return (v.personsAndTeams ?? []).filter((p) => p.kind !== 'team').map((p) => String(p.id))
+  } catch {
+    return []
+  }
+}
+
 function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Record<string, ColumnaBoard>): Obra {
   const c = byId(item)
   const txt = (id: string) => limpiar(valor(c[id]) ?? '')
@@ -172,6 +183,7 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     arquitecto: txt(COL.arquitecto),
     arquitectoIds: c[COL.arquitecto]?.linked_item_ids ?? [],
     asignado: txt(COL.asignado),
+    asignadoIds: personas(c[COL.asignado]?.value),
 
     celCoordinar: txt(COL.celCoordinar),
     ubicacion: txt(COL.ubicacion),

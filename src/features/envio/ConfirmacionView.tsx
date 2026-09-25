@@ -6,7 +6,7 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { puedeDespacharAlTaller } from '@/lib/pasos'
 import { htmlATexto } from '@/lib/texto'
-import { ETIQUETA, getActividades } from '@/services/monday'
+import { ESTADO_OP, ETIQUETA, getActividades, sincronizarEstadoOrden } from '@/services/monday'
 import { useEnviarTaller } from './useEnviarTaller'
 import { ultimaOpFinal } from '@/features/op/ultimaOp'
 import { ResultadoEnvio } from './ResultadoEnvio'
@@ -60,6 +60,13 @@ export function ConfirmacionView() {
     }
   }, [rechazada, obra.id])
 
+  /* La respuesta del cliente se copia a la OP del tablero de órdenes: "Confirmada" o "NO
+     Confirmado". Sólo cambia si hace falta (lo resuelve `sincronizarEstadoOrden`). */
+  useEffect(() => {
+    if (confirmada) void sincronizarEstadoOrden(obra.id, ESTADO_OP.confirmada)
+    else if (rechazada) void sincronizarEstadoOrden(obra.id, ESTADO_OP.noConfirmada)
+  }, [confirmada, rechazada, obra.id])
+
   /* Sin botón de "consultar": mientras el cliente no contestó, la pantalla relee la obra sola cada
      15 s. Apenas confirma o rechaza desde el formulario, el cartel cambia sin tocar nada. */
   useEffect(() => {
@@ -73,7 +80,7 @@ export function ConfirmacionView() {
       <PasoHeader />
 
       <PasoTitulo
-        titulo="Confirmación del cliente y taller"
+        titulo="Confirmación del Cliente y Taller"
         descripcion={
           <>
             Con la orden confirmada por el cliente se habilita el despacho al taller.

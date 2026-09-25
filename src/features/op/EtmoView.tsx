@@ -7,8 +7,17 @@ import { ObraFicha, useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { datosObservaciones, useGenerarOp } from './useGenerarOp'
+import { getNumeracion, registrarNumero, siguiente, tipoDeObra } from '@/services/make'
 import {
   COL,
+  COL_OP,
+  ESTADO_OP,
+  asegurarOrdenAbierta,
+  completarOrden,
+  copiarArchivo,
+  crearObservaciones,
+  olvidarOrdenAbierta,
+  setEstadoOrden,
   getUrlArchivo,
   guardarObservaciones,
   limpiarArchivos,
@@ -19,7 +28,16 @@ import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
 import { DatosMedicion, medicionInicial, type Medicion } from './DatosMedicion'
-import { fusionar, parsear, rotuloAbertura, serializar, sinCompletar, type Abertura } from './observaciones'
+import {
+  fusionar,
+  normalizarNombre,
+  parsear,
+  rotuloAbertura,
+  serializar,
+  sinCompletar,
+  type Abertura,
+} from './observaciones'
+import { ultimaOpFinal } from './ultimaOp'
 import { faltaParaLeer } from './requisitos'
 import { useLeerObservaciones } from './useLeerObservaciones'
 
@@ -119,8 +137,49 @@ export function EtmoView() {
      volver a esta etapa, la lista está sin tener que releer el documento. */
   const [aberturas, setAberturas] = useState<Abertura[]>(() => parsear(obra.observaciones))
   const [indice, setIndice] = useState(0)
-  /* Datos de la medición. Todavía no se guardan: van a ir a un tablero propio. */
+  /* Datos de la medición. Viajan a la OP del tablero de órdenes y al escenario que arma el PDF. */
   const [medicion, setMedicion] = useState<Medicion>(medicionInicial)
+  /** PVC o Aluminio: decide qué contador se usa y si el número lleva la "A". */
+  const tipoOrden = tipoDeObra(obra.tipo.texto)
+  const [numeroCargando, setNumeroCargando] = useState(true)
+  const [numeroError, setNumeroError] = useState(false)
+  /**
+   * La OP de esta obra en el tablero de órdenes. Se crea APENAS se entra al paso —sólo con el
+   * nombre— para tener dónde guardar todo lo que viene después. Si la obra ya tiene una abierta
+   * (entró antes y no generó), se reusa esa.
+   */
+  const ordenAbierta = useRef<Promise<string | null> | null>(null)
+  /** Los datos, las observaciones y el ETMO cargándose en la OP mientras se arma el PDF. */
+  const cargaDeOrden = useRef<Promise<void> | null>(null)
+  /** El número con el que salió ESTA orden: es el que se registra como último usado. */
+  const numeroUsado = useRef<string>('')
+  /** Después de generar, mientras se adjunta la OP al tablero de órdenes. */
+  const [registrando, setRegistrando] = useState(false)
+
+  useEffect(() => {
+    ordenAbierta.current = asegurarOrdenAbierta(obra.id, obra.nombre).catch((e) => {
+      console.warn('[etmo] no se pudo crear la OP en el tablero de órdenes', e)
+      return null
+    })
+  }, [obra.id, obra.nombre])
+
+  /* El número de orden sale solo: el siguiente al último emitido de su tipo. No pisa uno escrito a
+     mano con el lápiz. */
+  useEffect(() => {
+    let vivo = true
+    setNumeroCargando(true)
+    getNumeracion()
+      .then((n) => {
+        if (!vivo) return
+        setNumeroError(false)
+        setMedicion((m) => (m.nroEditado ? m : { ...m, nroOrden: siguiente(n, tipoOrden) }))
+      })
+      .catch(() => vivo && setNumeroError(true))
+      .finally(() => vivo && setNumeroCargando(false))
+    return () => {
+      vivo = false
+    }
+  }, [tipoOrden])
 
   /** Lo último que quedó escrito en el tablero. Es lo que separa "lo mío" de "lo de afuera". */
   const ultimoGuardado = useRef(obra.observaciones)
@@ -269,7 +328,54 @@ export function EtmoView() {
   const generar = async () => {
     setConfirmarGenerar(null)
     if (!(await guardar())) return
-    await generacion.correr(datosObservaciones(observacionesActuales))
+    const datos = medicion
+    numeroUsado.current = datos.nroOrden.trim()
+    cargaDeOrden.current = cargarOrden(datos)
+    await generacion.correr({
+      ...datosObservaciones(observacionesActuales),
+      /* Para que el PDF salga con el MISMO número que queda en el tablero de órdenes. */
+      nroOrden: datos.nroOrden.trim(),
+      tipoOrden,
+      medidoPor: datos.medidoPor,
+      fechaMedicion: datos.fecha ? datos.fecha.split('-').reverse().join('/') : '',
+      observacionMedicion: datos.observacion,
+    })
+  }
+
+  /**
+   * Le carga a la OP de la obra todo lo de este paso: los datos de la medición, una observación por
+   * abertura como subelemento y el ETMO original. Corre en paralelo con la generación del PDF para
+   * no sumarle espera. Cada parte se intenta por separado: que falle una no deja sin hacer las
+   * otras, ni frena la generación.
+   */
+  const cargarOrden = async (datos: Medicion): Promise<void> => {
+    let id = await ordenAbierta.current
+    if (!id) {
+      /* No se pudo crear al entrar (sin red en ese momento): se intenta de nuevo ahora. */
+      id = await asegurarOrdenAbierta(obra.id, obra.nombre).catch(() => null)
+      ordenAbierta.current = Promise.resolve(id)
+    }
+    if (!id) return
+    await completarOrden(id, {
+      tipo: tipoOrden,
+      numero: datos.nroOrden.trim(),
+      personas: obra.asignadoIds,
+      medidoPor: datos.medidoPor,
+      observacion: datos.observacion,
+      fecha: datos.fecha,
+    }).catch((e) => console.warn('[etmo] no se pudieron cargar los datos de la OP', e))
+    const conTexto = aberturas
+      .filter((a) => a.texto.trim())
+      .map((a) => ({ nombre: normalizarNombre(a.nombre), texto: a.texto.trim() }))
+    await crearObservaciones(id, conTexto).catch((e) =>
+      console.warn('[etmo] no se pudieron crear las observaciones de la OP', e),
+    )
+    const etmo = obra.ordenEtmo.find((a) => !a.esImagen) ?? obra.ordenEtmo[0]
+    if (etmo) {
+      await copiarArchivo(etmo, id, COL_OP.etmo).catch((e) =>
+        console.warn('[etmo] no se pudo adjuntar el ETMO a la OP', e),
+      )
+    }
   }
 
   /**
@@ -298,10 +404,37 @@ export function EtmoView() {
   useEffect(() => {
     if (generacion.estado.fase !== 'listo') return
     void (async () => {
-      await refrescar().catch(() => {})
+      setRegistrando(true)
+      const fresca = await refrescar().catch(() => null)
+      /* La OP del tablero de órdenes se completa ANTES de saltar: el PDF final, el estado
+         "Generada" y el número como último usado. Son unos segundos, y hechos acá no dependen de
+         que la pestaña siga abierta después. */
+      await cargaDeOrden.current?.catch(() => {})
+      const id = await ordenAbierta.current
+      if (id) {
+        const pdf = fresca ? ultimaOpFinal(fresca) : null
+        if (pdf) {
+          await copiarArchivo(pdf, id, COL_OP.opFinal).catch((e) =>
+            console.warn('[etmo] no se pudo adjuntar la OP final', e),
+          )
+        }
+        await setEstadoOrden(id, ESTADO_OP.generada).catch(() => {})
+      }
+      if (numeroUsado.current) {
+        await registrarNumero(tipoOrden, numeroUsado.current).catch((e) =>
+          console.warn('[etmo] no se pudo actualizar la numeración', e),
+        )
+      }
+      /* Generada: la próxima vez que se entre a esta obra, se abre una OP nueva. */
+      olvidarOrdenAbierta(obra.id)
+      cargaDeOrden.current = null
+      setRegistrando(false)
       dispatch({ type: 'goto', paso: 'envio' })
     })()
-  }, [generacion.estado.fase, dispatch, refrescar])
+  }, [generacion.estado.fase, dispatch, refrescar, tipoOrden, obra.id])
+
+  /* Si la automatización falla, la OP queda abierta tal cual: el próximo intento la reusa y le
+     reemplaza los datos, las observaciones y el ETMO. */
 
   /**
    * Qué pasa al tocar "Generar la OP final".
@@ -337,8 +470,7 @@ export function EtmoView() {
       <PasoHeader />
 
       <PasoTitulo
-        titulo="Orden ETMO y observaciones"
-        descripcion="Cargá el PDF original que genera ETMO y escribí las observaciones."
+        titulo="Subir Orden Hetmo"
       />
 
       <ObraFicha obra={obra} />
@@ -513,7 +645,13 @@ export function EtmoView() {
 
           {/* Oculto por ahora: se muestra cuando exista el tablero donde se van a guardar. */}
           {MOSTRAR_MEDICION && (
-            <DatosMedicion valor={medicion} onCambio={setMedicion} disabled={lectura.leyendo} />
+            <DatosMedicion
+              valor={medicion}
+              onCambio={setMedicion}
+              disabled={lectura.leyendo}
+              numeroCargando={numeroCargando}
+              numeroError={numeroError}
+            />
           )}
         </div>
       </div>
@@ -591,6 +729,13 @@ export function EtmoView() {
         <ModalCargando
           titulo="Generando la Orden de Producción final"
           detalle="La automatización está armando el documento…"
+        />
+      )}
+
+      {registrando && (
+        <ModalCargando
+          titulo="Guardando la orden"
+          detalle="Adjuntando la OP al tablero de órdenes…"
         />
       )}
 

@@ -16,6 +16,35 @@ export function htmlATexto(html: string): string {
   return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+/** Palabras que van en minúscula en medio de un título: "Etapa de Venta", "Confirmar y Enviar al Taller". */
+const MENORES = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'y', 'a', 'al', 'en', 'por', 'con', 'o'])
+
+/**
+ * Rótulo con Mayúscula Inicial en cada palabra: "ETAPA DE PRODUCCION" → "Etapa de Produccion".
+ *
+ * Las siglas cortas que ya vienen en mayúscula se respetan ("OP", "ID", "PVC", "CTA" no: "Cta" es
+ * como se escribe en el tablero). Los conectores van en minúscula salvo al principio.
+ */
+export function tituloPalabras(texto: string): string {
+  const SIGLAS = new Set(['OP', 'ID', 'PVC', 'DVH', 'CV', 'IVA', 'CUIT', 'ETMO', 'HETMO'])
+  return texto
+    .trim()
+    .split(/\s+/)
+    .map((w, i) => {
+      const limpia = w.replace(/[^\p{L}\p{N}]/gu, '')
+      if (SIGLAS.has(limpia.toUpperCase()) && limpia === limpia.toUpperCase()) return w
+      const min = w.toLocaleLowerCase('es')
+      /* El conector se reconoce sin la puntuación pegada: "a:" en "Asignado a:" también lo es. */
+      if (i > 0 && MENORES.has(limpia.toLocaleLowerCase('es'))) return min
+      /* Mayúscula al principio de la palabra y después de una barra: "Constructor/Arquitecto". */
+      return min.replace(
+        /(^|\/)(\p{L})/gu,
+        (_m, sep: string, letra: string) => sep + letra.toLocaleUpperCase('es'),
+      )
+    })
+    .join(' ')
+}
+
 /** Fecha ISO de Monday → "dd/MM/yyyy HH:mm", que es como se lee un historial. */
 export function fechaHora(iso: string): string {
   const d = new Date(iso)

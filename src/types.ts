@@ -31,6 +31,8 @@ export interface Obra {
   arquitecto: string
   arquitectoIds: string[]
   asignado: string
+  /** Ids de las personas de Monday asignadas a la obra (para copiarlas a la OP). */
+  asignadoIds: string[]
 
   /* Datos */
   celCoordinar: string

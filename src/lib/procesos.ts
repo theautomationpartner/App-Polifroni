@@ -21,7 +21,7 @@ export const PROCESOS: ProcesoDef[] = [
   {
     id: 'obras',
     icono: 'fa-file-circle-plus',
-    titulo: 'Orden de Producción',
+    titulo: 'Producción',
     detalle: '4 etapas',
   },
   {

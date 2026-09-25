@@ -7,9 +7,11 @@ export const OTRO = 'Otro'
 
 export interface Medicion {
   nroOrden: string
+  /** Se tocó el lápiz y se escribió un número a mano: el automático ya no lo pisa. */
+  nroEditado: boolean
   medidoPor: string
-  /** Sólo cuando `medidoPor` es "Otro": el nombre escrito a mano. */
-  medidoPorOtro: string
+  /** Aclaración de la medición. Con "Otro", es donde se escribe quién midió. */
+  observacion: string
   /** `YYYY-MM-DD`, que es lo que maneja el `<input type="date">`. */
   fecha: string
 }
@@ -23,8 +25,9 @@ export function hoyLocal(): string {
 
 export const medicionInicial = (): Medicion => ({
   nroOrden: '',
+  nroEditado: false,
   medidoPor: '',
-  medidoPorOtro: '',
+  observacion: '',
   fecha: hoyLocal(),
 })
 
@@ -182,24 +185,34 @@ function SelectPersona({
 /**
  * Los datos de la medición: número de orden, quién midió y cuándo.
  *
- * Por ahora viven sólo en la pantalla —todavía no hay dónde guardarlos: van a ir a un tablero
- * propio—. El componente es controlado para que, cuando exista ese destino, alcance con leer el
- * estado desde la vista que lo usa.
+ * El componente es controlado: la vista que lo usa (el paso ETMO) lee el estado al generar y lo
+ * vuelca en la OP del tablero de órdenes.
  */
 export function DatosMedicion({
   valor,
   onCambio,
   disabled = false,
+  numeroCargando = false,
+  numeroError = false,
 }: {
   valor: Medicion
   onCambio: (v: Medicion) => void
   disabled?: boolean
+  /** Se está leyendo el próximo número del data store. */
+  numeroCargando?: boolean
+  /** No se pudo leer: el campo queda abierto para escribirlo a mano. */
+  numeroError?: boolean
 }) {
   const uid = useId()
   const [personas, setPersonas] = useState<string[]>([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(false)
-  const otroRef = useRef<HTMLInputElement>(null)
+  const otroRef = useRef<HTMLTextAreaElement>(null)
+  const nroRef = useRef<HTMLInputElement>(null)
+  /* El número es automático y no se toca. El lápiz lo habilita "por ahora": es la salida para
+     cuando hay que corregirlo a mano. Sin número automático (no se pudo leer) arranca abierto. */
+  const [editandoNro, setEditandoNro] = useState(false)
+  const nroAbierto = editandoNro || numeroError
 
   useEffect(() => {
     let vivo = true
@@ -213,12 +226,17 @@ export function DatosMedicion({
   }, [])
 
   const esOtro = valor.medidoPor === OTRO
+  const hayPersona = !!valor.medidoPor
   const set = (parcial: Partial<Medicion>) => onCambio({ ...valor, ...parcial })
 
-  /* Al elegir "Otro" el foco va derecho al campo nuevo: es lo único que queda por hacer. */
+  /* Con "Otro" el foco va derecho a la Observación: ahí se escribe quién midió. */
   useEffect(() => {
     if (esOtro) otroRef.current?.focus()
   }, [esOtro])
+
+  useEffect(() => {
+    if (editandoNro) nroRef.current?.focus()
+  }, [editandoNro])
 
   return (
     <fieldset className="med" disabled={disabled}>
@@ -231,18 +249,32 @@ export function DatosMedicion({
           <label className="med-l" htmlFor={`${uid}-nro`}>
             Nro Orden Producción
           </label>
-          <div className="med-conic">
+          <div className={`med-conic med-nro ${nroAbierto ? '' : 'med-nro--fijo'}`}>
             <i className="fas fa-hashtag" aria-hidden="true" />
             <input
+              ref={nroRef}
               id={`${uid}-nro`}
               className="med-input"
               type="text"
               inputMode="numeric"
               autoComplete="off"
-              placeholder="Ej: 1250"
+              placeholder={numeroCargando ? 'Calculando…' : 'Ej: 3001'}
+              readOnly={!nroAbierto}
               value={valor.nroOrden}
-              onChange={(e) => set({ nroOrden: e.target.value })}
+              title={nroAbierto ? undefined : 'Número automático: el siguiente al último emitido'}
+              onChange={(e) => set({ nroOrden: e.target.value.toUpperCase(), nroEditado: true })}
             />
+            {!nroAbierto && (
+              <button
+                type="button"
+                className="med-lapiz"
+                title="Editar el número a mano"
+                aria-label="Editar el número de orden"
+                onClick={() => setEditandoNro(true)}
+              >
+                <i className="fas fa-pen" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -256,7 +288,7 @@ export function DatosMedicion({
             opciones={personas}
             cargando={cargando}
             error={error}
-            onElegir={(v) => set({ medidoPor: v, medidoPorOtro: v === OTRO ? valor.medidoPorOtro : '' })}
+            onElegir={(v) => set({ medidoPor: v })}
           />
         </div>
 
@@ -281,21 +313,32 @@ export function DatosMedicion({
         </div>
       </div>
 
-      {esOtro && (
+      {/* La Observación aparece apenas se elige quién midió: es la aclaración de ESA medición.
+          Con "Otro" pasa a ser obligatoria de hecho, porque es donde se dice quién fue. */}
+      {hayPersona && (
         <div className="med-campo med-otro">
-          <label className="med-l" htmlFor={`${uid}-otro`}>
+          <label className="med-l" htmlFor={`${uid}-obs`}>
             Observación
-            <span className="med-l-sub">quién midió, si no está en la lista</span>
+            <span className="med-l-sub">
+              {esOtro ? 'escribí quién midió y cualquier aclaración' : 'aclaración de la medición (opcional)'}
+            </span>
           </label>
-          <input
+          <textarea
             ref={otroRef}
-            id={`${uid}-otro`}
-            className="med-input"
-            type="text"
-            autoComplete="off"
-            placeholder="Nombre y apellido de quien midió"
-            value={valor.medidoPorOtro}
-            onChange={(e) => set({ medidoPorOtro: e.target.value })}
+            id={`${uid}-obs`}
+            className="med-input med-area"
+            rows={1}
+            placeholder={
+              esOtro ? 'Nombre y apellido de quien midió, y lo que haya que aclarar' : 'Ej: medida tomada con el revoque grueso'
+            }
+            value={valor.observacion}
+            onChange={(e) => {
+              /* Arranca en un renglón y crece con lo que se escribe: no ocupa lugar hasta que
+                 hace falta. */
+              e.currentTarget.style.height = 'auto'
+              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 140)}px`
+              set({ observacion: e.target.value })
+            }}
           />
         </div>
       )}

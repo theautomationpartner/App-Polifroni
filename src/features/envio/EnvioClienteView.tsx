@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { VisorPdf } from '@/components/ui/VisorPdf'
@@ -7,7 +7,7 @@ import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
-import { COL, setEstado } from '@/services/monday'
+import { COL, ESTADO_OP, setEstado, sincronizarEstadoOrden } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 import { useEnviarOp } from './useEnviarOp'
 import { ultimaOpFinal } from '@/features/op/ultimaOp'
@@ -58,6 +58,11 @@ export function EnvioClienteView() {
   const accesoALaConfirmacion =
     estado.fase === 'listo' ? { ok: true, motivo: '' } : accesoAlPaso('confirmacion', obra)
 
+  /* Salió el mensaje: la OP del tablero de órdenes pasa a "Enviada Pend Confirmar". */
+  useEffect(() => {
+    if (estado.fase === 'listo') void sincronizarEstadoOrden(obra.id, ESTADO_OP.enviada)
+  }, [estado.fase, obra.id])
+
   const cambiarColumna = async (columna: string, etiqueta: string) => {
     setCambiando(true)
     try {
@@ -78,7 +83,7 @@ export function EnvioClienteView() {
       <PasoHeader />
 
       <PasoTitulo
-        titulo="Enviar la OP al cliente"
+        titulo="Enviar OP al Cliente"
         descripcion={
           <>
             Se manda la Orden de Producción final por WhatsApp, con el enlace al formulario donde el

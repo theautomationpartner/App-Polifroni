@@ -113,9 +113,10 @@ function SelectorProceso() {
 export function PasoHeader({ children }: { children?: ReactNode }) {
   const { paso, obra, entrada } = useApp()
   const dispatch = useDispatch()
-  /* La barra muestra DESDE donde se entró, renumerando desde 1: las etapas que quedaron atrás no
-     se hicieron, se saltearon, y pintarlas de verde diría que se hicieron. */
-  const desde = indiceDe(entrada)
+  /* La barra muestra SIEMPRE las cuatro etapas, con número fijo. Las que quedaron atrás —se hayan
+     hecho acá o antes— van con el tilde verde: acortar la barra según por dónde se entró hacía que
+     "Envío al Cliente" fuera la 1 en una pantalla y la 3 en otra. */
+  void entrada
 
   return (
     <header className="paso-header">
@@ -161,10 +162,10 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
             disponible —cosa que un círculo apagado no sabe hacer—. */}
         <div className="paso-header-steps">
           <Stepper
-            steps={ETAPAS.slice(desde)}
-            current={indiceDe(paso) - desde}
+            steps={ETAPAS}
+            current={indiceDe(paso)}
             className="stepper--tight"
-            maxReached={topePermitido(obra) - desde}
+            maxReached={topePermitido(obra)}
           />
         </div>
       </div>
@@ -195,7 +196,9 @@ export function PasoTitulo({ titulo, descripcion }: PasoTituloProps) {
      Antes era un `numero={4}` escrito a mano en cada pantalla, y esa copia se volvió mentira sola:
      al fusionar dos etapas, el 5 escrito en la última se restaba contra una barra que ahora tiene
      cuatro, y el título mostraba "-2". Calculado acá no puede desincronizarse del stepper. */
-  const propio = indiceDe(paso) - indiceDe(entrada) + 1
+  /* El mismo número que el círculo de la barra: la etapa se llama igual en las dos. */
+  const propio = indiceDe(paso) + 1
+  void entrada
   /* El selector de acción va SÓLO en el paso 1: ahí es donde se decide qué se viene a hacer. En
      las etapas siguientes esa decisión ya está tomada, y repetir la pregunta en cada pantalla la
      convertía en un control de navegación disfrazado de pregunta.

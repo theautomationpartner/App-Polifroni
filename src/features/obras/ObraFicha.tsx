@@ -2,6 +2,7 @@ import { EstadoBadge } from '@/components/ui/Aviso'
 import { Donut } from '@/components/ui/Donut'
 import { useTitulos } from '@/features/shared/useTitulos'
 import { importe } from '@/lib/format'
+import { tituloPalabras } from '@/lib/texto'
 import { COL } from '@/services/monday/columns'
 import { useApp } from '@/state/hooks'
 import type { Obra } from '@/types'
@@ -95,73 +96,71 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
   const pct = porcentaje(obra)
 
   return (
-    <div className="card obra-ficha">
+    <div className="card obra-ficha obra-ficha--compacta">
+      {/* Arriba, en un renglón: QUÉ obra es (a la izquierda) y cómo está de plata (a la derecha).
+          La plata subió a la cabecera porque ahí sobraba el ancho: antes era un renglón propio de
+          100 px, y el paso entero no entraba en la pantalla. */}
+      {/* El nombre y su identificación en UN renglón: el id es una referencia, no un título, y en
+          renglón propio ocupaba el alto de un dato. */}
       <div className="obra-ficha-cab">
-        <div>
-          <div className="obra-ficha-id">
-            {obra.idObra || `ID ${obra.id}`} · {obra.grupo || 'Obras'}
-          </div>
-          <h2 className="obra-ficha-name">{obra.nombre}</h2>
-        </div>
+        <h2 className="obra-ficha-name">
+          {obra.nombre}
+          <span className="obra-ficha-id">
+            {obra.idObra || `ID ${obra.id}`} · {tituloPalabras(obra.grupo || 'Obras')}
+          </span>
+        </h2>
         {children && <div className="obra-ficha-acts">{children}</div>}
       </div>
 
-      {/* PRIMERO el cliente: la pregunta que se hace al abrir una obra es "¿de quién es y dónde
-          va?". Las tres personas van juntas en un renglón —a quién se le factura, quién la
-          proyecta y quién la tiene a cargo acá adentro— y debajo el dónde y el cuándo. */}
-      <section className="obra-bloque">
-        <h3 className="obra-bloque-t">Datos del cliente</h3>
-        <div className="obra-vinculos obra-vinculos--3">
-          <Vinculo
-            icono="fa-file-invoice-dollar"
-            label={titulo(COL.ctaCteCliente, 'Cta Cte Cliente')}
-            valor={obra.ctaCteCliente}
-            extra={[obra.celCliente, obra.emailCliente].filter(Boolean).join(' · ')}
-          />
-          <Vinculo
-            icono="fa-compass-drafting"
-            label={titulo(COL.arquitecto, 'Constructor / Arquitecto')}
-            valor={obra.arquitecto}
-            extra={obra.celArquitecto}
-          />
-          {/* En ámbar y no en azul: los otros dos son gente de afuera —el que paga y el que
-              proyecta—, éste es de Polifroni. Distinto color para distinto lado del mostrador. */}
-          <Vinculo
-            icono="fa-user-gear"
-            label={titulo(COL.asignado, 'Asignado a')}
-            valor={obra.asignado}
-            tono="propio"
-          />
-        </div>
+      {/* Las tres personas juntas: a quién se le factura, quién la proyecta y quién la tiene a
+          cargo acá adentro. Debajo, el dónde y el cuándo. */}
+      <div className="obra-ficha-fila">
+        <Vinculo
+          icono="fa-file-invoice-dollar"
+          label={titulo(COL.ctaCteCliente, 'Cta Cte Cliente')}
+          valor={obra.ctaCteCliente}
+          extra={[obra.celCliente, obra.emailCliente].filter(Boolean).join(' · ')}
+        />
+        <Vinculo
+          icono="fa-compass-drafting"
+          label={titulo(COL.arquitecto, 'Constructor / Arquitecto')}
+          valor={obra.arquitecto}
+          extra={obra.celArquitecto}
+        />
+        {/* En ámbar: los otros dos son gente de afuera, éste es de Polifroni. */}
+        <Vinculo
+          icono="fa-user-gear"
+          label={titulo(COL.asignado, 'Asignado a')}
+          valor={obra.asignado}
+          tono="propio"
+        />
+      </div>
 
-        <div className="obra-datos-grid">
-          <Dato
-            icono="fa-location-dot"
-            label={titulo(COL.ubicacion, 'Ubicación Obra')}
-            valor={obra.ubicacion}
-          />
-          <Dato
-            icono="fa-phone"
-            label={titulo(COL.celCoordinar, 'Cel a Coordinar')}
-            valor={obra.celCoordinar}
-          />
-          <Dato
-            icono="fa-calendar-check"
-            label={titulo(COL.fechaColocacion, 'Fecha Pactada Colocacion')}
-            valor={obra.fechaColocacion}
-          />
-          <Dato
-            icono="fa-truck"
-            label={titulo(COL.coordinarEntrega, 'Coordinar Entrega')}
-            valor={obra.coordinarEntrega.texto}
-          />
-        </div>
-      </section>
+      <div className="obra-datos-grid">
+        <Dato
+          icono="fa-location-dot"
+          label={titulo(COL.ubicacion, 'Ubicación Obra')}
+          valor={obra.ubicacion}
+        />
+        <Dato
+          icono="fa-phone"
+          label={titulo(COL.celCoordinar, 'Cel a Coordinar')}
+          valor={obra.celCoordinar}
+        />
+        <Dato
+          icono="fa-calendar-check"
+          label={titulo(COL.fechaColocacion, 'Fecha Pactada Colocacion')}
+          valor={obra.fechaColocacion}
+        />
+        <Dato
+          icono="fa-truck"
+          label={titulo(COL.coordinarEntrega, 'Coordinar Entrega')}
+          valor={obra.coordinarEntrega.texto}
+        />
+      </div>
 
-      {/* Y DESPUÉS la obra: en qué estado está y cuánto se cobró. */}
-      <section className="obra-bloque">
-        <h3 className="obra-bloque-t">Datos de la obra</h3>
-
+      {/* Al pie: el estado de la obra (etiquetas) y, al lado, cómo está de plata. */}
+      <div className="obra-ficha-pie">
         <div className="obra-ficha-badges">
           <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={obra.tipo} />
           <EstadoBadge label={titulo(COL.etapaVenta, 'Etapa de Venta')} estado={obra.etapaVenta} />
@@ -170,60 +169,43 @@ export function ObraFicha({ obra, children }: { obra: Obra; children?: React.Rea
             estado={obra.etapaProduccion}
           />
           <EstadoBadge label={titulo(COL.premarco, 'Premarco')} estado={obra.premarco} />
-          <EstadoBadge
-            label={titulo(COL.confirmacionOp, 'Confirmacion Op Cliente')}
-            estado={obra.confirmacionOp}
-          />
-          <EstadoBadge
-            label={titulo(COL.confirmacionTaller, 'Confirmacion Op Taller')}
-            estado={obra.confirmacionTaller}
-          />
-          {/* Sólo cuando está puesta: es una marca, no un estado con variantes. Vacía no dice
-              "todavía no", dice "no es una obra combinada", y eso no hace falta anunciarlo. */}
+          {/* Rótulos acortados a mano, como el de la cuenta corriente: "Confirmacion Op Cliente"
+              partía la fila de etiquetas en dos renglones sin decir nada que "Confirmación
+              Cliente" no diga. */}
+          <EstadoBadge label="Confirmación Cliente" estado={obra.confirmacionOp} />
+          <EstadoBadge label="Confirmación Taller" estado={obra.confirmacionTaller} />
+          {/* Sólo cuando está puesta: vacía no dice "todavía no", dice "no es una obra combinada". */}
           {obra.combina.texto && (
             <EstadoBadge label={titulo(COL.combina, 'Combina')} estado={obra.combina} />
           )}
-          {/* Etiqueta FIJA, no la del tablero. En Monday la columna se llama "Validacion
-              Registracion de Obra en cta cte": siete palabras que ocupan media pantalla para decir
-              lo mismo que dos, y que además repiten lo que ya dice el valor ("Registrado en Cta
-              Cte"). Es la única que se acorta a mano; el resto de los nombres entran bien. */}
+          {/* Etiqueta FIJA: en Monday la columna se llama "Validacion Registracion de Obra en cta
+              cte", siete palabras para decir lo mismo que dos. */}
           <EstadoBadge label="Validación Cta Cte" estado={obra.validacionCtaCte} />
         </div>
-
-        {/* Dos anillos y no uno: el que interesa cambia según para qué se mira la obra. Al taller
-            le importa cuánto se cobró; a administración, cuánto falta cobrar. Son el mismo dato
-            dicho al derecho y al revés, y tener que restar mentalmente no es gratis. */}
-        <div className="plata">
-          {pct !== null && (
-            <div className="plata-donut">
-              {/* En VERDE, el mismo que el importe cancelado. Antes el anillo cambiaba de azul a
-                  verde al llegar al 99,5%, y ese salto de color leía como "otro dato" en vez de
-                  como el mismo dato más avanzado. Cada anillo usa el color de su importe. */}
-              <Donut porcentaje={pct} color="#12a150" etiqueta="Cancelado" />
-              {/* En ROJO, el mismo que el importe pendiente de cobro: es plata que falta entrar,
-                  y el ámbar la dejaba a mitad de camino entre un aviso y un dato. */}
-              <Donut porcentaje={100 - pct} color="#d92d20" etiqueta="Pendiente" />
-            </div>
-          )}
-          <div className="plata-cards">
-            <div className="plata-card">
-              <div className="plata-l">{titulo(COL.totalPactado, 'Total Obra Pactado')}</div>
-              <div className="plata-v">{importe(obra.totalPactado) || '—'}</div>
-            </div>
-            <div className="plata-card">
-              <div className="plata-l">Cancelado</div>
-              <div className="plata-v plata-v--ok">
-                {cancelado === null ? '—' : importe(String(cancelado))}
+          <div className="plata-mini">
+            {pct !== null && (
+              <div className="plata-mini-donuts">
+                {/* En verde, como el importe cancelado; en rojo, como lo que falta cobrar. */}
+                <Donut porcentaje={pct} color="#12a150" size="sm" etiqueta="Cancelado" />
+                <Donut porcentaje={100 - pct} color="#d92d20" size="sm" etiqueta="Pendiente" />
               </div>
+            )}
+            <div className="plata-mini-dato">
+              <span className="plata-l">{titulo(COL.totalPactado, 'Total Obra Pactado')}</span>
+              <span className="plata-v">{importe(obra.totalPactado) || '—'}</span>
             </div>
-            <div className="plata-card">
-              <div className="plata-l">Pendiente de cobro</div>
-              <div className="plata-v plata-v--deuda">{importe(obra.saldo) || '—'}</div>
+            <div className="plata-mini-dato">
+              <span className="plata-l">Cancelado</span>
+              <span className="plata-v plata-v--ok">
+                {cancelado === null ? '—' : importe(String(cancelado))}
+              </span>
+            </div>
+            <div className="plata-mini-dato">
+              <span className="plata-l">Pendiente de Cobro</span>
+              <span className="plata-v plata-v--deuda">{importe(obra.saldo) || '—'}</span>
             </div>
           </div>
-        </div>
-      </section>
-
+      </div>
     </div>
   )
 }

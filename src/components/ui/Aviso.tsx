@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { tituloPalabras } from '@/lib/texto'
 
 export type TonoAviso = 'info' | 'ok' | 'warn' | 'err'
 
@@ -29,10 +30,10 @@ export function Aviso({ tono = 'info', children }: { tono?: TonoAviso; children:
  * El color no es decorativo: en el tablero la gente ya aprendió que "Generado" es verde y "Error"
  * es rojo, y repetirlo acá es lo que hace que la pantalla y el tablero se lean igual.
  *
- * Lo que se calibra es cuánto. El fondo va teñido lo justo para que la etiqueta se distinga de un
- * vistazo sin volverse un semáforo, el borde marca el contorno, y el NOMBRE de la columna va en una
- * versión oscura de ese mismo color: así el par "de qué se habla / qué dice" se lee junto, y el
- * valor —que va casi en negro— sigue siendo lo que más pesa.
+ * Mismo criterio que las etiquetas de La Batea: el título y el valor van en EL MISMO color —nada
+ * de negro—, sobre un fondo apenas teñido. El título lleva un punto más de color y de peso, porque
+ * es lo que el ojo busca al recorrer una fila de etiquetas; el valor, un punto menos, para que el
+ * par se lea como una sola cosa.
  */
 const canales = (hex: string): [number, number, number] | null => {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
@@ -46,11 +47,19 @@ const tinte = (hex: string, alfa: number): string => {
   return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alfa})` : 'transparent'
 }
 
-/** El mismo color, llevado hacia el negro hasta que se pueda leer como texto chico. */
-const legible = (hex: string): string => {
+/**
+ * El mismo color, llevado hacia el negro hasta que se pueda leer como texto chico.
+ *
+ * Cuánto se oscurece depende de lo claro que sea el color: el amarillo de Monday necesita bastante
+ * más que el azul para leerse sobre su propio fondo teñido. `extra` aclara un poco el resultado:
+ * es lo que separa el valor (más suave) de su título.
+ */
+const legible = (hex: string, extra = 0): string => {
   const c = canales(hex)
   if (!c) return '#64748b'
-  const mezcla = (v: number) => Math.round(v * 0.52)
+  const luz = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255
+  const factor = (luz > 0.7 ? 0.42 : luz > 0.5 ? 0.5 : 0.62) + extra
+  const mezcla = (v: number) => Math.round(v * Math.min(factor, 0.9))
   return `rgb(${mezcla(c[0])}, ${mezcla(c[1])}, ${mezcla(c[2])})`
 }
 
@@ -66,19 +75,16 @@ export function EstadoBadge({
   return (
     <span
       className={`chip ${vacio ? 'chip--vacio' : ''}`}
-      style={
-        color
-          ? { background: tinte(color, 0.17), borderColor: tinte(color, 0.52) }
-          : undefined
-      }
+      style={color ? { background: tinte(color, 0.14) } : undefined}
     >
-      {color && <span className="chip-dot" style={{ background: color }} />}
       {label && (
         <span className="chip-l" style={color ? { color: legible(color) } : undefined}>
-          {label}:
+          {tituloPalabras(label)}:
         </span>
       )}
-      <span className="chip-v">{estado.texto || 'sin definir'}</span>
+      <span className="chip-v" style={color ? { color: legible(color, 0.14) } : undefined}>
+        {estado.texto || 'sin definir'}
+      </span>
     </span>
   )
 }

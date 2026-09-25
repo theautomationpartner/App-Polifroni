@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { tituloPalabras } from '@/lib/texto'
 import { getEstructuraBoard } from '@/services/monday'
 
 /**
@@ -33,7 +34,7 @@ export function useTitulos(): (id: string, porDefecto?: string) => string {
     void getEstructuraBoard()
       .then((estructura) => {
         cache = Object.fromEntries(
-          Object.entries(estructura).map(([id, c]) => [id, sinMarca(c.title)]),
+          Object.entries(estructura).map(([id, c]) => [id, tituloPalabras(sinMarca(c.title))]),
         )
         if (vivo) redibujar((n) => n + 1)
       })
@@ -45,5 +46,5 @@ export function useTitulos(): (id: string, porDefecto?: string) => string {
 
   /* Hasta que la estructura llegue se usa el nombre de respaldo. Nunca se muestra el id: a quien
      mira la pantalla un `color_mm1kddt0` no le dice nada. */
-  return (id, porDefecto = '') => cache?.[id] || porDefecto
+  return (id, porDefecto = '') => cache?.[id] || tituloPalabras(porDefecto)
 }

@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, type ProxyOptions } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -64,8 +64,26 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  /**
+   * Las funciones de `api/` que en local tienen que correr TAL CUAL corren en Vercel.
+   *
+   * La numeración habla con el data store de Make con un token del servidor: en vez de reescribirla
+   * para el navegador, Vite carga el mismo archivo y le pasa el pedido. Lo que se prueba en local es
+   * exactamente lo que se despliega.
+   */
+  const funcionesLocales: Plugin = {
+    name: 'api-local',
+    configureServer(server) {
+      if (env.MAKE_TOKEN) process.env.MAKE_TOKEN = env.MAKE_TOKEN
+      server.middlewares.use('/api/numeracion', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/numeracion.ts')
+        await mod.default(req, res)
+      })
+    },
+  }
+
   return {
-    plugins: [react()],
+    plugins: [react(), funcionesLocales],
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },

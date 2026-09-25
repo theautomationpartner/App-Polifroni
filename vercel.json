@@ -4,8 +4,14 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
         {
           "key": "Strict-Transport-Security",
           "value": "max-age=63072000; includeSubDomains; preload"
@@ -13,9 +19,18 @@
       ]
     }
   ],
+  "crons": [
+    {
+      "path": "/api/obras-indice",
+      "schedule": "*/30 9-21 * * 1-6"
+    }
+  ],
   "functions": {
     "api/make.ts": {
       "maxDuration": 60
+    },
+    "api/obras-indice.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

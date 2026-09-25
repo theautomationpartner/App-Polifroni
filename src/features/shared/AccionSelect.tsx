@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { accesoAlPaso } from '@/lib/pasos'
 import { ACCIONES_PASO, PASOS } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
@@ -21,6 +22,10 @@ const LISTADO = '__listado'
 export function AccionSelect() {
   const { paso, obra, listado } = useApp()
   const dispatch = useDispatch()
+  /* Al arrancar no hay nada elegido y el selector lo dice ("Seleccionar..."). Mostrar "Seleccionar
+     Obra" de entrada lo hacía parecer una elección ya hecha por el usuario. */
+  const [elegida, setElegida] = useState(paso !== 'obra' || !!obra)
+  const valor = listado ? LISTADO : !elegida && paso === 'obra' ? '' : paso
 
   /* Se puede elegir CUALQUIER etapa. El selector dice a dónde querés ir, no si podés: quien elige
      "Enviar la OP al cliente" está diciendo qué vino a hacer, y frenarlo acá lo deja adivinando
@@ -40,13 +45,17 @@ export function AccionSelect() {
           <select
             className="cfg-sel"
             aria-label="¿Qué acción vas a realizar?"
-            value={listado ? LISTADO : paso}
+            value={valor}
             onChange={(e) => {
               const v = e.target.value
+              setElegida(true)
               if (v === LISTADO) dispatch({ type: 'verListado' })
               else dispatch({ type: 'goto', paso: v as Paso })
             }}
           >
+            <option value="" disabled hidden>
+              Seleccionar...
+            </option>
             {/* Sin número: el número ya lo lleva la barra de etapas. */}
             {opciones.map(({ paso: p }) => (
               <option key={p} value={p}>
