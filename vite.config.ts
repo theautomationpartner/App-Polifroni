@@ -76,6 +76,26 @@ export default defineConfig(({ mode }) => {
     configureServer(server) {
       if (env.MAKE_TOKEN) process.env.MAKE_TOKEN = env.MAKE_TOKEN
       server.middlewares.use('/api/numeracion', async (req, res) => {
+        /* Sin `MAKE_TOKEN` en `.env.local` se usa la función del deploy, que sí lo tiene: igual que
+           los escenarios de Make, así se prueba en local sin repartir el token por las máquinas. */
+        if (!env.MAKE_TOKEN && desplegada) {
+          try {
+            const partes: Buffer[] = []
+            for await (const trozo of req) partes.push(Buffer.from(trozo))
+            const r = await fetch(`${desplegada}/api/numeracion`, {
+              method: req.method,
+              headers: { 'Content-Type': 'application/json' },
+              body: req.method === 'POST' ? Buffer.concat(partes).toString('utf8') : undefined,
+            })
+            res.statusCode = r.status
+            res.setHeader('content-type', 'application/json')
+            res.end(await r.text())
+          } catch {
+            res.statusCode = 502
+            res.end(JSON.stringify({ error: 'No se pudo llegar a la numeración del deploy.' }))
+          }
+          return
+        }
         const mod = await server.ssrLoadModule('/api/numeracion.ts')
         await mod.default(req, res)
       })

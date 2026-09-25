@@ -10,13 +10,13 @@ import {
   getIndiceObras,
   getObra,
   guardarObservaciones,
-  limpiarArchivos,
   mondayHabilitado,
 } from '@/services/monday'
 import { COL } from '@/services/monday/columns'
 import { ACCIONES_PASO } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra, ObraFila, Paso } from '@/types'
+import { iniciarOrdenDeObra } from '@/features/op/ordenDeObra'
 import { validarEntrada, type ValidacionEntrada } from './validaciones'
 
 /**
@@ -204,6 +204,10 @@ export function ObrasView() {
    * usando el paso viejo y la barra empezaría a contar desde otro lado.
    */
   const entrar = (obra: Obra, paso: Paso) => {
+    /* Elegir la obra para emitir —"Generar una nueva", o una obra que todavía no tiene OP— crea
+       SIEMPRE una OP nueva en el tablero de órdenes. Arranca acá, en el click, y la etapa la toma
+       cuando se abre. */
+    if (paso === 'etmo') void iniciarOrdenDeObra(obra).catch(() => {})
     dispatch({ type: 'goto', paso })
     dispatch({ type: 'setObra', obra })
   }
@@ -219,7 +223,8 @@ export function ObrasView() {
     }
     setAbriendo(true)
     try {
-      await limpiarArchivos(obra.id, COL.ordenEtmo)
+      /* La Orden HETMO ya no vive en la obra: cada OP tiene la suya. Sólo se vacían las
+         observaciones, que son las de la orden anterior. */
       await guardarObservaciones(obra.id, '')
       /* Se relee para entrar con la obra como quedó: si se entrara con la copia vieja, la etapa
          mostraría un documento y unas observaciones que en el tablero ya no existen. */

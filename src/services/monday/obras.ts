@@ -7,7 +7,7 @@
  * entrar a los tableros vinculados.
  */
 import { memoGlobal } from './cache'
-import { BOARD_OBRAS, COL } from './columns'
+import { BOARD_OBRAS, COL, COL_OP_ARCHIVOS } from './columns'
 import { byId, num, sumaMirror, valor, type CV, type MondayItem } from './parse'
 import { mondayApi, mondaySubirArchivo, urlArchivo } from './sdk'
 import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types'
@@ -208,6 +208,7 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
 
     ordenEtmo: archivos(c[COL.ordenEtmo]),
     opFinal: archivos(c[COL.opFinal]),
+    ordenesIds: (c[COL.ordenes]?.linked_item_ids ?? []).map(String),
     planoAberturas: archivos(c[COL.planoAberturas]),
     planoPlanta: archivos(c[COL.planoPlanta]),
     presupuestoAceptado: archivos(c[COL.presupuestoAceptado]),
@@ -234,7 +235,41 @@ export async function getObra(itemId: string): Promise<Obra | null> {
     { ids: [itemId] },
   )
   const item = d.items?.[0]
-  return item ? aObra(item, estructura) : null
+  if (!item) return null
+  return conDocumentosDeOrdenes(aObra(item, estructura))
+}
+
+/**
+ * Los documentos de la obra salen de SUS ÓRDENES, no de la obra.
+ *
+ * Cada OP del tablero de órdenes guarda su Orden HETMO y su OP final. La obra muestra la Orden
+ * HETMO de la OP más nueva y TODAS las OP finales (el envío toma la última). Mientras las columnas
+ * viejas de la obra existan, lo que tengan se usa de respaldo: así nada se pierde en la transición.
+ */
+async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
+  if (obra.ordenesIds.length === 0) return obra
+  const d = await mondayApi<{ items: MondayItem[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        id
+        state
+        column_values(ids: ${JSON.stringify([COL_OP_ARCHIVOS.etmo, COL_OP_ARCHIVOS.opFinal])}) { id text value }
+      }
+    }`,
+    { ids: obra.ordenesIds },
+  ).catch(() => null)
+  const ordenes = (d?.items ?? [])
+    .filter((i) => (i as { state?: string }).state !== 'archived' && (i as { state?: string }).state !== 'deleted')
+    .map((i) => ({ id: i.id, c: byId(i) }))
+    .sort((a, b) => Number(b.id) - Number(a.id))
+  if (ordenes.length === 0) return obra
+  const opFinal = ordenes.flatMap((o) => archivos(o.c[COL_OP_ARCHIVOS.opFinal]))
+  const etmo = archivos(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
+  return {
+    ...obra,
+    opFinal: opFinal.length ? opFinal : obra.opFinal,
+    ordenEtmo: etmo.length ? etmo : obra.ordenEtmo,
+  }
 }
 
 /** Fila de la lista: sólo lo que se ve en el listado. */
@@ -464,6 +499,29 @@ export async function limpiarEstado(itemId: string, columna: string): Promise<vo
       ) { id }
     }`,
     { valor: JSON.stringify({}) },
+  )
+}
+
+/**
+ * Guarda en la obra la ubicación y/o el celular a coordinar: los dos datos que el escenario exige
+ * para armar la OP final. La ubicación va con sus coordenadas —Monday no acepta una dirección
+ * sola— y el celular con el país, como lo guarda la columna de teléfono.
+ */
+export async function guardarDatosCoordinacion(
+  itemId: string,
+  datos: { ubicacion?: { lat: string; lng: string; address: string }; celular?: string },
+): Promise<void> {
+  const valores: Record<string, unknown> = {}
+  if (datos.ubicacion) valores[COL.ubicacion] = datos.ubicacion
+  if (datos.celular) {
+    valores[COL.celCoordinar] = { phone: datos.celular.replace(/\D/g, ''), countryShortName: 'AR' }
+  }
+  if (Object.keys(valores).length === 0) return
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_OBRAS}, item_id: $id, column_values: $valores) { id }
+    }`,
+    { id: itemId, valores: JSON.stringify(valores) },
   )
 }
 

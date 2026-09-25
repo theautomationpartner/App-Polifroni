@@ -3118,3 +3118,59 @@
     justify-content: flex-end;
   }
 }
+
+/* ── Ventana de datos faltantes de la obra ─────────────────────────────────── */
+.dof {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+.dof-fila {
+  display: flex;
+  gap: 8px;
+}
+.dof-fila .med-input {
+  flex: 1;
+}
+.dof-opciones {
+  margin: 6px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--o-border);
+  border-radius: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.dof-op {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--o-text-main);
+  cursor: pointer;
+}
+.dof-op:hover {
+  background: #f4f7fb;
+}
+.dof-op > i {
+  margin-top: 2px;
+  color: #94a3b8;
+}
+.dof-op--elegida {
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.dof-op--elegida > i {
+  color: var(--primary-blue);
+}
+.dof-nota {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--o-text-muted);
+}

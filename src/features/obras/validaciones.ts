@@ -36,19 +36,21 @@ export interface ValidacionEntrada {
 
 export function validarEntrada(destino: Paso, obra: Obra): ValidacionEntrada | null {
   const tieneOp = obra.opFinal.length > 0
+  /** La obra ya tiene órdenes de producción en su columna "Orden de Produccion". */
+  const tieneOrdenes = obra.ordenesIds.length > 0 || tieneOp
   const hayCicloPrevio = obra.ordenEtmo.length > 0 || obra.observaciones.trim().length > 0
 
   /* Emitir sobre una obra que YA tiene su orden: no es "generar", es rehacer. */
-  if (destino === 'etmo' && tieneOp) {
+  if (destino === 'etmo' && tieneOrdenes) {
     return {
-      titulo: 'Ya cuenta con OP generadas',
-      clave: '¿Desea generar una nueva?',
-      /* Sólo avisa que ya hay OP y que se agrega otra. No menciona la limpieza de la Orden ETMO
-         y las observaciones (limpiarCiclo sigue ocurriendo igual): a quien opera no le suma y lo
-         hacía dudar. Tampoco dice "reemplaza": una obra por etapas tiene varias órdenes. */
-      nota: 'Se agrega una nueva a las OP que ya tiene esta obra.',
+      titulo: 'Esta obra ya tiene una Orden de Producción asociada',
+      clave: '¿Querés generar otra Orden de Producción nueva?',
+      /* Cada orden es un ÍTEM NUEVO del tablero de órdenes, asociado a la obra: no se reemplaza
+         nada. No se menciona la limpieza de las observaciones (limpiarCiclo sigue ocurriendo
+         igual): a quien opera no le suma y lo hacía dudar. */
+      nota: 'Se crea aparte y queda asociada a la obra, junto a las que ya tiene.',
       cancelar: 'No generar',
-      aceptar: 'Generar una nueva',
+      aceptar: 'Generar otra orden',
       destino: 'etmo',
       limpiarCiclo: hayCicloPrevio,
       tono: 'warn',

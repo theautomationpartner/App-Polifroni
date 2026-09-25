@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
+import type { VidrioLeido } from '@/services/monday'
 import { normalizarNombre, type Abertura } from './observaciones'
 
 export type FaseLectura = 'idle' | 'leyendo' | 'listo' | 'error'
@@ -31,22 +32,53 @@ interface FilaRespuesta {
  * Es una reparación acotada a ese caso: si el cuerpo ya era válido nunca se llega acá, y si está
  * roto de otra forma la reparación tampoco parsea y se devuelve `null`.
  */
-function cuerpoDe(respuesta: { cuerpo: Record<string, unknown> | null; texto: string }) {
+export function cuerpoDe(respuesta: { cuerpo: Record<string, unknown> | null; texto: string }) {
   if (respuesta.cuerpo) return respuesta.cuerpo
   const texto = respuesta.texto.trim()
   if (!texto.includes('"observaciones"')) return null
 
-  const conCorchetes = texto.replace(/("observaciones"\s*:\s*)([\s\S]*?)(\s*}\s*)$/, '$1[$2]$3')
+  /* La respuesta trae DOS listas interpoladas así —`observaciones` y `vidrios`—, y a las dos les
+     pueden faltar los corchetes. Se toma el tramo de cada clave hasta la siguiente (o hasta el
+     cierre) y se le ponen si no los tiene. Una lista vacía llega como nada: queda `[]`. */
+  const claves = ['observaciones', 'vidrios']
+  const posiciones = claves
+    .map((k) => ({ k, i: texto.indexOf(`"${k}"`) }))
+    .filter((p) => p.i >= 0)
+    .sort((a, b) => a.i - b.i)
+  const partes = posiciones.map((p, n) => {
+    const inicio = texto.indexOf(':', p.i) + 1
+    const fin = n + 1 < posiciones.length ? posiciones[n + 1].i : texto.lastIndexOf('}')
+    let tramo = texto.slice(inicio, fin).trim().replace(/,\s*$/, '').trim()
+    if (!tramo) tramo = '[]'
+    else if (!tramo.startsWith('[')) tramo = `[${tramo}]`
+    return `"${p.k}":${tramo}`
+  })
   try {
-    const datos = JSON.parse(conCorchetes) as unknown
+    const datos = JSON.parse(`{${partes.join(',')}}`) as unknown
     return datos && typeof datos === 'object' ? (datos as Record<string, unknown>) : null
   } catch {
     return null
   }
 }
 
+/** Los vidrios de la respuesta. Vienen aparte de las aberturas: una entrada por línea "Vid:". */
+export function aVidrios(cuerpo: Record<string, unknown> | null): VidrioLeido[] {
+  const lista = cuerpo?.vidrios
+  if (!Array.isArray(lista)) return []
+  const txt = (v: unknown) => (v == null || v === '' ? null : String(v).trim())
+  return lista.map((v: Record<string, unknown>) => ({
+    modelo: typeof v?.modelo === 'string' ? normalizarNombre(v.modelo) : '',
+    comp1: txt(v?.comp1),
+    camara: txt(v?.camara),
+    comp2: txt(v?.comp2),
+    ancho: txt(v?.ancho),
+    alto: txt(v?.alto),
+    cant: v?.cant == null || v.cant === '' ? null : Number(v.cant),
+  }))
+}
+
 /** La respuesta, convertida en aberturas. `null` si no vino con la forma esperada. */
-function aAberturas(cuerpo: Record<string, unknown> | null): Abertura[] | null {
+export function aAberturas(cuerpo: Record<string, unknown> | null): Abertura[] | null {
   const lista = cuerpo?.observaciones
   if (!Array.isArray(lista)) return null
 
@@ -71,6 +103,8 @@ function aAberturas(cuerpo: Record<string, unknown> | null): Abertura[] | null {
  * no llegó— y la espera es una sola, con su reloj.
  */
 export function useLeerObservaciones(itemId: string) {
+  /** Los vidrios de la última lectura. Se guardan hasta generar la OP: ahí van como subelementos. */
+  const [vidrios, setVidrios] = useState<VidrioLeido[]>([])
   const [estado, setEstado] = useState<EstadoLectura>({
     fase: 'idle',
     segundos: 0,
@@ -86,7 +120,7 @@ export function useLeerObservaciones(itemId: string) {
     return () => clearInterval(t)
   }, [estado.fase])
 
-  const leer = useCallback(async (): Promise<Abertura[] | null> => {
+  const leer = useCallback(async (ordenId: string | null): Promise<Abertura[] | null> => {
     if (corriendo.current) return null
     corriendo.current = true
     setEstado({ fase: 'leyendo', segundos: 0, problema: '' })
@@ -95,8 +129,11 @@ export function useLeerObservaciones(itemId: string) {
       /* `observaciones: []` va siempre vacío, a propósito. El escenario lo espera en su entrada
          (`ifempty(1.observaciones; "Sin Observaciones")`) y resuelve el caso por su cuenta: lo que
          acá se pide es que LEA el documento, no que reciba lo que ya había. */
+      /* `ordenId`: la OP del tablero de órdenes. El escenario lee la Orden HETMO de AHÍ —cada OP
+         tiene la suya—, no de la obra. */
       const respuesta = await dispararEscenario(ESCENARIO.leerObservaciones, itemId, {
         observaciones: [],
+        ordenId,
       })
 
       if (respuesta.sinRespuesta) {
@@ -109,7 +146,8 @@ export function useLeerObservaciones(itemId: string) {
         return null
       }
 
-      const aberturas = aAberturas(cuerpoDe(respuesta))
+      const cuerpo = cuerpoDe(respuesta)
+      const aberturas = aAberturas(cuerpo)
       if (!aberturas) {
         /* El caso típico: Make contesta "Accepted". Eso significa que TOMÓ el pedido pero el
            escenario terminó antes de su módulo de respuesta —su router filtra por dirección,
@@ -119,7 +157,7 @@ export function useLeerObservaciones(itemId: string) {
           ...e,
           fase: 'error',
           problema:
-            'El escenario tomó el pedido pero no devolvió la lista de aberturas. Suele ser que cortó en su filtro: revisá que la obra tenga la Orden ETMO adjunta, la ubicación y el celular a coordinar.',
+            'El escenario tomó el pedido pero no devolvió la lista de aberturas. Suele ser que cortó en su filtro: revisá que la Orden HETMO esté cargada, y que la obra tenga la ubicación y el celular a coordinar.',
         }))
         return null
       }
@@ -132,6 +170,7 @@ export function useLeerObservaciones(itemId: string) {
         return null
       }
 
+      setVidrios(aVidrios(cuerpo))
       setEstado((e) => ({ ...e, fase: 'listo' }))
       return aberturas
     } catch (e) {
@@ -153,7 +192,8 @@ export function useLeerObservaciones(itemId: string) {
 
   const limpiar = useCallback(() => {
     setEstado({ fase: 'idle', segundos: 0, problema: '' })
+    setVidrios([])
   }, [])
 
-  return { estado, leer, limpiar, leyendo: estado.fase === 'leyendo' }
+  return { estado, leer, limpiar, vidrios, setVidrios, leyendo: estado.fase === 'leyendo' }
 }

@@ -9,8 +9,23 @@
 /** El ÚNICO tablero que la app lee o escribe: 🪟 Obras. */
 export const BOARD_OBRAS = 9617181553
 
+/** 🏭 Orden de Produccion: una OP por ítem, con SUS documentos (ver `services/monday/ordenes`). */
+export const BOARD_ORDENES = 18432207111
+
+/**
+ * Dónde guarda cada OP sus documentos. La obra ya no los guarda: cada orden tiene su propia Orden
+ * HETMO y su propia OP final.
+ */
+export const COL_OP_ARCHIVOS = {
+  etmo: 'file_mm7g9dnc',
+  opFinal: 'file_mm7g7emd',
+  estado: 'color_mm7g3ta4',
+} as const
+
 /** Columnas de 🪟 Obras que usa el proceso de Orden de Producción. */
 export const COL = {
+  /** Orden de Produccion (board_relation): TODAS las OP de la obra, en el tablero de órdenes. */
+  ordenes: 'board_relation_mm7hcngm',
   /* ── Vínculos de la obra ─────────────────────────────────────────────────── */
   /** ✋Cta Cte Cliente (board_relation). */
   ctaCteCliente: 'board_relation_mkthtd70',

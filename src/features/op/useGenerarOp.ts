@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
 import { ESCENARIO } from '@/services/make'
-import { ETIQUETA, getActividadDesde, getEstadoOp } from '@/services/monday'
+import { ETIQUETA, getActividadDesde, getArchivosOrden, getEstadoOp } from '@/services/monday'
 import type { Obra } from '@/types'
 import { parsear, serializarHtml, serializarLista } from './observaciones'
 
@@ -39,7 +39,7 @@ export function datosObservaciones(texto: string) {
   }
 }
 
-export function useGenerarOp(obra: Obra) {
+export function useGenerarOp(obra: Obra, ordenId: string | null = null) {
   /** Los archivos que ya estaban al apretar. Se fotografían en `antes`, no al construir el hook. */
   const previos = useRef<Set<string>>(new Set())
 
@@ -47,11 +47,18 @@ export function useGenerarOp(obra: Obra) {
     previos.current = new Set(obra.opFinal.map((a) => a.assetId))
   }, [obra.opFinal])
 
+  /* La OP final aparece en la OP del tablero de órdenes (antes, en la obra). Se miran las dos: la de
+     la obra queda de respaldo mientras el escenario siga dejándola ahí. */
+  const opFinalDeOrden = useCallback(async () => {
+    if (!ordenId) return []
+    return (await getArchivosOrden(ordenId).catch(() => null))?.opFinal ?? []
+  }, [ordenId])
+
   const mirar = useCallback(
     async (desdeMs: number): Promise<Veredicto> => {
-      const { estado, opFinal } = await getEstadoOp(obra.id)
+      const [{ estado, opFinal }, deOrden] = await Promise.all([getEstadoOp(obra.id), opFinalDeOrden()])
 
-      if (opFinal.some((a) => !previos.current.has(a.assetId))) {
+      if (deOrden.length > 0 || opFinal.some((a) => !previos.current.has(a.assetId))) {
         return { fin: 'listo', arranco: true }
       }
       if (estado === ETIQUETA.opError) {
@@ -62,7 +69,7 @@ export function useGenerarOp(obra: Obra) {
       }
       return { fin: null, arranco: estado === ETIQUETA.opGenerando }
     },
-    [obra.id],
+    [obra.id, opFinalDeOrden],
   )
 
   return useCorrida({

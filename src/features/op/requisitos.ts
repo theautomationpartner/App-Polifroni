@@ -65,10 +65,10 @@ export const puedeGenerar = (obra: Obra): boolean => requisitosOp(obra).every((r
  * Por eso se verifica acá primero. Es la misma idea que con la generación: no gastar una corrida
  * por algo que se veía de entrada.
  */
-export function requisitosLectura(obra: Obra): Requisito[] {
+export function requisitosLectura(obra: Obra, tieneEtmo = obra.ordenEtmo.length > 0): Requisito[] {
   return [
     {
-      ok: obra.ordenEtmo.length > 0,
+      ok: tieneEtmo,
       titulo: 'Orden ETMO adjunta',
       detalle: 'Es el documento que se lee.',
       columna: COL.ordenEtmo,
@@ -89,8 +89,8 @@ export function requisitosLectura(obra: Obra): Requisito[] {
 }
 
 /** Qué falta para poder leer el documento; vacío si no falta nada. */
-export function faltaParaLeer(obra: Obra): string {
-  const falta = requisitosLectura(obra)
+export function faltaParaLeer(obra: Obra, tieneEtmo?: boolean): string {
+  const falta = requisitosLectura(obra, tieneEtmo)
     .filter((r) => !r.ok)
     .map((r) => r.titulo.toLowerCase())
   if (falta.length === 0) return ''

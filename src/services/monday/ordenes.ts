@@ -5,17 +5,22 @@
  * número, quién midió, cuándo, los dos documentos (el ETMO original y la OP final) y sus
  * observaciones como subelementos. Es el historial que la obra sola no puede tener.
  *
- * El ítem se crea APENAS se entra a la obra para subir el ETMO: sólo con el nombre (y su vínculo a
- * la obra, para poder encontrarlo). Al apretar "Generar la OP final" se le cargan los datos, las
- * observaciones y el ETMO; cuando la OP sale, el PDF final y el estado "Generada". Después lo
- * mueven el envío ("Enviada Pend Confirmar") y la respuesta del cliente ("Confirmada" / "NO
- * Confirmado").
+ * Una obra puede tener VARIAS órdenes. Cada vez que se elige una obra para emitir ("Generar una
+ * nueva", o una obra que todavía no tiene OP) se crea SIEMPRE una OP nueva —nunca se reusa otra—
+ * y se suma a la columna "Orden de Produccion" de la obra, junto a las que ya tenía.
+ *
+ * Al crearla se le carga lo que ya se sabe: el tipo y el número automático. La Orden HETMO se le
+ * adjunta cuando se sube en la app; al apretar "Generar la OP final", los datos de la medición y
+ * las observaciones; cuando la OP sale, el PDF final y el estado "Generada". Después lo mueven el
+ * envío ("Enviada Pend Confirmar") y la respuesta del cliente ("Confirmada" / "NO Confirmado").
  */
+import { BOARD_OBRAS, BOARD_ORDENES, COL_OP_ARCHIVOS } from './columns'
 import { getUrlArchivo, subirArchivo } from './obras'
+import { byId, type MondayItem } from './parse'
 import { mondayApi } from './sdk'
 import type { ArchivoObra } from '@/types'
 
-export const BOARD_ORDENES = 18432207111
+export { BOARD_ORDENES }
 
 export const COL_OP = {
   personas: 'multiple_person_mm7gz5g1',
@@ -32,11 +37,28 @@ export const COL_OP = {
   tipo: 'color_mm7gbz9q',
 } as const
 
-/** Columnas de los subelementos (las observaciones por abertura). */
+/** Columnas de los subelementos: una observación por abertura y un renglón por vidrio. */
 export const COL_OBS = {
   texto: 'long_text_mm7g5wfj',
   estado: 'color_mm7g7r8s',
+  comp1: 'dropdown_mm7gmkmy',
+  camara: 'dropdown_mm7g1hyj',
+  comp2: 'dropdown_mm7gf95e',
+  ancho: 'text_mm7g8jy3',
+  alto: 'text_mm7gat0',
+  cantidad: 'numeric_mm7gs5gy',
 } as const
+
+/** Un vidrio del documento, tal como lo devuelve la lectura del ETMO. */
+export interface VidrioLeido {
+  modelo: string
+  comp1: string | null
+  camara: string | null
+  comp2: string | null
+  ancho: string | null
+  alto: string | null
+  cant: number | null
+}
 
 /** Etiquetas de `Estado OP`, tal cual están en el tablero. */
 export const ESTADO_OP = {
@@ -66,14 +88,33 @@ async function cambiarColumnas(itemId: string, valores: Record<string, unknown>)
   )
 }
 
+/** La OP abierta de una obra: su id y el número que quedó reservado en ella. */
+export interface OrdenAbierta {
+  id: string
+  numero: string
+}
+
+/** Las columnas del número, según el tipo: la de PVC es numérica, la de Aluminio es texto ("A3001"). */
+function columnasNumero(tipo: 'PVC' | 'Aluminio', numero: string): Record<string, unknown> {
+  return tipo === 'PVC'
+    ? { [COL_OP.nroPvc]: numero.replace(/\D/g, ''), [COL_OP.nroAluminio]: '' }
+    : { [COL_OP.nroAluminio]: numero, [COL_OP.nroPvc]: '' }
+}
+
 /**
- * Crea la OP de la obra SÓLO con el nombre, y en seguida le cuelga el vínculo a la obra y su nombre
- * definitivo "<obra> - IDOP-00X". Devuelve el id del ítem.
+ * Crea la OP de la obra SÓLO con el nombre, y en seguida le carga lo que ya se sabe al entrar: el
+ * vínculo a la obra, el tipo (PVC / Aluminio, de la obra), el número automático en la columna de su
+ * tipo y el nombre definitivo "<obra> - IDOP-00X".
  *
  * El `IDOP-00X` lo asigna Monday un instante DESPUÉS de crear el ítem (probado: leído en el acto
  * viene vacío), así que se reintenta unas veces antes de renunciar al nombre definitivo.
  */
-export async function crearOrdenVacia(obraId: string, obraNombre: string): Promise<string> {
+export async function crearOrdenVacia(
+  obraId: string,
+  obraNombre: string,
+  tipo: 'PVC' | 'Aluminio',
+  numero: string,
+): Promise<string> {
   const d = await mondayApi<{ create_item: { id: string } }>(
     `mutation ($nombre: String!) {
       create_item(board_id: ${BOARD_ORDENES}, item_name: $nombre) { id }
@@ -93,40 +134,81 @@ export async function crearOrdenVacia(obraId: string, obraNombre: string): Promi
   }
   await cambiarColumnas(id, {
     [COL_OP.obra]: { item_ids: [Number(obraId)] },
+    [COL_OP.tipo]: { label: tipo },
+    ...(numero ? columnasNumero(tipo, numero) : {}),
     ...(idOp ? { name: `${obraNombre} - ${idOp}` } : {}),
   })
   return id
 }
 
+/** Columna de Obras donde se listan TODAS las órdenes de producción de la obra. */
+const COL_OBRA_ORDENES = 'board_relation_mm7hcngm'
+
 /**
- * La OP ABIERTA de la obra: la última que se creó y todavía no se generó (sin estado).
+ * Suma la OP a la columna "Orden de Produccion" de la obra, CONSERVANDO las que ya tenía.
  *
- * Es la que se reusa al volver a entrar: sin esto, cada visita al paso dejaría una OP vacía más.
+ * Una columna conectada se escribe entera: mandar sólo la nueva borraría las anteriores. Por eso se
+ * leen primero las que hay y se escribe la lista completa.
  */
-export async function ordenAbiertaDeObra(obraId: string): Promise<string | null> {
-  const op = await ultimaOrdenDeObra(obraId)
-  return op && !op.estado ? op.id : null
+export async function vincularOrdenEnObra(obraId: string, ordenId: string): Promise<void> {
+  const d = await mondayApi<{ items: { column_values: { linked_item_ids?: string[] }[] }[] }>(
+    `query ($id: [ID!]) {
+      items(ids: $id) {
+        column_values(ids: ["${COL_OBRA_ORDENES}"]) { ... on BoardRelationValue { linked_item_ids } }
+      }
+    }`,
+    { id: [obraId] },
+  )
+  const previas = d.items[0]?.column_values[0]?.linked_item_ids ?? []
+  const todas = [...new Set([...previas.map(String), ordenId])].map(Number)
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_OBRAS}, item_id: $id, column_values: $valores) { id }
+    }`,
+    { id: obraId, valores: JSON.stringify({ [COL_OBRA_ORDENES]: { item_ids: todas } }) },
+  )
 }
 
 /**
- * La OP abierta de la obra, creándola si no hay. Una sola promesa por obra en toda la sesión: entrar
- * dos veces seguidas (o el doble efecto de React en desarrollo) no crea dos órdenes.
+ * La OP de esta visita a la obra.
+ *
+ * `iniciarOrden` la crea SIEMPRE (es lo que pasa al elegir la obra para emitir). `ordenDeLaVisita`
+ * devuelve la que se inició y sólo crea una si no hay ninguna —p. ej. si se recargó la página—.
+ * Guardar la promesa por obra es lo que evita crear dos si la pantalla se monta dos veces seguidas.
  */
-const abiertas = new Map<string, Promise<string>>()
+const visitas = new Map<string, Promise<OrdenAbierta>>()
 
-export function asegurarOrdenAbierta(obraId: string, obraNombre: string): Promise<string> {
-  let p = abiertas.get(obraId)
-  if (!p) {
-    p = (async () => (await ordenAbiertaDeObra(obraId)) ?? crearOrdenVacia(obraId, obraNombre))()
-    p.catch(() => abiertas.delete(obraId))
-    abiertas.set(obraId, p)
-  }
+export function iniciarOrden(
+  obraId: string,
+  obraNombre: string,
+  tipo: 'PVC' | 'Aluminio',
+  proximoNumero: () => Promise<string>,
+): Promise<OrdenAbierta> {
+  const p = (async () => {
+    const numero = await proximoNumero().catch(() => '')
+    const id = await crearOrdenVacia(obraId, obraNombre, tipo, numero)
+    await vincularOrdenEnObra(obraId, id).catch((e) =>
+      console.warn('[ordenes] no se pudo sumar la OP a la obra', e),
+    )
+    return { id, numero }
+  })()
+  p.catch(() => visitas.delete(obraId))
+  visitas.set(obraId, p)
   return p
 }
 
-/** La OP ya se generó: la próxima vez que se entre a la obra, se abre una nueva. */
-export function olvidarOrdenAbierta(obraId: string): void {
-  abiertas.delete(obraId)
+export function ordenDeLaVisita(
+  obraId: string,
+  obraNombre: string,
+  tipo: 'PVC' | 'Aluminio',
+  proximoNumero: () => Promise<string>,
+): Promise<OrdenAbierta> {
+  return visitas.get(obraId) ?? iniciarOrden(obraId, obraNombre, tipo, proximoNumero)
+}
+
+/** La OP ya se generó: la visita terminó, y la próxima vez que se elija la obra se crea otra. */
+export function terminarVisita(obraId: string): void {
+  visitas.delete(obraId)
 }
 
 /** Carga los datos de la OP (al apretar "Generar la OP final"). */
@@ -137,15 +219,9 @@ export async function completarOrden(ordenId: string, o: DatosOrden): Promise<vo
     [COL_OP.observacion]: { text: o.observacion },
   }
   if (o.fecha) columnas[COL_OP.fechaMedicion] = { date: o.fecha }
-  /* El número va en la columna de su tipo: la de PVC es numérica y la de Aluminio es texto, porque
-     lleva la "A" adelante. La otra se vacía, por si el tipo cambió entre un intento y otro. */
-  if (o.tipo === 'PVC') {
-    columnas[COL_OP.nroPvc] = o.numero.replace(/\D/g, '')
-    columnas[COL_OP.nroAluminio] = ''
-  } else {
-    columnas[COL_OP.nroAluminio] = o.numero
-    columnas[COL_OP.nroPvc] = ''
-  }
+  /* El número va en la columna de su tipo; la otra se vacía, por si el tipo cambió entre un intento
+     y otro. Se vuelve a escribir por si se corrigió a mano con el lápiz. */
+  if (o.numero) Object.assign(columnas, columnasNumero(o.tipo, o.numero))
   if (o.personas.length) {
     columnas[COL_OP.personas] = {
       personsAndTeams: o.personas.map((id) => ({ id: Number(id), kind: 'person' })),
@@ -155,14 +231,18 @@ export async function completarOrden(ordenId: string, o: DatosOrden): Promise<vo
 }
 
 /**
- * Una observación por abertura, como subelemento: nombre = la abertura ("V1"), texto = lo escrito.
+ * Los subelementos de la OP: UNO por abertura (estado "Observacion", con lo que se escribió) y UNO
+ * por vidrio (estado "Vidrio", con su composición y medidas). Ejemplo real: 7 aberturas y 6
+ * vidrios → 13 subelementos.
  *
- * REEMPLAZA las que hubiera: si un intento anterior falló, la OP ya tiene subelementos, y volver a
- * crearlos los duplicaría.
+ * REEMPLAZA los que hubiera: si un intento anterior falló, la OP ya tiene subelementos, y volver a
+ * crearlos los duplicaría. Se crean en tandas de 10 en una sola mutación cada una (alias), en vez
+ * de 13 pedidos seguidos.
  */
-export async function crearObservaciones(
+export async function crearSubelementos(
   ordenId: string,
   observaciones: { nombre: string; texto: string }[],
+  vidrios: VidrioLeido[],
 ): Promise<void> {
   const previas = await mondayApi<{ items: { subitems: { id: string }[] | null }[] }>(
     `query ($id: [ID!]) { items(ids: $id) { subitems { id } } }`,
@@ -171,21 +251,84 @@ export async function crearObservaciones(
   for (const sub of previas.items[0]?.subitems ?? []) {
     await mondayApi(`mutation ($id: ID!) { delete_item(item_id: $id) { id } }`, { id: sub.id })
   }
-  for (const o of observaciones) {
-    await mondayApi(
-      `mutation ($padre: ID!, $nombre: String!, $valores: JSON!) {
-        create_subitem(parent_item_id: $padre, item_name: $nombre, column_values: $valores, create_labels_if_missing: false) { id }
-      }`,
-      {
-        padre: ordenId,
-        nombre: o.nombre,
-        valores: JSON.stringify({
-          [COL_OBS.texto]: { text: o.texto },
-          [COL_OBS.estado]: { label: 'Observacion' },
-        }),
-      },
-    )
+
+  const etiqueta = (v: string | null) => (v && v.trim() ? { labels: [v.trim()] } : null)
+  const filas: { nombre: string; valores: Record<string, unknown> }[] = [
+    ...observaciones.map((o) => ({
+      nombre: o.nombre,
+      valores: { [COL_OBS.estado]: { label: 'Observacion' }, [COL_OBS.texto]: { text: o.texto } },
+    })),
+    ...vidrios.map((v) => {
+      const valores: Record<string, unknown> = { [COL_OBS.estado]: { label: 'Vidrio' } }
+      /* Las composiciones ("3+3", "4") son etiquetas de columnas desplegables: si una todavía no
+         existe en el tablero, se crea (`create_labels_if_missing`). */
+      if (etiqueta(v.comp1)) valores[COL_OBS.comp1] = etiqueta(v.comp1)
+      if (etiqueta(v.camara)) valores[COL_OBS.camara] = etiqueta(v.camara)
+      if (etiqueta(v.comp2)) valores[COL_OBS.comp2] = etiqueta(v.comp2)
+      if (v.ancho) valores[COL_OBS.ancho] = v.ancho
+      if (v.alto) valores[COL_OBS.alto] = v.alto
+      if (v.cant != null) valores[COL_OBS.cantidad] = String(v.cant)
+      return { nombre: (v.modelo || 'Vidrio').toUpperCase(), valores }
+    }),
+  ]
+
+  for (let desde = 0; desde < filas.length; desde += 10) {
+    const tanda = filas.slice(desde, desde + 10)
+    const variables: Record<string, unknown> = { padre: ordenId }
+    const firma = ['$padre: ID!']
+    const cuerpo = tanda.map((f, k) => {
+      variables[`n${k}`] = f.nombre
+      variables[`v${k}`] = JSON.stringify(f.valores)
+      firma.push(`$n${k}: String!`, `$v${k}: JSON!`)
+      return `s${k}: create_subitem(parent_item_id: $padre, item_name: $n${k}, column_values: $v${k}, create_labels_if_missing: true) { id }`
+    })
+    await mondayApi(`mutation (${firma.join(', ')}) { ${cuerpo.join('\n')} }`, variables)
   }
+}
+
+/** Los documentos de UNA OP: su Orden HETMO y su OP final. */
+export async function getArchivosOrden(
+  ordenId: string,
+): Promise<{ etmo: ArchivoObra[]; opFinal: ArchivoObra[] }> {
+  const d = await mondayApi<{ items: MondayItem[] }>(
+    `query ($id: [ID!]) {
+      items(ids: $id) { id column_values(ids: ["${COL_OP_ARCHIVOS.etmo}", "${COL_OP_ARCHIVOS.opFinal}"]) { id text value } }
+    }`,
+    { id: [ordenId] },
+  )
+  const item = d.items[0]
+  if (!item) return { etmo: [], opFinal: [] }
+  const c = byId(item)
+  return { etmo: archivosDe(c[COL_OP_ARCHIVOS.etmo]?.value), opFinal: archivosDe(c[COL_OP_ARCHIVOS.opFinal]?.value) }
+}
+
+function archivosDe(valorJson: string | null | undefined): ArchivoObra[] {
+  if (!valorJson) return []
+  try {
+    const v = JSON.parse(valorJson) as {
+      files?: { name?: string; assetId?: number | string; isImage?: string | boolean }[]
+    }
+    return (v.files ?? [])
+      .filter((f) => f.assetId != null)
+      .map((f) => ({
+        assetId: String(f.assetId),
+        nombre: f.name ?? 'archivo',
+        esImagen: f.isImage === true || f.isImage === 'true',
+      }))
+  } catch {
+    return []
+  }
+}
+
+/** Sube la Orden HETMO a la OP (reemplaza la que hubiera: una OP sale de UN documento). */
+export async function subirEtmoAOrden(ordenId: string, archivo: File): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.etmo]: { clear_all: true } }).catch(() => {})
+  await subirArchivo(ordenId, COL_OP_ARCHIVOS.etmo, archivo)
+}
+
+/** Saca la Orden HETMO de la OP (se cargó la equivocada). */
+export async function quitarEtmoDeOrden(ordenId: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.etmo]: { clear_all: true } })
 }
 
 /**
@@ -225,14 +368,16 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
  */
 export async function ultimaOrdenDeObra(
   obraId: string,
-): Promise<{ id: string; estado: string } | null> {
+): Promise<{ id: string; estado: string; numero: string } | null> {
   const d = await mondayApi<{
-    boards: { items_page: { items: { id: string; column_values: { text: string | null }[] }[] } }[]
+    boards: {
+      items_page: { items: { id: string; column_values: { id: string; text: string | null }[] }[] }
+    }[]
   }>(
     `query ($q: ItemsQuery) {
       boards(ids: [${BOARD_ORDENES}]) {
         items_page(limit: 100, query_params: $q) {
-          items { id column_values(ids: ["${COL_OP.estado}"]) { text } }
+          items { id column_values(ids: ["${COL_OP.estado}", "${COL_OP.nroPvc}", "${COL_OP.nroAluminio}"]) { id text } }
         }
       }
     }`,
@@ -241,7 +386,12 @@ export async function ultimaOrdenDeObra(
   const items = d.boards[0]?.items_page.items ?? []
   if (!items.length) return null
   const ultimo = items.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))
-  return { id: ultimo.id, estado: ultimo.column_values[0]?.text ?? '' }
+  const col = (id: string) => ultimo.column_values.find((c) => c.id === id)?.text?.trim() ?? ''
+  return {
+    id: ultimo.id,
+    estado: col(COL_OP.estado),
+    numero: col(COL_OP.nroAluminio) || col(COL_OP.nroPvc),
+  }
 }
 
 /**
