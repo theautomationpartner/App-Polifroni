@@ -66,15 +66,21 @@ const legible = (hex: string, extra = 0): string => {
 export function EstadoBadge({
   label,
   estado,
+  vacio: textoVacio = 'sin definir',
+  pendiente = false,
 }: {
   label?: string
   estado: { texto: string; color: string }
+  /** Qué decir cuando no hay valor. Por defecto "sin definir"; en un envío, "Sin enviar". */
+  vacio?: string
+  /** Sin valor es algo POR HACER (no una ausencia): se ve en ámbar, no apagado en gris. */
+  pendiente?: boolean
 }) {
   const vacio = !estado.texto
   const color = vacio ? '' : estado.color
   return (
     <span
-      className={`chip ${vacio ? 'chip--vacio' : ''}`}
+      className={`chip ${vacio ? (pendiente ? 'chip--pendiente' : 'chip--vacio') : ''}`}
       style={color ? { background: tinte(color, 0.14) } : undefined}
     >
       {label && (
@@ -83,7 +89,7 @@ export function EstadoBadge({
         </span>
       )}
       <span className="chip-v" style={color ? { color: legible(color, 0.14) } : undefined}>
-        {estado.texto || 'sin definir'}
+        {estado.texto || textoVacio}
       </span>
     </span>
   )

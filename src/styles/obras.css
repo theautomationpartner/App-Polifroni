@@ -3174,3 +3174,235 @@
   font-size: 12px;
   color: var(--o-text-muted);
 }
+
+/* ══ Paso "Envío al Cliente": el documento como tarjeta, sin vista previa ══════════
+   Las dos cajas miden lo mismo (stretch). La del documento ya no tiene alto fijo —ese alto era
+   para el visor— y la tarjeta se estira para ocupar lo que mida la del envío. */
+.obras-v2 .paso-grid--envio > .card:last-child {
+  height: auto;
+}
+.docop {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfcfe 0%, #fff 60%);
+}
+.docop--vacio {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--o-text-muted);
+  font-size: 13px;
+  border-style: dashed;
+  background: #fbfcfd;
+}
+.docop--vacio > i {
+  font-size: 22px;
+  color: #c6cbd4;
+}
+.docop-cab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.docop-ic {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #fff1f0;
+  border: 1px solid #ffd6d2;
+  color: #d92d20;
+  font-size: 20px;
+}
+.docop-tit {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.docop-id {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--o-text-title);
+}
+.docop-arch {
+  font-size: 12px;
+  color: var(--o-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.docop-datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--o-border);
+}
+.docop-datos dt {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+.docop-datos dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.docop-datos .docop-falta {
+  color: #b6c2d2;
+  font-weight: 600;
+}
+/* El botón al pie de la tarjeta, a todo el ancho: es LA acción de esta caja. */
+.docop-abrir {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
+}
+
+/* ══ Envío: estados, destinos y mensaje ══════════════════════════════════════════ */
+/* "Sin enviar" no es una ausencia: es lo que hay que hacer ahora. Ámbar suave, no gris apagado. */
+.chip--pendiente {
+  background: #fff4e5;
+}
+.chip--pendiente .chip-l {
+  color: #b45309;
+}
+.chip--pendiente .chip-v {
+  color: #c2620a;
+  font-weight: 600;
+}
+/* Los números de destino, con un respiro entre uno y otro. */
+.envio-destinos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.btn-mensaje {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1px solid #cfe0f5;
+  border-radius: 6px;
+  background: #f3f8ff;
+  color: #1d4ed8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-mensaje:hover {
+  background: #e6f0ff;
+  border-color: #a9c7ef;
+}
+/* La vista del mensaje, como se ve en WhatsApp. */
+.modal-icon .msj-ic {
+  color: #25d366;
+}
+.msj-chat {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #efeae2;
+  text-align: left;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.msj-burbuja {
+  position: relative;
+  padding: 10px 12px 8px;
+  border-radius: 0 10px 10px 10px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111b21;
+}
+.msj-burbuja p {
+  margin: 0 0 7px;
+}
+.msj-burbuja ul {
+  margin: 0 0 7px;
+  padding-left: 16px;
+}
+.msj-burbuja li {
+  margin: 1px 0;
+}
+.msj-link {
+  color: #027eb5;
+  text-decoration: underline;
+}
+.msj-adj {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #f0f2f5;
+  font-size: 12px;
+  color: #54656f;
+}
+.msj-adj i {
+  color: #d92d20;
+}
+.msj-nota {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--o-text-muted);
+  text-align: left;
+}
+
+/* ══ Desplegables: el mismo menú amable que el selector de "Medido por" ═══════════ */
+.ddmenu {
+  top: calc(100% + 6px);
+  margin-top: 0;
+  padding: 6px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+}
+.dditem {
+  justify-content: space-between;
+  padding: 9px 11px;
+  border-bottom: 0;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--o-text-main, #1f2937);
+  transition: background 0.12s, color 0.12s;
+}
+.dditem + .dditem {
+  margin-top: 2px;
+}
+.dditem:hover {
+  background: #eef4ff;
+  color: #1d4ed8;
+}
+.dditem--elegido {
+  font-weight: 700;
+  color: #1d4ed8;
+}
+.dditem-check {
+  font-size: 11px;
+  color: var(--primary-blue);
+}
+
+/* Los nombres de las etapas son más largos que en La Batea ("Envío De Orden Producción A
+   Taller"): con 72 px partían en cuatro renglones y agrandaban el encabezado. Con 104 px entran
+   en tres, que es el alto que la barra ya reserva. */
+.obras-v2 .paso-header-steps .step-nro {
+  max-width: 104px;
+}

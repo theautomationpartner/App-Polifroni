@@ -17,6 +17,7 @@ import {
   copiarArchivo,
   crearSubelementos,
   getArchivosOrden,
+  guardarNroHetmo,
   quitarEtmoDeOrden,
   subirEtmoAOrden,
   terminarVisita,
@@ -460,6 +461,15 @@ export function EtmoView() {
       const id = await ordenAbierta.current
       if (id) {
         await guardarEnOrden(id)
+        /* El N° de OP HETMO ("9.205-1") viene SÓLO en la respuesta del webhook. Si la corrida se
+           cerró por el tablero antes de que contestara, se la espera unos segundos. */
+        const cuerpo = await generacion.esperarRespuesta(20_000)
+        const nOpHetmo = String(cuerpo?.nOpHetmo ?? '').trim()
+        if (nOpHetmo && !/^-?$/.test(nOpHetmo)) {
+          await guardarNroHetmo(id, nOpHetmo).catch((e) =>
+            console.warn('[etmo] no se pudo guardar el N° OP HETMO', e),
+          )
+        }
         /* La OP final la deja el escenario en la OP. Si todavía la dejara en la obra (antes de
            ajustarlo), se copia de ahí para que la OP no quede sin su documento. */
         const propios = await getArchivosOrden(id).catch(() => null)

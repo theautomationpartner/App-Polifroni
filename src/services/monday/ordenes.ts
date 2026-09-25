@@ -35,7 +35,25 @@ export const COL_OP = {
   observacion: 'long_text_mm7g7k7n',
   fechaMedicion: 'date_mm7gejvf',
   tipo: 'color_mm7gbz9q',
+  /** 🤖N OP HETMO (text): "número-versión" del listado HETMO, lo devuelve la generación. */
+  nOpHetmo: 'text_mm7g5hbe',
+  /** 🤖Estado De Envio OP (status): Enviando... | Enviada | Error De Envio. */
+  estadoEnvio: 'color_mm7hdg10',
 } as const
+
+/** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
+export const ESTADO_ENVIO_OP = {
+  enviando: 'Enviando...',
+  enviada: 'Enviada',
+  error: 'Error De Envio',
+} as const
+
+/** Colores de esas etiquetas en el tablero, para pintarlas igual en la app. */
+export const COLOR_ENVIO_OP: Record<string, string> = {
+  'Enviando...': '#fdab3d',
+  Enviada: '#00c875',
+  'Error De Envio': '#df2f4a',
+}
 
 /** Columnas de los subelementos: una observación por abertura y un renglón por vidrio. */
 export const COL_OBS = {
@@ -350,6 +368,74 @@ export async function copiarArchivo(
   /* Una OP lleva UN documento de cada tipo: si ya había uno (un intento anterior), se reemplaza. */
   await cambiarColumnas(ordenId, { [columna]: { clear_all: true } }).catch(() => {})
   await subirArchivo(ordenId, columna, new File([blob], archivo.nombre, { type: tipo }))
+}
+
+/** Guarda el N° de OP HETMO ("9.205-1") que devuelve la generación. */
+export async function guardarNroHetmo(ordenId: string, texto: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.nOpHetmo]: texto })
+}
+
+/** Mueve el estado de envío de la OP ("Enviando..." → "Enviada" o "Error De Envio"). */
+export async function setEstadoEnvioOrden(ordenId: string, etiqueta: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.estadoEnvio]: { label: etiqueta } })
+}
+
+/** Lo que el paso de envío muestra de la OP emitida. */
+export interface ResumenOrden {
+  id: string
+  nombre: string
+  idOp: string
+  numero: string
+  tipo: string
+  nOpHetmo: string
+  medidoPor: string
+  fechaMedicion: string
+  estadoEnvio: string
+  opFinal: ArchivoObra[]
+}
+
+/**
+ * La ÚLTIMA OP EMITIDA de la obra: la más nueva que ya tiene su OP final. Es la que se le manda al
+ * cliente. Una OP recién abierta (sin documento todavía) no cuenta.
+ */
+export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenOrden | null> {
+  if (ordenesIds.length === 0) return null
+  const cols = [
+    COL_OP.idOp,
+    COL_OP.nroPvc,
+    COL_OP.nroAluminio,
+    COL_OP.tipo,
+    COL_OP.nOpHetmo,
+    COL_OP.medidoPor,
+    COL_OP.fechaMedicion,
+    COL_OP.estadoEnvio,
+    COL_OP.opFinal,
+  ]
+  const d = await mondayApi<{ items: (MondayItem & { state?: string })[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { id name state column_values(ids: ${JSON.stringify(cols)}) { id text value } } }`,
+    { ids: ordenesIds },
+  )
+  const emitidas = (d.items ?? [])
+    .filter((i) => i.state !== 'archived' && i.state !== 'deleted')
+    .map((i) => ({ i, c: byId(i) }))
+    .map(({ i, c }) => ({ i, c, opFinal: archivosDe(c[COL_OP.opFinal]?.value) }))
+    .filter((x) => x.opFinal.length > 0)
+    .sort((a, b) => Number(b.i.id) - Number(a.i.id))
+  const u = emitidas[0]
+  if (!u) return null
+  const t = (id: string) => (u.c[id]?.text ?? '').trim()
+  return {
+    id: u.i.id,
+    nombre: u.i.name,
+    idOp: t(COL_OP.idOp),
+    numero: t(COL_OP.nroAluminio) || t(COL_OP.nroPvc),
+    tipo: t(COL_OP.tipo),
+    nOpHetmo: t(COL_OP.nOpHetmo),
+    medidoPor: t(COL_OP.medidoPor),
+    fechaMedicion: t(COL_OP.fechaMedicion),
+    estadoEnvio: t(COL_OP.estadoEnvio),
+    opFinal: u.opFinal,
+  }
 }
 
 export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise<void> {

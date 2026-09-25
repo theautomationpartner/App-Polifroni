@@ -80,7 +80,7 @@ export function ConfirmacionView() {
       <PasoHeader />
 
       <PasoTitulo
-        titulo="Confirmación del Cliente y Taller"
+        titulo="Envío De Orden Producción A Taller"
         descripcion={
           <>
             Con la orden confirmada por el cliente se habilita el despacho al taller.

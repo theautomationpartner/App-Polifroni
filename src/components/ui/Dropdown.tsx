@@ -12,6 +12,8 @@ interface DropdownProps<T> {
   itemClassName?: string
   /** Deshabilita el control: no abre el menú (p. ej. mientras se cargan sus opciones). */
   disabled?: boolean
+  /** La opción elegida hoy: se marca en el menú con un tilde. */
+  esElegido?: (item: T) => boolean
 }
 
 /** Selector con menú desplegable, usado para operación y vendedor. */
@@ -23,6 +25,7 @@ export function Dropdown<T>({
   onSelect,
   itemClassName = '',
   disabled = false,
+  esElegido,
 }: DropdownProps<T>) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -45,20 +48,24 @@ export function Dropdown<T>({
 
       {open && !disabled && (
         <div className="ddmenu" role="listbox">
-          {items.map((item) => (
-            <div
-              key={itemKey(item)}
-              role="option"
-              aria-selected={false}
-              className={`dditem ${itemClassName}`}
-              onClick={() => {
-                onSelect(item)
-                setOpen(false)
-              }}
-            >
-              {renderItem(item)}
-            </div>
-          ))}
+          {items.map((item) => {
+            const elegido = esElegido?.(item) ?? false
+            return (
+              <div
+                key={itemKey(item)}
+                role="option"
+                aria-selected={elegido}
+                className={`dditem ${elegido ? 'dditem--elegido' : ''} ${itemClassName}`}
+                onClick={() => {
+                  onSelect(item)
+                  setOpen(false)
+                }}
+              >
+                {renderItem(item)}
+                {elegido && <i className="fas fa-check dditem-check" aria-hidden="true" />}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

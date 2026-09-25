@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react'
 import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
 import { Dropdown } from '@/components/ui/Dropdown'
-import { VisorPdf } from '@/components/ui/VisorPdf'
 import { ResultadoEnvio } from './ResultadoEnvio'
 import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
 import { accesoAlPaso } from '@/lib/pasos'
-import { COL, ESTADO_OP, setEstado, sincronizarEstadoOrden } from '@/services/monday'
+import {
+  COL,
+  COLOR_ENVIO_OP,
+  ESTADO_ENVIO_OP,
+  ESTADO_OP,
+  setEstado,
+  setEstadoEnvioOrden,
+  sincronizarEstadoOrden,
+  ultimaOrdenEmitida,
+  type ResumenOrden,
+} from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
 import { useEnviarOp } from './useEnviarOp'
-import { ultimaOpFinal } from '@/features/op/ultimaOp'
+import { DocumentoOrden } from './DocumentoOrden'
+import { MensajeEjemplo } from './MensajeEjemplo'
 
 /** Opciones de las dos columnas de status que deciden a quién y por dónde se manda la orden. */
 const DESTINATARIOS = ['Cliente', 'Constructor', 'Ambos'] as const
@@ -30,9 +40,26 @@ export function EnvioClienteView() {
   const refrescar = useRefrescarObra()
   const { estado, correr, seguirEsperando, enCurso } = useEnviarOp(obra)
   const [cambiando, setCambiando] = useState(false)
+  const [verMensaje, setVerMensaje] = useState(false)
 
-  const opPdf = ultimaOpFinal(obra)
-  const hayOp = obra.opFinal.length > 0
+  /* La orden que se manda: la ÚLTIMA OP EMITIDA de la obra, con su OP final. El documento vive en
+     la OP del tablero de órdenes, no en la obra. */
+  const [orden, setOrden] = useState<ResumenOrden | null>(null)
+  const [cargandoOrden, setCargandoOrden] = useState(true)
+  const idsOrdenes = obra.ordenesIds.join(',')
+  useEffect(() => {
+    let vivo = true
+    setCargandoOrden(true)
+    ultimaOrdenEmitida(obra.ordenesIds)
+      .then((o) => vivo && setOrden(o))
+      .catch(() => vivo && setOrden(null))
+      .finally(() => vivo && setCargandoOrden(false))
+    return () => {
+      vivo = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsOrdenes])
+  const hayOp = !!orden
   const destinatario = obra.opDestinatario.texto
   const via = obra.opVia.texto
   /* A quién le llega el mensaje según el destinatario elegido: es el dato que hay que mirar ANTES
@@ -58,9 +85,30 @@ export function EnvioClienteView() {
   const accesoALaConfirmacion =
     estado.fase === 'listo' ? { ok: true, motivo: '' } : accesoAlPaso('confirmacion', obra)
 
-  /* Salió el mensaje: la OP del tablero de órdenes pasa a "Enviada Pend Confirmar". */
+  /** Mueve el estado de envío de la OP en el tablero y en la pantalla. */
+  const marcarEnvio = (etiqueta: string) => {
+    if (!orden) return
+    setOrden((o) => (o ? { ...o, estadoEnvio: etiqueta } : o))
+    void setEstadoEnvioOrden(orden.id, etiqueta).catch((e) =>
+      console.warn('[envio] no se pudo actualizar el estado de envío de la OP', e),
+    )
+  }
+
+  /* "Enviando..." al tocar el botón; "Enviada" cuando el envío termina bien (y la OP pasa a
+     "Enviada Pend Confirmar"); "Error De Envio" si falla. */
+  const enviar = () => {
+    marcarEnvio(ESTADO_ENVIO_OP.enviando)
+    void correr({ ordenId: orden?.id ?? null })
+  }
   useEffect(() => {
-    if (estado.fase === 'listo') void sincronizarEstadoOrden(obra.id, ESTADO_OP.enviada)
+    if (estado.fase === 'listo') {
+      marcarEnvio(ESTADO_ENVIO_OP.enviada)
+      void sincronizarEstadoOrden(obra.id, ESTADO_OP.enviada)
+    } else if (estado.fase === 'error') {
+      marcarEnvio(ESTADO_ENVIO_OP.error)
+    }
+    // `marcarEnvio` usa la orden del render: sólo importa el cambio de fase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estado.fase, obra.id])
 
   const cambiarColumna = async (columna: string, etiqueta: string) => {
@@ -75,15 +123,13 @@ export function EnvioClienteView() {
     }
   }
 
-  /* Lo que dice el visor mientras sale el mensaje. Sin nombrar procesos: sólo que se está enviando. */
-  const trabajando = enCurso ? 'Enviando…' : null
 
   return (
     <section className="view paso-layout obras-v2">
       <PasoHeader />
 
       <PasoTitulo
-        titulo="Enviar OP al Cliente"
+        titulo="Enviar Orden De Producción"
         descripcion={
           <>
             Se manda la Orden de Producción final por WhatsApp, con el enlace al formulario donde el
@@ -93,7 +139,7 @@ export function EnvioClienteView() {
       />
 
 
-      <div className="paso-grid paso-grid--parejo">
+      <div className="paso-grid paso-grid--parejo paso-grid--envio">
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-paper-plane" /> Envío del documento
@@ -115,6 +161,7 @@ export function EnvioClienteView() {
                     )
                   }
                   items={DESTINATARIOS as readonly string[]}
+                  esElegido={(d) => d === destinatario}
                   itemKey={(d) => d}
                   renderItem={(d) => d}
                   disabled={cambiando || enCurso}
@@ -139,6 +186,7 @@ export function EnvioClienteView() {
                     )
                   }
                   items={VIAS as readonly string[]}
+                  esElegido={(v) => v === via}
                   itemKey={(v) => v}
                   renderItem={(v) => v}
                   disabled={cambiando || enCurso}
@@ -157,12 +205,14 @@ export function EnvioClienteView() {
               corriente del cliente y del constructor/arquitecto vinculados a la obra.
             </Aviso>
           ) : (
-            telefonos.map((t) => (
-              <div className="archivo-item" key={t}>
-                <i className="fab fa-whatsapp" style={{ color: '#25d366' }} />
-                <span className="archivo-item-n">{t}</span>
-              </div>
-            ))
+            <div className="envio-destinos">
+              {telefonos.map((t) => (
+                <div className="archivo-item" key={t}>
+                  <i className="fab fa-whatsapp" style={{ color: '#25d366' }} />
+                  <span className="archivo-item-n">{t}</span>
+                </div>
+              ))}
+            </div>
           )}
 
           {!hayOp && (
@@ -179,7 +229,7 @@ export function EnvioClienteView() {
               className="btn btn-green"
               disabled={!puedeEnviar}
               title={motivoSinEnvio || undefined}
-              onClick={() => void correr()}
+              onClick={enviar}
             >
               {enCurso ? (
                 <>
@@ -196,8 +246,20 @@ export function EnvioClienteView() {
           {/* Los dos estados juntos: son la misma respuesta —¿salió el mensaje?— vista desde dos
               columnas. Separados a los extremos se leían como dos datos sin relación. */}
           <div className="envio-estados">
-            <EstadoBadge label="Estado de envío" estado={obra.estadoEnvioOp} />
-            <EstadoBadge label="Mensaje al cliente" estado={obra.mjsEnviadoCliente} />
+            <EstadoBadge
+              label="Estado de envío"
+              estado={{
+                texto: orden?.estadoEnvio ?? '',
+                color: COLOR_ENVIO_OP[orden?.estadoEnvio ?? ''] ?? '',
+              }}
+              vacio="Sin enviar"
+              pendiente
+            />
+            {/* En lugar de una etiqueta "sin definir" que no decía nada: ver QUÉ mensaje le va a
+                llegar a quien recibe la orden, antes de mandarlo. */}
+            <button type="button" className="btn-mensaje" onClick={() => setVerMensaje(true)}>
+              <i className="far fa-comment-dots" /> Ver mensaje
+            </button>
           </div>
 
           <ResultadoEnvio estado={estado} seguirEsperando={() => void seguirEsperando()} />
@@ -208,19 +270,19 @@ export function EnvioClienteView() {
             <i className="fas fa-file-pdf" /> Documento que se envía
           </div>
           <p className="panel-d">
-            Es el archivo adjunto en <strong>🤖OP Final</strong>. Si tenés que corregirlo, volvé al
-            paso anterior y generalo de nuevo.
+            La OP final de la orden emitida. Si tenés que corregirla, volvé al paso anterior y
+            generala de nuevo.
           </p>
-          <VisorPdf
-            archivo={opPdf}
-            vacio="Todavía no hay una OP final generada para esta obra."
-            trabajando={trabajando}
-          />
+          <DocumentoOrden orden={orden} cargando={cargandoOrden} />
         </div>
       </div>
 
       {/* Al paso 5 se entra sólo con el mensaje enviado Y la orden confirmada: es lo que habilita
           el despacho al taller, y no tiene sentido llegar antes. */}
+      {verMensaje && (
+        <MensajeEjemplo destinatario={destinatario} onClose={() => setVerMensaje(false)} />
+      )}
+
       <PasoNav
         siguiente="Ver confirmación del cliente"
         bloqueado={!accesoALaConfirmacion.ok}

@@ -120,6 +120,10 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
    * que manda; el error del tablero vale recién cuando el pedido ya volvió sin decir nada útil.
    */
   const pedidoPendiente = useRef(false)
+  /** El cuerpo de la última respuesta del webhook: trae datos que no están en el tablero. */
+  const respuesta = useRef<Record<string, unknown> | null>(null)
+  /** El pedido en vuelo, para poder esperar su respuesta después de que la corrida se cerró. */
+  const pedidoEnVuelo = useRef<Promise<unknown> | null>(null)
 
   useEffect(() => {
     vivo.current = true
@@ -237,11 +241,15 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
     /* El pedido NO se espera antes de empezar a mirar el tablero: su respuesta llega al final del
        escenario, y hasta entonces el tablero es la única fuente de novedades. */
     pedidoPendiente.current = true
+    respuesta.current = null
     const pedido = dispararEscenario(escenario, itemId, { ...extra, ...extraAhora })
       .finally(() => {
         pedidoPendiente.current = false
       })
-      .then(leerRespuesta)
+      .then((r) => {
+        respuesta.current = r.cuerpo
+        return leerRespuesta(r)
+      })
       .catch(async (e: unknown) => {
         /* Sin URL configurada no salió nada y no hay nada que esperar: se corta acá. Cualquier otro
            fallo de red puede haber llegado igual al escenario, así que el sondeo sigue. */
@@ -263,6 +271,7 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
         }
       })
 
+    pedidoEnVuelo.current = pedido
     if (vivo.current) setEstado((s) => ({ ...s, fase: 'esperando' }))
     await Promise.all([sondear(), pedido])
   }, [antes, cerrar, escenario, extra, itemId, leerRespuesta, sondear])
@@ -278,5 +287,17 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
   /* La espera arrancó y el tablero todavía no lo confirma: el pedido no llegó al escenario. */
   const noArranco = estado.fase === 'esperando' && estado.segundos * 1000 > SIN_ARRANCAR_MS
 
-  return { estado, correr, seguirEsperando, enCurso, noArranco }
+  /**
+   * El cuerpo de la respuesta del webhook, esperándolo hasta `ms` si todavía no llegó.
+   *
+   * La corrida puede cerrarse por el tablero ANTES de que el webhook conteste; lo que sólo viene en
+   * la respuesta (p. ej. el N° de OP HETMO) se busca acá.
+   */
+  const esperarRespuesta = useCallback(async (ms: number) => {
+    if (respuesta.current || !pedidoEnVuelo.current) return respuesta.current
+    await Promise.race([pedidoEnVuelo.current.catch(() => {}), espera(ms)])
+    return respuesta.current
+  }, [])
+
+  return { estado, correr, seguirEsperando, enCurso, noArranco, esperarRespuesta }
 }

@@ -21,8 +21,8 @@ export const PASOS: readonly Paso[] = ['obra', 'etmo', 'envio', 'confirmacion']
 export const ETIQUETAS_PASO: Record<Paso, string> = {
   obra: 'Seleccionar Obra',
   etmo: 'Subir Orden Hetmo',
-  envio: 'Envío al Cliente',
-  confirmacion: 'Confirmación y Taller',
+  envio: 'Enviar Orden De Producción',
+  confirmacion: 'Envío De Orden Producción A Taller',
 }
 
 /**
@@ -33,8 +33,8 @@ export const ETIQUETAS_PASO: Record<Paso, string> = {
 export const ACCIONES_PASO: Record<Paso, string> = {
   obra: 'Seleccionar Obra',
   etmo: 'Subir Orden Hetmo',
-  envio: 'Enviar OP al Cliente',
-  confirmacion: 'Confirmar y Enviar al Taller',
+  envio: 'Enviar Orden De Producción',
+  confirmacion: 'Envío De Orden Producción A Taller',
 }
 
 export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))
