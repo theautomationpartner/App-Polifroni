@@ -8,7 +8,6 @@ import {
   buscarObras,
   getIndiceObras,
   getObra,
-  guardarObservaciones,
   mondayHabilitado,
 } from '@/services/monday'
 import { ACCIONES_PASO } from '@/state/appState'
@@ -210,28 +209,13 @@ export function ObrasView() {
   }
 
   /** Aceptar la pregunta: se aplica lo que haya que aplicar y recién ahí se entra. */
-  const confirmar = async () => {
+  const confirmar = () => {
     if (!pendiente) return
     const { obra, aviso } = pendiente
     setPendiente(null)
-    if (!aviso.limpiarCiclo) {
-      entrar(obra, aviso.destino)
-      return
-    }
-    setAbriendo(true)
-    try {
-      /* La Orden HETMO ya no vive en la obra: cada OP tiene la suya. Sólo se vacían las
-         observaciones, que son las de la orden anterior. */
-      await guardarObservaciones(obra.id, '')
-      /* Se relee para entrar con la obra como quedó: si se entrara con la copia vieja, la etapa
-         mostraría un documento y unas observaciones que en el tablero ya no existen. */
-      const fresca = await getObra(obra.id)
-      entrar(fresca ?? obra, aviso.destino)
-    } catch {
-      dispatch({ type: 'errorMonday', accion: 'preparar la obra para una orden nueva' })
-    } finally {
-      setAbriendo(false)
-    }
+    /* La OP nueva arranca vacía por sí sola: el documento y las observaciones son de cada OP, así
+       que no hay nada de la orden anterior que limpiar en la obra. */
+    entrar(obra, aviso.destino)
   }
 
   /**

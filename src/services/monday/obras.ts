@@ -206,16 +206,14 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     emailCliente: txt(COL.emailCliente),
     celArquitecto: txt(COL.celArquitecto),
 
-    ordenEtmo: archivos(c[COL.ordenEtmo]),
-    opFinal: archivos(c[COL.opFinal]),
+    /* Los completa `conDocumentosDeOrdenes`: son de cada OP, no de la obra. */
+    ordenEtmo: [],
+    opFinal: [],
     ordenesIds: (c[COL.ordenes]?.linked_item_ids ?? []).map(String),
     planoAberturas: archivos(c[COL.planoAberturas]),
     planoPlanta: archivos(c[COL.planoPlanta]),
     presupuestoAceptado: archivos(c[COL.presupuestoAceptado]),
 
-    observaciones: c[COL.observaciones]?.text ?? '',
-
-    estadoOpFinal: estado(c, estructura, COL.estadoOpFinal),
     opDestinatario: estado(c, estructura, COL.opDestinatario),
     opVia: estado(c, estructura, COL.opVia),
     estadoEnvioOp: estado(c, estructura, COL.estadoEnvioOp),
@@ -243,8 +241,7 @@ export async function getObra(itemId: string): Promise<Obra | null> {
  * Los documentos de la obra salen de SUS ÓRDENES, no de la obra.
  *
  * Cada OP del tablero de órdenes guarda su Orden HETMO y su OP final. La obra muestra la Orden
- * HETMO de la OP más nueva y TODAS las OP finales (el envío toma la última). Mientras las columnas
- * viejas de la obra existan, lo que tengan se usa de respaldo: así nada se pierde en la transición.
+ * HETMO de la OP más nueva y TODAS las OP finales (el envío toma la última).
  */
 async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
   if (obra.ordenesIds.length === 0) return obra
@@ -265,11 +262,7 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
   if (ordenes.length === 0) return obra
   const opFinal = ordenes.flatMap((o) => archivos(o.c[COL_OP_ARCHIVOS.opFinal]))
   const etmo = archivos(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
-  return {
-    ...obra,
-    opFinal: opFinal.length ? opFinal : obra.opFinal,
-    ordenEtmo: etmo.length ? etmo : obra.ordenEtmo,
-  }
+  return { ...obra, opFinal, ordenEtmo: etmo }
 }
 
 /** Fila de la lista: sólo lo que se ve en el listado. */
@@ -444,21 +437,6 @@ export async function subirArchivo(itemId: string, columna: string, archivo: Fil
  * Escrituras
  * ──────────────────────────────────────────────────────────────────────────────── */
 
-/** Guarda las observaciones por ítem (columna de texto de la OP). */
-export async function guardarObservaciones(itemId: string, texto: string): Promise<void> {
-  await mondayApi(
-    `mutation ($valor: String!) {
-      change_simple_column_value(
-        board_id: ${BOARD_OBRAS}
-        item_id: ${itemId}
-        column_id: "${COL.observaciones}"
-        value: $valor
-        create_labels_if_missing: false
-      ) { id }
-    }`,
-    { valor: texto },
-  )
-}
 
 /**
  * Vacía una columna de archivos.
@@ -699,38 +677,6 @@ export async function getEstadoTaller(itemId: string): Promise<EstadoConFecha> {
   return c[COL.estadoEnvioTaller] ?? SIN_ESTADO
 }
 
-/** Lo único que hay que mirar para saber cómo va la generación de la OP final. */
-export interface EstadoOp {
-  /** Etiqueta de 🤖Estado Orden de Prod Final: Generar | Generando | Generado | Error - Ver Update. */
-  estado: string
-  /** Archivos de la columna 🤖OP Final. */
-  opFinal: ArchivoObra[]
-}
-
-/**
- * Estado de la generación, con la consulta MÍNIMA: dos columnas de un ítem.
- *
- * Esto es lo que se pregunta cada pocos segundos mientras el escenario trabaja, así que pedir la
- * obra entera —cuarenta columnas, conexiones y espejos incluidos— sería pagar cuarenta veces por el
- * dato que se necesita. La obra completa se relee UNA vez, recién cuando la corrida termina.
- */
-export async function getEstadoOp(itemId: string): Promise<EstadoOp> {
-  const d = await mondayApi<{ items: MondayItem[] }>(
-    `query ($ids: [ID!]) {
-      items(ids: $ids) {
-        column_values(ids: ${JSON.stringify([COL.estadoOpFinal, COL.opFinal])}) { id text value }
-      }
-    }`,
-    { ids: [itemId] },
-  )
-  const item = d.items?.[0]
-  if (!item) return { estado: '', opFinal: [] }
-  const c = byId(item)
-  return {
-    estado: limpiar(c[COL.estadoOpFinal]?.text ?? ''),
-    opFinal: archivos(c[COL.opFinal]),
-  }
-}
 
 /**
  * Relee la obra cada `intervalo` hasta que `cumple` diga que sí, o hasta agotar el tiempo.

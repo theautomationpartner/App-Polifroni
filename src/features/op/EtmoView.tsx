@@ -23,7 +23,6 @@ import {
   terminarVisita,
   setEstadoOrden,
   getUrlArchivo,
-  guardarObservaciones,
   limpiarEstado,
 } from '@/services/monday'
 import { useDispatch } from '@/state/hooks'
@@ -112,6 +111,34 @@ function ListaArchivos({
  * gesto, y el panel de observaciones recién se habilita cuando la lectura contestó. Si en el
  * momento se dijo que no, el botón de leer queda ahí para cuando se cambie de idea.
  */
+/**
+ * El borrador de las observaciones de UNA OP, guardado en el navegador.
+ *
+ * Antes vivía en la columna "Observaciones OP" de la obra, que se borró: las observaciones son de
+ * cada orden, y al generarla quedan en SUS subelementos del tablero de órdenes. Hasta entonces lo
+ * escrito se guarda acá, atado a la OP, para que recargar la página o ir y volver de otra etapa no
+ * lo pierda. Es sólo un borrador: sin almacenamiento del navegador, queda en memoria.
+ */
+const claveBorrador = (ordenId: string) => `observaciones:${ordenId}`
+
+function leerBorrador(ordenId: string): string {
+  try {
+    return localStorage.getItem(claveBorrador(ordenId)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function guardarBorrador(ordenId: string, texto: string): boolean {
+  try {
+    if (texto) localStorage.setItem(claveBorrador(ordenId), texto)
+    else localStorage.removeItem(claveBorrador(ordenId))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function EtmoView() {
   const obra = useObra()
   const dispatch = useDispatch()
@@ -132,13 +159,16 @@ export function EtmoView() {
   /* La OP final se genera DESDE ACÁ. Antes había que pasar al paso 3 y apretar otro botón: dos
      pantallas para una decisión que ya se tomó al tocar "Generar la OP final". */
   const [ordenId, setOrdenId] = useState<string | null>(null)
+  /** La misma OP, para leerla al desmontar la pantalla. */
+  const ordenIdRef = useRef<string | null>(null)
+  ordenIdRef.current = ordenId
   const generacion = useGenerarOp(obra, ordenId)
   /* Si la obra ya tiene otras órdenes se avisa en el paso 1, al elegirla: acá no se vuelve a preguntar. */
 
 
-  /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
-     volver a esta etapa, la lista está sin tener que releer el documento. */
-  const [aberturas, setAberturas] = useState<Abertura[]>(() => parsear(obra.observaciones))
+  /* Las aberturas salen del borrador de la OP (ver `leerBorrador`), que guarda una línea por
+     modelo. Así, al volver a esta etapa, la lista está sin tener que releer el documento. */
+  const [aberturas, setAberturas] = useState<Abertura[]>([])
   const [indice, setIndice] = useState(0)
   /* Datos de la medición. Viajan a la OP del tablero de órdenes y al escenario que arma el PDF. */
   const [medicion, setMedicion] = useState<Medicion>(medicionInicial)
@@ -219,9 +249,9 @@ export function EtmoView() {
   }, [claveVidrios, lectura.vidrios])
 
 
-  /** Lo último que quedó escrito en el tablero. Es lo que separa "lo mío" de "lo de afuera". */
-  const ultimoGuardado = useRef(obra.observaciones)
-  /** Lo escrito que todavía no llegó al tablero, para no perderlo al salir de la pantalla. */
+  /** Lo último que quedó en el borrador. */
+  const ultimoGuardado = useRef('')
+  /** Lo escrito que todavía no llegó al borrador, para no perderlo al salir de la pantalla. */
   const pendiente = useRef<string | null>(null)
   /**
    * Si en ESTA visita alguien tocó el texto.
@@ -233,14 +263,13 @@ export function EtmoView() {
    */
   const edito = useRef(false)
 
-  /* Si el tablero cambia por afuera (volver de otra etapa, otra persona editando), los campos toman
-     lo que quedó ahí. Lo que ACABAMOS de guardar nosotros no cuenta como cambio de afuera: releer
-     la obra después de guardar no tiene que pisar lo que se está escribiendo. */
+  /* Con la OP ya conocida se recupera su borrador. Lo que se esté escribiendo no se pisa. */
   useEffect(() => {
-    if (obra.observaciones === ultimoGuardado.current) return
-    ultimoGuardado.current = obra.observaciones
-    setAberturas(parsear(obra.observaciones))
-  }, [obra.observaciones])
+    if (!ordenId || edito.current) return
+    const guardado = leerBorrador(ordenId)
+    ultimoGuardado.current = guardado
+    if (guardado) setAberturas(parsear(guardado))
+  }, [ordenId])
 
   const tieneAberturas = aberturas.length > 0
   /** Los dos datos que el escenario exige para armar la OP final. */
@@ -254,20 +283,16 @@ export function EtmoView() {
   /* Lo mismo que filtra el router del escenario. Si falta algo, la corrida se cortaría sin avisar
      —y de paso ya habría tocado el estado de la obra—, así que el botón no se habilita. */
   const falta = faltaParaLeer(obra, tieneEtmo)
-  /* Texto que ya estaba en la columna y NO tiene el formato por abertura: lo escribió alguien a
-     mano, o quedó de antes de esta pantalla. No se puede editar acá —no hay aberturas contra las
-     cuales ordenarlo— pero tampoco se puede esconder: generar las observaciones lo reemplaza. */
-  const textoViejo = tieneAberturas ? '' : obra.observaciones.trim()
 
   /* Lo escrito NO se guarda mientras se escribe: se completan las que se quieran, en el orden que
-     se quiera, y recién al salir del paso se vuelca al tablero. `pendiente` es lo último tecleado,
+     se quiera, y recién al salir del paso se vuelca al borrador. `pendiente` es lo último tecleado,
      y el efecto de abajo lo manda al desmontar la pantalla —se salga por donde se salga—. */
   pendiente.current = edito.current && texto !== ultimoGuardado.current ? texto : null
 
   useEffect(() => {
     return () => {
       const ultimo = pendiente.current
-      if (ultimo !== null) void guardarObservaciones(obra.id, ultimo).catch(() => {})
+      if (ultimo !== null && ordenIdRef.current) guardarBorrador(ordenIdRef.current, ultimo)
     }
   }, [obra.id])
 
@@ -310,7 +335,7 @@ export function EtmoView() {
       const id = await ordenAbierta.current
       if (id) await quitarEtmoDeOrden(id)
       setEtmoOrden([])
-      await guardarObservaciones(obra.id, '')
+      if (id) guardarBorrador(id, '')
       ultimoGuardado.current = ''
       pendiente.current = null
       edito.current = false
@@ -338,33 +363,25 @@ export function EtmoView() {
     else void quitar()
   }
 
-  /**
-   * Lo que tiene que llegar al tablero y al escenario.
-   *
-   * Sin aberturas no hay nada que volcar DESDE ACÁ: `serializar([])` da vacío, y tomarlo como "lo
-   * escrito" borraría el texto libre que alguien haya cargado a mano en la columna. Con aberturas
-   * el vacío sí es una respuesta: significa que se borraron todas las observaciones.
-   */
-  const observacionesActuales = tieneAberturas ? texto : obra.observaciones
+  /** Lo que tiene que llegar al escenario y a los subelementos de la OP. */
+  const observacionesActuales = texto
 
-  /** Vuelca al tablero lo que haya escrito. Las aberturas vacías no se escriben. */
+  /**
+   * Vuelca al borrador lo que haya escrito. Nunca frena la generación: si el navegador no deja
+   * guardar, lo escrito sigue en pantalla y va igual a la OP.
+   */
   const guardar = async (): Promise<boolean> => {
     if (!tieneAberturas) return true
     if (texto === ultimoGuardado.current) return true
-    setGuardado('guardando')
-    try {
-      await guardarObservaciones(obra.id, texto)
+    const id = ordenIdRef.current
+    const ok = !!id && guardarBorrador(id, texto)
+    if (ok) {
       ultimoGuardado.current = texto
       pendiente.current = null
       edito.current = false
-      setGuardado('guardado')
-      await refrescar()
-      return true
-    } catch {
-      setGuardado('error')
-      dispatch({ type: 'errorMonday', accion: 'guardar las observaciones' })
-      return false
     }
+    setGuardado(ok ? 'guardado' : 'error')
+    return true
   }
 
   /**
@@ -515,6 +532,8 @@ export function EtmoView() {
         } catch {
           /* nada que limpiar */
         }
+        /* Las observaciones ya quedaron en los subelementos de la OP: el borrador no hace falta. */
+        guardarBorrador(id, '')
       }
       if (numeroUsado.current) {
         await registrarNumero(tipoOrden, numeroUsado.current).catch((e) =>
@@ -725,7 +744,7 @@ export function EtmoView() {
                 )}
                 {guardado === 'guardado' && (
                   <>
-                    <i className="fas fa-circle-check" /> Guardado en la obra
+                    <i className="fas fa-circle-check" /> Guardado
                   </>
                 )}
                 {guardado === 'error' && (
@@ -736,16 +755,6 @@ export function EtmoView() {
               </span>
             )}
           </div>
-
-          {textoViejo && (
-            <div style={{ marginTop: 14 }}>
-              <Aviso tono="warn">
-                La obra ya tiene esto escrito, sin el formato por abertura:{' '}
-                <strong>{textoViejo.length > 120 ? `${textoViejo.slice(0, 120)}…` : textoViejo}</strong>
-                . Si generás las observaciones, se reemplaza.
-              </Aviso>
-            </div>
-          )}
 
           {falta && tieneEtmo && (
             <div style={{ marginTop: 14 }}>

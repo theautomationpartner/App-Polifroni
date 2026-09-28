@@ -54,9 +54,9 @@ export interface Obra {
   celArquitecto: string
 
   /* Documentos */
-  /** La Orden HETMO de la OP más nueva de la obra (antes, la columna de la obra). */
+  /** La Orden HETMO de la OP más nueva de la obra. */
   ordenEtmo: ArchivoObra[]
-  /** Las OP finales de TODAS las órdenes de la obra (antes, la columna de la obra). */
+  /** Las OP finales de TODAS las órdenes de la obra. */
   opFinal: ArchivoObra[]
   /** Ids de las órdenes de producción de la obra, en el tablero de órdenes. */
   ordenesIds: string[]
@@ -64,11 +64,7 @@ export interface Obra {
   planoPlanta: ArchivoObra[]
   presupuestoAceptado: ArchivoObra[]
 
-  /* Observaciones por ítem que se vuelcan en la OP final (text_mm73nvda) */
-  observaciones: string
-
   /* Estados del circuito */
-  estadoOpFinal: EstadoObra
   opDestinatario: EstadoObra
   opVia: EstadoObra
   estadoEnvioOp: EstadoObra

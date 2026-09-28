@@ -1,8 +1,8 @@
 /**
  * Las observaciones, por abertura.
  *
- * En el tablero son UN texto (`Observaciones OP`, `text_mm73nvda`), porque así lo lee el escenario
- * que arma la OP final. En pantalla son una caja por abertura, que es como se piensan: cada dibujo
+ * Guardadas son UN texto (el borrador de la OP y el campo `observaciones` que recibe el escenario),
+ * una línea por modelo. En pantalla son una caja por abertura, que es como se piensan: cada dibujo
  * del ETMO tiene —o no— su nota de fabricación.
  *
  * Este módulo es el traductor entre las dos formas. El formato de la línea es el que el escenario

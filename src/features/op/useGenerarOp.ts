@@ -1,18 +1,10 @@
 import { useCallback, useRef } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
 import { ESCENARIO } from '@/services/make'
-import { ETIQUETA, getActividadDesde, getArchivosOrden, getEstadoOp } from '@/services/monday'
+import { getArchivosOrden } from '@/services/monday'
 import type { Obra } from '@/types'
 import { parsear, serializarHtml, serializarLista } from './observaciones'
 
-/**
- * Generación de la OP final: dispara el escenario y espera el documento.
- *
- * Lo único propio de este paso es cómo se reconoce el final mirando el tablero: aparece un archivo
- * en `🤖OP Final` que NO estaba antes de apretar. Esperar "que haya archivo" daría por buena la OP
- * de una corrida anterior en el primer latido. Todo lo demás —el reloj, las dos vías de aviso, el
- * corte a los 5 minutos— es el motor común.
- */
 /**
  * Las observaciones, en las tres formas en que viajan al escenario.
  *
@@ -39,48 +31,42 @@ export function datosObservaciones(texto: string) {
   }
 }
 
+/**
+ * Generación de la OP final: dispara el escenario y espera su lectura.
+ *
+ * El final llega por la respuesta del webhook (`datos`, la lectura de Claude): la OP la arma la app.
+ * Mirar el tablero queda de respaldo por si esa respuesta se pierde: si en la OP del tablero de
+ * órdenes aparece una OP final, la corrida terminó. La obra ya no tiene columnas de este paso.
+ */
 export function useGenerarOp(obra: Obra, ordenId: string | null = null) {
-  /** Los archivos que ya estaban al apretar. Se fotografían en `antes`, no al construir el hook. */
+  /** Los archivos que ya tenía la OP al apretar: una OP final vieja no es la de esta corrida. */
   const previos = useRef<Set<string>>(new Set())
 
-  const antes = useCallback(() => {
-    previos.current = new Set(obra.opFinal.map((a) => a.assetId))
-  }, [obra.opFinal])
-
-  /* La OP final aparece en la OP del tablero de órdenes (antes, en la obra). Se miran las dos: la de
-     la obra queda de respaldo mientras el escenario siga dejándola ahí. */
   const opFinalDeOrden = useCallback(async () => {
     if (!ordenId) return []
     return (await getArchivosOrden(ordenId).catch(() => null))?.opFinal ?? []
   }, [ordenId])
 
-  const mirar = useCallback(
-    async (desdeMs: number): Promise<Veredicto> => {
-      const [{ estado, opFinal }, deOrden] = await Promise.all([getEstadoOp(obra.id), opFinalDeOrden()])
+  const antes = useCallback(() => {
+    previos.current = new Set()
+    void opFinalDeOrden().then((a) => {
+      previos.current = new Set(a.map((x) => x.assetId))
+    })
+  }, [opFinalDeOrden])
 
-      if (deOrden.length > 0 || opFinal.some((a) => !previos.current.has(a.assetId))) {
-        return { fin: 'listo', arranco: true }
-      }
-      if (estado === ETIQUETA.opError) {
-        /* Sin id del update (el tablero no lo da), se busca el más nuevo posterior al disparo. Es
-           el plan B: cuando el escenario contesta, el motor usa el id exacto que devuelve. */
-        const update = await getActividadDesde(obra.id, desdeMs).catch(() => null)
-        return { fin: 'error', arranco: true, update }
-      }
-      return { fin: null, arranco: estado === ETIQUETA.opGenerando }
-    },
-    [obra.id, opFinalDeOrden],
-  )
+  const mirar = useCallback(async (): Promise<Veredicto> => {
+    const deOrden = await opFinalDeOrden()
+    if (deOrden.some((a) => !previos.current.has(a.assetId))) return { fin: 'listo', arranco: true }
+    return { fin: null, arranco: false }
+  }, [opFinalDeOrden])
 
   return useCorrida({
     escenario: ESCENARIO.leerDocumento,
     itemId: obra.id,
-    /* Las observaciones de la obra son el piso: sirven cuando se dispara sin haber editado nada.
-       Al generar desde la pantalla se pasan las recién guardadas a `correr()`, que pisan a éstas
-       —ver `datosObservaciones`—. */
+    /* Las observaciones las pasa la pantalla a `correr()`: son las que se escribieron en ella. */
     extra: {
       obra: obra.nombre,
-      ...datosObservaciones(obra.observaciones),
+      ...datosObservaciones(''),
       accion: 'leer-documento-etmo',
     },
     antes,

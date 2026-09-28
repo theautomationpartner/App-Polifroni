@@ -87,23 +87,16 @@ export const COL = {
   /** 🤖Cel-WHATSAPP Contructor/Arquitecto (mirror). */
   celArquitecto: 'lookup_mkv0rg18',
 
-  /* ── Paso 1 · Ingesta ETMO ────────────────────────────────────────────────── */
-  /** ✋Orden de Prod HETMO (file): el PDF original del sistema de diseño. */
-  ordenEtmo: 'file_mktkkjnj',
-  /** Observaciones OP (text): observaciones por ítem que se vuelcan en la OP final. */
-  observaciones: 'text_mm73nvda',
+  /* ── Documentos de la obra ─────────────────────────────────────────────────── */
+  /* La Orden HETMO, la OP final, su estado y las observaciones ya NO viven en la obra: son de cada
+     OP del tablero de órdenes (ver `COL_OP_ARCHIVOS` y `services/monday/ordenes`). Sus columnas se
+     borraron de Obras el 28/09/2026; no se las vuelva a nombrar acá. */
   /** ✋Plano de Aberturas Pdf (file). */
   planoAberturas: 'file_mktj9hsc',
   /** ✋Plano Planta pdf (file). */
   planoPlanta: 'file_mkth7p72',
   /** ✋Presupuesto Final Aceptado (file). */
   presupuestoAceptado: 'file_mktkp9dp',
-
-  /* ── Paso 2 · Generación de la OP final ───────────────────────────────────── */
-  /** 🤖Estado Orden de Prod Final (status): Generar | Generando | Generado | Error - Ver Update. */
-  estadoOpFinal: 'color_mm72nxsj',
-  /** 🤖OP Final (file): el PDF que devuelve el escenario de Make. */
-  opFinal: 'file_mm72n55y',
 
   /* ── Paso 3 · Envío al cliente ────────────────────────────────────────────── */
   /** ✋ Orden de Produccion a: (status) Constructor | Cliente | Ambos. */

@@ -23,14 +23,6 @@ export interface ValidacionEntrada {
   aceptar: string
   /** A qué etapa se entra al aceptar. Puede no ser la que se había elegido. */
   destino: Paso
-  /**
-   * Antes de entrar, borrar la Orden ETMO y las observaciones.
-   *
-   * Es el caso de rehacer una orden ya emitida: lo que quedó cargado pertenece a la orden
-   * anterior, y dejarlo puesto hace que la etapa parezca a medio hacer y empuja a generar otra vez
-   * sobre el material viejo.
-   */
-  limpiarCiclo?: boolean
   tono: 'warn' | 'info'
 }
 
@@ -38,7 +30,6 @@ export function validarEntrada(destino: Paso, obra: Obra): ValidacionEntrada | n
   const tieneOp = obra.opFinal.length > 0
   /** La obra ya tiene órdenes de producción en su columna "Orden de Produccion". */
   const tieneOrdenes = obra.ordenesIds.length > 0 || tieneOp
-  const hayCicloPrevio = obra.ordenEtmo.length > 0 || obra.observaciones.trim().length > 0
 
   /* Emitir sobre una obra que YA tiene su orden: no es "generar", es rehacer. */
   if (destino === 'etmo' && tieneOrdenes) {
@@ -46,13 +37,11 @@ export function validarEntrada(destino: Paso, obra: Obra): ValidacionEntrada | n
       titulo: 'Esta obra ya tiene una Orden de Producción asociada',
       clave: '¿Querés generar otra Orden de Producción nueva?',
       /* Cada orden es un ÍTEM NUEVO del tablero de órdenes, asociado a la obra: no se reemplaza
-         nada. No se menciona la limpieza de las observaciones (limpiarCiclo sigue ocurriendo
-         igual): a quien opera no le suma y lo hacía dudar. */
+         nada, y la OP nueva arranca sin documento ni observaciones —son de cada OP—. */
       nota: 'Se crea aparte y queda asociada a la obra, junto a las que ya tiene.',
       cancelar: 'No generar',
       aceptar: 'Generar otra orden',
       destino: 'etmo',
-      limpiarCiclo: hayCicloPrevio,
       tono: 'warn',
     }
   }
