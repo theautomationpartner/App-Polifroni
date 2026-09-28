@@ -16,7 +16,7 @@ import {
   type ResumenOrden,
 } from '@/services/monday'
 import type { EstadoObra } from '@/types'
-import { DocumentoOrden } from './DocumentoOrden'
+import { DocumentoOrden, DocumentoOrdenVacio } from './DocumentoOrden'
 import { useEnviarTaller } from './useEnviarTaller'
 import { ResultadoEnvio } from './ResultadoEnvio'
 
@@ -24,6 +24,8 @@ import { ResultadoEnvio } from './ResultadoEnvio'
 type Situacion = 'sinElegir' | 'sinEnviar' | RespuestaCliente
 
 const SIN_DATO: EstadoObra = { texto: '', color: '' }
+/** Sin OP elegida no hay valor que dar: una raya, que se lee como "acá va a ir algo". */
+const RAYA = '—'
 
 /** La etiqueta "Confirmación" de cada situación: sin OP elegida, "sin definir". */
 const ETIQUETA_SITUACION: Record<Situacion, EstadoObra> = {
@@ -192,25 +194,17 @@ export function ConfirmacionView() {
             <i className="fas fa-clipboard-check" /> Respuesta del cliente
           </div>
           <div className="obs-pie" style={{ marginTop: 0 }}>
-            <EstadoBadge label="Confirmación" estado={etiquetaRespuesta} />
+            <EstadoBadge
+              label="Confirmación"
+              estado={etiquetaRespuesta}
+              vacio={situacion === 'sinElegir' ? RAYA : undefined}
+            />
           </div>
 
           {/* El estado de la confirmación NO es un renglón más: decide si esta obra sigue o se
               frena. Por eso se muestra como un cartel que ocupa lugar y se lee de lejos, con una
               sola frase arriba y el detalle abajo. */}
-          <div className="resultado">
-            {situacion === 'sinElegir' && (
-              <div className="veredicto veredicto--vacio">
-                <i className="fas fa-hand-pointer" />
-                <div>
-                  <p className="veredicto-t">Sin orden elegida</p>
-                  <p className="veredicto-d">
-                    Elegí una orden de producción para ver si el cliente la confirmó.
-                  </p>
-                </div>
-              </div>
-            )}
-
+          <div className="resultado" key={elegidaId ?? 'nada'}>
             {situacion === 'sinEnviar' && (
               <div className="veredicto veredicto--pend">
                 <i className="fas fa-paper-plane" />
@@ -277,7 +271,7 @@ export function ConfirmacionView() {
             <i className="fas fa-screwdriver-wrench" /> Despacho al taller
           </div>
           <div className="obs-pie" style={{ marginTop: 0, marginBottom: 12 }}>
-            <EstadoBadge label="Envío al taller" estado={envioTaller} />
+            <EstadoBadge label="Envío al taller" estado={envioTaller} vacio={elegida ? undefined : RAYA} />
           </div>
 
           <div className="acciones-fila">
@@ -294,11 +288,11 @@ export function ConfirmacionView() {
                 )}
               </button>
             ) : (
-              <p className="panel-d" style={{ margin: 0 }}>
-                {elegida
-                  ? `${nombreOrden(elegida)} está en "${elegida.estado || 'sin estado'}": al taller sólo se manda una orden Confirmada.`
-                  : 'Elegí la orden de producción que se manda al taller.'}
-              </p>
+              elegida && (
+                <p className="panel-d" style={{ margin: 0 }}>
+                  Al taller sólo se manda una orden Confirmada.
+                </p>
+              )
             )}
             {yaEnTaller && !enCurso && (
               <span className="obs-estado obs-estado--ok">
@@ -314,7 +308,7 @@ export function ConfirmacionView() {
           <div className="panel-t">
             <i className="fas fa-file-pdf" /> La orden que sale al taller
           </div>
-          <div className="vinculo taller-sel">
+          <div className={`vinculo taller-sel ${elegida || !ordenes?.length ? '' : 'taller-sel--pide'}`}>
             <div>
               <div className="vinculo-l">
                 <i className="fas fa-list-check" /> Orden de producción
@@ -332,7 +326,7 @@ export function ConfirmacionView() {
                       {ordenes === undefined
                         ? 'Buscando las órdenes…'
                         : ordenes.length
-                          ? 'Seleccionar...'
+                          ? 'Elegí la orden que sale al taller'
                           : 'La obra no tiene órdenes emitidas'}
                     </span>
                   )
@@ -354,12 +348,9 @@ export function ConfirmacionView() {
             </div>
           </div>
           {elegida ? (
-            <DocumentoOrden orden={elegida} cargando={false} insignia="estadoOp" />
+            <DocumentoOrden key={elegida.id} orden={elegida} cargando={false} insignia="estadoOp" />
           ) : (
-            <div className="docop docop--vacio">
-              <i className="fas fa-hand-pointer" />
-              <p>Elegí una orden de producción para ver sus datos.</p>
-            </div>
+            <DocumentoOrdenVacio />
           )}
         </div>
       </div>

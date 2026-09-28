@@ -2,6 +2,40 @@ import { useState } from 'react'
 import { EstadoBadge } from '@/components/ui/Aviso'
 import { COLOR_ENVIO_OP, COLOR_ESTADO_OP, getUrlArchivo, type ResumenOrden } from '@/services/monday'
 
+/** Los rótulos de los datos: los mismos en la tarjeta llena y en la vacía. */
+const ROTULOS = ['N° Orden', 'N° OP Hetmo', 'Tipo', 'Medido por', 'Fecha de medición'] as const
+
+/**
+ * La tarjeta TODAVÍA SIN orden: la misma forma que la llena, con rayas en lugar de datos.
+ *
+ * No dice nada: el selector de arriba ya pide que se elija una orden, y repetirlo acá es ruido. Lo
+ * que hace es anticipar QUÉ va a aparecer —y dónde—, así que al elegir no salta nada de lugar: los
+ * datos ocupan el sitio que ya tenían las rayas.
+ */
+export function DocumentoOrdenVacio() {
+  return (
+    <div className="docop docop--fantasma" aria-hidden="true">
+      <div className="docop-cab">
+        <span className="docop-ic">
+          <i className="fas fa-file-pdf" />
+        </span>
+        <div className="docop-tit">
+          <span className="docop-id">—</span>
+          <span className="docop-arch">—</span>
+        </div>
+      </div>
+      <dl className="docop-datos">
+        {ROTULOS.map((l) => (
+          <div key={l}>
+            <dt>{l}</dt>
+            <dd className="docop-falta">—</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 /** "2026-09-25" → "25/09/2026". */
 const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso)
 
@@ -62,16 +96,11 @@ export function DocumentoOrden({
     )
   }
 
-  const datos: { l: string; v: string }[] = [
-    { l: 'N° Orden', v: orden.numero },
-    { l: 'N° OP Hetmo', v: orden.nOpHetmo },
-    { l: 'Tipo', v: orden.tipo },
-    { l: 'Medido por', v: orden.medidoPor },
-    { l: 'Fecha de medición', v: fecha(orden.fechaMedicion) },
-  ]
+  const valores = [orden.numero, orden.nOpHetmo, orden.tipo, orden.medidoPor, fecha(orden.fechaMedicion)]
+  const datos = ROTULOS.map((l, i) => ({ l, v: valores[i] }))
 
   return (
-    <div className="docop">
+    <div className="docop docop--aparece">
       <div className="docop-cab">
         <span className="docop-ic" aria-hidden="true">
           <i className="fas fa-file-pdf" />

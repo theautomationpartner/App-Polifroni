@@ -1976,16 +1976,6 @@
 .veredicto--pend .veredicto-t {
   color: #b54708;
 }
-/* Sin OP elegida: todavía no hay nada que decir, y el cartel no toma el color de ningún estado. */
-.veredicto--vacio {
-  background: #f8fafc;
-  border-color: var(--o-border, #e2e8f0);
-  border-style: dashed;
-}
-.veredicto--vacio > i,
-.veredicto--vacio .veredicto-t {
-  color: #94a3b8;
-}
 .veredicto--mal {
   background: #fef3f2;
   border-color: #f4bfbb;
@@ -3216,6 +3206,52 @@
 .taller-sel .selbox--fix {
   width: 100%;
   max-width: none;
+}
+/* Mientras no hay orden elegida, el selector es lo único que hay que hacer en la pantalla: un aro
+   que respira un par de veces lo señala sin gritar, y se apaga solo. */
+.taller-sel--pide .selbox--btn {
+  animation: taller-pide 1.6s ease-in-out 3;
+}
+@keyframes taller-pide {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 115, 234, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(0, 115, 234, 0.22);
+  }
+}
+/* La tarjeta sin orden: la forma de la que va a venir, apagada. */
+.docop--fantasma {
+  opacity: 0.6;
+  border-style: dashed;
+}
+.docop--fantasma .docop-ic {
+  filter: grayscale(1);
+  opacity: 0.5;
+}
+/* Al elegir, los datos y el veredicto entran con una transición corta: el ojo ve que CAMBIÓ algo,
+   sin tener que buscar qué. */
+.docop--aparece,
+.paso-grid--taller .resultado {
+  animation: taller-aparece 0.22s ease-out;
+}
+@keyframes taller-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .taller-sel--pide .selbox--btn,
+  .docop--aparece,
+  .paso-grid--taller .resultado {
+    animation: none;
+  }
 }
 .docop {
   flex: 1;
