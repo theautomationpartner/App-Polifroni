@@ -158,7 +158,7 @@ export function ConfirmacionView() {
       />
 
 
-      <div className="paso-grid paso-grid--parejo">
+      <div className="paso-grid paso-grid--parejo paso-grid--taller">
         <div className="card">
           <div className="panel-t">
             <i className="fas fa-clipboard-check" /> Respuesta del cliente
@@ -261,7 +261,7 @@ export function ConfirmacionView() {
           <div className="panel-t">
             <i className="fas fa-file-pdf" /> La orden que sale al taller
           </div>
-          <div className="vinculo" style={{ marginBottom: 12 }}>
+          <div className="vinculo taller-sel">
             <div>
               <div className="vinculo-l">
                 <i className="fas fa-list-check" /> Orden de producción

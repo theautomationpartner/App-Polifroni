@@ -3181,6 +3181,32 @@
 .obras-v2 .paso-grid--envio > .card:last-child {
   height: auto;
 }
+/* Paso del taller: sin visor de PDF, la caja de la derecha mide lo que su contenido (el selector y
+   la tarjeta de la OP) y las dos cajas quedan del mismo alto por el `stretch` de la grilla. */
+.obras-v2 .paso-grid--taller > .card:last-child {
+  height: auto;
+}
+/* El selector de la OP a todo el ancho de la caja: el nombre ("IDOP-027 · N° A3003 — Confirmada")
+   se lee entero en vez de cortarse a los 240 px del selector común. */
+.taller-sel {
+  display: block;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.taller-sel .vinculo-l {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+}
+.taller-sel .vinculo-l > i {
+  font-size: 13px;
+  color: var(--o-badge-blue-text);
+}
+.taller-sel .selbox--fix {
+  width: 100%;
+  max-width: none;
+}
 .docop {
   flex: 1;
   display: flex;
