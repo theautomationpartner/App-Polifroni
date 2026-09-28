@@ -15,6 +15,7 @@ import {
   html,
   ESTADO_ENVIO_OP,
   ESTADO_OP,
+  ETIQUETA,
   setEstado,
   setEstadoEnvioOrden,
   sincronizarEstadoOrden,
@@ -164,6 +165,13 @@ export function EnvioClienteView() {
     if (estado.fase === 'listo') {
       marcarEnvio(ESTADO_ENVIO_OP.enviada)
       void sincronizarEstadoOrden(obra.id, ESTADO_OP.enviada)
+      /* Una OP nueva todavía no tiene respuesta: si la obra seguía diciendo "NO CONFIRMADO" (o
+         "CONFIRMADO OP") por una orden anterior, esa respuesta vieja se tomaría por la de ésta. */
+      if (obra.confirmacionOp.texto !== ETIQUETA.pendConfirmar) {
+        void setEstado(obra.id, COL.confirmacionOp, ETIQUETA.pendConfirmar)
+          .then(() => refrescar())
+          .catch((e) => console.warn('[envio] no se pudo dejar la obra en "Pend de Confirmar"', e))
+      }
       void registrarEnvio()
     } else if (estado.fase === 'error') {
       marcarEnvio(ESTADO_ENVIO_OP.error)

@@ -471,20 +471,24 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
 /**
  * La OP más nueva de una obra, con su estado. `null` si la obra todavía no tiene ninguna.
  *
- * Los ids de Monday crecen con el tiempo: el más alto es el último creado.
+ * Los ids de Monday crecen con el tiempo: el más alto es el último creado. Se prefiere la última
+ * que ya tiene su OP final: elegir la obra para emitir crea una OP vacía en el acto, y ésa todavía
+ * no es la que se mandó al cliente.
  */
 export async function ultimaOrdenDeObra(
   obraId: string,
 ): Promise<{ id: string; estado: string; numero: string } | null> {
   const d = await mondayApi<{
     boards: {
-      items_page: { items: { id: string; column_values: { id: string; text: string | null }[] }[] }
+      items_page: {
+        items: { id: string; column_values: { id: string; text: string | null; value: string | null }[] }[]
+      }
     }[]
   }>(
     `query ($q: ItemsQuery) {
       boards(ids: [${BOARD_ORDENES}]) {
         items_page(limit: 100, query_params: $q) {
-          items { id column_values(ids: ["${COL_OP.estado}", "${COL_OP.nroPvc}", "${COL_OP.nroAluminio}"]) { id text } }
+          items { id column_values(ids: ["${COL_OP.estado}", "${COL_OP.nroPvc}", "${COL_OP.nroAluminio}", "${COL_OP.opFinal}"]) { id text value } }
         }
       }
     }`,
@@ -492,7 +496,10 @@ export async function ultimaOrdenDeObra(
   )
   const items = d.boards[0]?.items_page.items ?? []
   if (!items.length) return null
-  const ultimo = items.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))
+  const emitidas = items.filter(
+    (i) => archivosDe(i.column_values.find((c) => c.id === COL_OP.opFinal)?.value).length > 0,
+  )
+  const ultimo = (emitidas.length ? emitidas : items).reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))
   const col = (id: string) => ultimo.column_values.find((c) => c.id === id)?.text?.trim() ?? ''
   return {
     id: ultimo.id,
@@ -516,5 +523,24 @@ export async function sincronizarEstadoOrden(obraId: string, etiqueta: string): 
     if (op && op.estado !== etiqueta) await setEstadoOrden(op.id, etiqueta)
   } catch (e) {
     console.warn('[ordenes] no se pudo actualizar el estado de la OP', e)
+  }
+}
+
+/**
+ * Copia a la OP la respuesta del cliente ("Confirmada" / "NO Confirmado"), SÓLO si la OP está
+ * esperándola ("Enviada Pend Confirmar").
+ *
+ * Una OP que ya tiene respuesta no se toca: esa respuesta es de ESTA orden, mientras que la columna
+ * de la obra puede traer la de una orden anterior. Copiarla a ciegas pisaba cada "Confirmada" que
+ * se cargaba en la OP con un "NO Confirmado" viejo, una y otra vez.
+ */
+export async function copiarRespuestaAOrden(ordenId: string, estadoActual: string, etiqueta: string): Promise<boolean> {
+  if (estadoActual !== ESTADO_OP.enviada || etiqueta === estadoActual) return false
+  try {
+    await setEstadoOrden(ordenId, etiqueta)
+    return true
+  } catch (e) {
+    console.warn('[ordenes] no se pudo copiar la respuesta del cliente a la OP', e)
+    return false
   }
 }

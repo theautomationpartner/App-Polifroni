@@ -1,4 +1,5 @@
 import { ETIQUETA } from '@/services/monday/columns'
+import { ESTADO_OP } from '@/services/monday/ordenes'
 import { PASOS, indiceDe } from '@/state/appState'
 import type { Obra, Paso } from '@/types'
 
@@ -78,6 +79,26 @@ export function accesoAlPaso(paso: Paso, obra: Obra | null): Acceso {
   return LIBRE
 }
 
+export type RespuestaCliente = 'confirmada' | 'rechazada' | 'pendiente'
+
+/**
+ * La respuesta del cliente a la ÚLTIMA OP enviada.
+ *
+ * Manda el estado de la OP cuando ya tiene respuesta: es la de ESTA orden. La columna de la obra
+ * se mira sólo mientras la OP la está esperando, porque puede traer la respuesta a una orden
+ * anterior —una obra rechazada y vuelta a emitir sigue diciendo "NO CONFIRMADO" hasta que el
+ * cliente conteste la nueva—.
+ *
+ * `estadoOp` es `null` mientras no se leyó la OP (o si la obra no tiene ninguna).
+ */
+export function respuestaCliente(obra: Obra, estadoOp: string | null): RespuestaCliente {
+  if (estadoOp === ESTADO_OP.confirmada) return 'confirmada'
+  if (estadoOp === ESTADO_OP.noConfirmada) return 'rechazada'
+  if (obra.confirmacionOp.texto === ETIQUETA.confirmado) return 'confirmada'
+  if (obra.confirmacionOp.texto === ETIQUETA.noConfirmado) return 'rechazada'
+  return 'pendiente'
+}
+
 /**
  * Si se puede despachar al taller.
  *
@@ -85,9 +106,9 @@ export function accesoAlPaso(paso: Paso, obra: Obra | null): Acceso {
  * pantalla: mientras la obra está en "Pend de Confirmar" se entra igual al paso 5 —ahí se ve si
  * el cliente contestó— pero el despacho queda bloqueado.
  */
-export function puedeDespacharAlTaller(obra: Obra): Acceso {
-  if (obra.confirmacionOp.texto === ETIQUETA.confirmado) return LIBRE
-  if (obra.confirmacionOp.texto === ETIQUETA.noConfirmado) {
+export function puedeDespacharAlTaller(respuesta: RespuestaCliente): Acceso {
+  if (respuesta === 'confirmada') return LIBRE
+  if (respuesta === 'rechazada') {
     return { ok: false, motivo: 'El cliente rechazó la orden: no se manda al taller.' }
   }
   return {

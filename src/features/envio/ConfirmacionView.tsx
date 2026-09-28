@@ -4,9 +4,16 @@ import { VisorPdf } from '@/components/ui/VisorPdf'
 import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { puedeDespacharAlTaller } from '@/lib/pasos'
+import { puedeDespacharAlTaller, respuestaCliente } from '@/lib/pasos'
 import { htmlATexto } from '@/lib/texto'
-import { ESTADO_OP, ETIQUETA, getActividades, sincronizarEstadoOrden } from '@/services/monday'
+import {
+  ESTADO_OP,
+  ETIQUETA,
+  copiarRespuestaAOrden,
+  getActividades,
+  ultimaOrdenDeObra,
+} from '@/services/monday'
+import type { EstadoObra } from '@/types'
 import { useEnviarTaller } from './useEnviarTaller'
 import { ultimaOpFinal } from '@/features/op/ultimaOp'
 import { ResultadoEnvio } from './ResultadoEnvio'
@@ -26,12 +33,45 @@ export function ConfirmacionView() {
   /** Lo último que quedó escrito en la obra. Es donde el escenario deja el motivo del rechazo. */
   const [motivo, setMotivo] = useState<string>('')
 
-  const confirmacion = obra.confirmacionOp.texto
-  const confirmada = confirmacion === ETIQUETA.confirmado
-  const rechazada = confirmacion === ETIQUETA.noConfirmado
+  /** Si ya se releyó la obra al entrar: hasta entonces no se copia nada a la OP. */
+  const [releida, setReleida] = useState(false)
+  /** La última OP enviada y su estado. `undefined` mientras se lee. */
+  const [op, setOp] = useState<{ id: string; estado: string } | null | undefined>(undefined)
+
+  /* La obra en memoria puede ser de antes del envío, con la respuesta a una orden anterior: se
+     relee una vez al entrar, y recién con ésa se decide qué copiar a la OP. */
+  useEffect(() => {
+    void refrescar()
+      .catch(() => null)
+      .finally(() => setReleida(true))
+    // Sólo al entrar a la pantalla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* Se relee la OP con cada relectura de la obra: su estado es parte de la respuesta. */
+  useEffect(() => {
+    let vivo = true
+    void ultimaOrdenDeObra(obra.id)
+      .then((u) => vivo && setOp(u ? { id: u.id, estado: u.estado } : null))
+      .catch(() => vivo && setOp(null))
+    return () => {
+      vivo = false
+    }
+  }, [obra])
+
+  const respuesta = respuestaCliente(obra, op?.estado ?? null)
+  const confirmada = respuesta === 'confirmada'
+  const rechazada = respuesta === 'rechazada'
+  /* El cartel muestra la respuesta que se usa: si la OP ya tiene la suya, ésa, no la de la obra. */
+  const etiquetaRespuesta: EstadoObra =
+    op?.estado === ESTADO_OP.confirmada
+      ? { texto: ETIQUETA.confirmado, color: '#00c875' }
+      : op?.estado === ESTADO_OP.noConfirmada
+        ? { texto: ETIQUETA.noConfirmado, color: '#df2f4a' }
+        : obra.confirmacionOp
   /* A esta pantalla se entra con la OP generada, confirmada o no: es donde se mira si el cliente
      contestó. Lo que la confirmación gobierna es el DESPACHO. */
-  const despacho = puedeDespacharAlTaller(obra)
+  const despacho = puedeDespacharAlTaller(respuesta)
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
   const opPdf = ultimaOpFinal(obra)
 
@@ -60,12 +100,15 @@ export function ConfirmacionView() {
     }
   }, [rechazada, obra.id])
 
-  /* La respuesta del cliente se copia a la OP del tablero de órdenes: "Confirmada" o "NO
-     Confirmado". Sólo cambia si hace falta (lo resuelve `sincronizarEstadoOrden`). */
+  /* La respuesta del cliente se copia a la OP del tablero de órdenes —"Confirmada" o "NO
+     Confirmado"— sólo si la OP la está esperando. Una OP que ya tiene respuesta no se pisa. */
   useEffect(() => {
-    if (confirmada) void sincronizarEstadoOrden(obra.id, ESTADO_OP.confirmada)
-    else if (rechazada) void sincronizarEstadoOrden(obra.id, ESTADO_OP.noConfirmada)
-  }, [confirmada, rechazada, obra.id])
+    if (!releida || !op || respuesta === 'pendiente') return
+    const etiqueta = respuesta === 'confirmada' ? ESTADO_OP.confirmada : ESTADO_OP.noConfirmada
+    void copiarRespuestaAOrden(op.id, op.estado, etiqueta).then(
+      (copiada) => copiada && setOp({ id: op.id, estado: etiqueta }),
+    )
+  }, [releida, op, respuesta])
 
   /* Sin botón de "consultar": mientras el cliente no contestó, la pantalla relee la obra sola cada
      15 s. Apenas confirma o rechaza desde el formulario, el cartel cambia sin tocar nada. */
@@ -94,10 +137,8 @@ export function ConfirmacionView() {
           <div className="panel-t">
             <i className="fas fa-clipboard-check" /> Respuesta del cliente
           </div>
-          <p className="panel-d">Esta pantalla la lee del tablero: no se completa a mano.</p>
-
           <div className="obs-pie" style={{ marginTop: 0 }}>
-            <EstadoBadge label="Confirmación" estado={obra.confirmacionOp} />
+            <EstadoBadge label="Confirmación" estado={etiquetaRespuesta} />
           </div>
 
           {/* El estado de la confirmación NO es un renglón más: decide si esta obra sigue o se
@@ -199,7 +240,7 @@ export function ConfirmacionView() {
         </div>
       </div>
 
-      <PasoNav nota="Este es el último paso del proceso de Orden de Producción." />
+      <PasoNav />
     </section>
   )
 }
