@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Aviso, EstadoBadge } from '@/components/ui/Aviso'
+import { Aviso } from '@/components/ui/Aviso'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
-import { useTitulos } from '@/features/shared/useTitulos'
 import { indexar, sugerir, type EntradaIndice } from '@/lib/busquedaObras'
 import {
   buscarObras,
@@ -12,7 +11,6 @@ import {
   guardarObservaciones,
   mondayHabilitado,
 } from '@/services/monday'
-import { COL } from '@/services/monday/columns'
 import { ACCIONES_PASO } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra, ObraFila, Paso } from '@/types'
@@ -39,7 +37,6 @@ import { validarEntrada, type ValidacionEntrada } from './validaciones'
 export function ObrasView() {
   const dispatch = useDispatch()
   const { paso } = useApp()
-  const titulo = useTitulos()
 
   /* Se eligió una acción pero todavía no hay obra: la app cayó acá sola. Decirlo evita que la
      pantalla se lea como "se perdió lo que elegí" —la acción sigue elegida, y se retoma sola en
@@ -97,8 +94,8 @@ export function ObrasView() {
   /* Buscador rápido: se rearma en cada tecla sobre el índice en memoria, sin un pedido de red. */
   const locales = useMemo(() => sugerir(indice, termino), [indice, termino])
   /** Lo que se ve en la lista: lo de Monday si se apretó Buscar, las sugerencias si no. */
-  const filas: { id: string; nombre: string; fila?: ObraFila }[] = remotos
-    ? remotos.map((f) => ({ id: f.id, nombre: f.nombre, fila: f }))
+  const filas: { id: string; nombre: string }[] = remotos
+    ? remotos.map((f) => ({ id: f.id, nombre: f.nombre }))
     : locales.obras
   const desplegado = abierto && filas.length > 0
   const indiceActivo = filas.length > 0 ? Math.min(activo, filas.length - 1) : -1
@@ -372,37 +369,12 @@ export function ObrasView() {
                     if (!conTeclado.current) setActivo(i)
                   }}
                 >
+                  {/* Una sola forma de mostrar la obra, venga de la lista rápida o de la búsqueda
+                      en Monday: el nombre y el id. */}
                   <span className="ritem-main">
                     <span className="ritem-name">{f.nombre}</span>
-                    {f.fila && (
-                      <span className="ritem-sub">
-                        <span>
-                          <i className="fas fa-hashtag" /> {f.fila.idObra || f.id}
-                        </span>
-                        {f.fila.cliente && (
-                          <span>
-                            <i className="fas fa-user" /> {f.fila.cliente}
-                          </span>
-                        )}
-                        {f.fila.ubicacion && (
-                          <span>
-                            <i className="fas fa-location-dot" /> {f.fila.ubicacion}
-                          </span>
-                        )}
-                      </span>
-                    )}
                   </span>
-                  {f.fila ? (
-                    <span className="ritem-chips">
-                      <EstadoBadge label={titulo(COL.tipo, 'Tipo')} estado={f.fila.tipo} />
-                      <EstadoBadge
-                        label={titulo(COL.etapaProduccion, 'Etapa de Produccion')}
-                        estado={f.fila.etapaProduccion}
-                      />
-                    </span>
-                  ) : (
-                    <span className="ritem-code">{f.id}</span>
-                  )}
+                  <span className="ritem-code">{f.id}</span>
                 </button>
               ))}
             </div>
