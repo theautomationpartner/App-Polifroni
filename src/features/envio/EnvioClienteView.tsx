@@ -110,7 +110,13 @@ export function EnvioClienteView() {
    */
   const registrarEnvio = async () => {
     const cuerpo = await esperarRespuesta(15_000)
-    const link = String(cuerpo?.linkPdf ?? cuerpo?.shareLink ?? cuerpo?.webContentLink ?? '').trim()
+    /* El escenario lo manda como `link_op` (el shareLink de Drive, módulo 75). Las otras claves
+       quedan por si cambia de nombre. Sólo vale una URL: si el mapeo de Make vino vacío llega
+       texto suelto, y eso no se guarda como link. */
+    const link = [cuerpo?.link_op, cuerpo?.linkPdf, cuerpo?.shareLink, cuerpo?.webContentLink]
+      .map((v) => String(v ?? '').trim())
+      .find((v) => /^https?:\/\//i.test(v)) ?? ''
+    if (!link) console.warn('[envio] la respuesta del envío no trajo el link del PDF', cuerpo)
     /* El mismo link queda en la OP (columna "Ver Orden De Produccion"). */
     if (link && orden) {
       void guardarLinkOrden(orden.id, link).catch((e) =>
