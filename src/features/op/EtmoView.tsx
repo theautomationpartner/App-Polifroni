@@ -29,7 +29,8 @@ import {
 import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
-import { DatosMedicion, medicionInicial, type Medicion } from './DatosMedicion'
+import { DatosMedicion, hoyLocal, medicionInicial, type Medicion } from './DatosMedicion'
+import { generarOpFinal, type ResultadoGenerar } from './opFinal/generar'
 import {
   fusionar,
   normalizarNombre,
@@ -132,12 +133,7 @@ export function EtmoView() {
      pantallas para una decisión que ya se tomó al tocar "Generar la OP final". */
   const [ordenId, setOrdenId] = useState<string | null>(null)
   const generacion = useGenerarOp(obra, ordenId)
-  /* La obra YA tiene una orden final adjunta. No frena nada —rehacerla es una operación normal—
-     pero cambia la pregunta: no es "¿generamos?" sino "¿reemplazamos la que ya está?", y eso hay
-     que decirlo antes, no después. */
-  /* La obra ya tiene OTRAS órdenes de producción (columna "Orden de Produccion" de la obra). La de
-     esta visita no cuenta: es la que se está por generar. */
-  const yaTieneOp = obra.ordenesIds.some((id) => id !== ordenId)
+  /* Si la obra ya tiene otras órdenes se avisa en el paso 1, al elegirla: acá no se vuelve a preguntar. */
 
 
   /* Las aberturas salen del propio campo del tablero, que ya guarda una línea por modelo. Así, al
@@ -163,6 +159,8 @@ export function EtmoView() {
   const [etmoOrden, setEtmoOrden] = useState<ArchivoObra[]>([])
   /** El número con el que salió ESTA orden: es el que se registra como último usado. */
   const numeroUsado = useRef<string>('')
+  /** Cómo salió el armado de la OP final en la app (errores y avisos de la última corrida). */
+  const resultadoOp = useRef<ResultadoGenerar | null>(null)
   /** Después de generar, mientras se adjunta la OP al tablero de órdenes. */
   const [registrando, setRegistrando] = useState(false)
 
@@ -379,6 +377,7 @@ export function EtmoView() {
    */
   const generar = async () => {
     setConfirmarGenerar(null)
+    resultadoOp.current = null
     if (!(await guardar())) return
     const datos = medicion
     numeroUsado.current = datos.nroOrden.trim()
@@ -393,6 +392,9 @@ export function EtmoView() {
         : {}),
       ordenId: idOrden,
       obraId: obra.id,
+      /* La Orden HETMO que tiene que leer el escenario (ya no busca la OP en Monday). */
+      assetId: etmoOrden[0]?.assetId ?? null,
+      fileName: etmoOrden[0]?.nombre ?? null,
       /* Para que el PDF salga con el MISMO número que queda en el tablero de órdenes. */
       nroOrden: datos.nroOrden.trim(),
       tipoOrden,
@@ -470,14 +472,42 @@ export function EtmoView() {
             console.warn('[etmo] no se pudo guardar el N° OP HETMO', e),
           )
         }
-        /* La OP final la deja el escenario en la OP. Si todavía la dejara en la obra (antes de
-           ajustarlo), se copia de ahí para que la OP no quede sin su documento. */
         const propios = await getArchivosOrden(id).catch(() => null)
-        const pdf = fresca ? ultimaOpFinal(fresca) : null
-        if (propios && propios.opFinal.length === 0 && pdf) {
-          await copiarArchivo(pdf, id, COL_OP.opFinal).catch((e) =>
-            console.warn('[etmo] no se pudo adjuntar la OP final', e),
-          )
+        if (cuerpo?.datos != null) {
+          /* El escenario devuelve la lectura de Claude y la OP final se arma ACÁ: los dibujos, el
+             PDF y la subida a la OP. Si falta algo que la orden no puede llevar vacía, no se
+             genera y se dice qué falta; no se marca "Generada" ni se consume el número. */
+          const med = medicionRef.current
+          const base = fresca ?? obra
+          resultadoOp.current = await generarOpFinal({
+            ordenId: id,
+            etmo: propios?.etmo[0] ?? null,
+            lectura: cuerpo.datos,
+            obra: base.nombre,
+            direccion: base.ubicacion,
+            celular: base.celCoordinar,
+            nroOrden: med.nroOrden.trim(),
+            fecha: hoyLocal().split('-').reverse().join('/'),
+            /* Con "Otro", quién midió está escrito en la aclaración. */
+            medidoPor:
+              med.medidoPor === 'Otro' && med.observacion.trim() ? med.observacion.trim() : med.medidoPor,
+            aberturas: aberturasRef.current,
+          })
+          const r = resultadoOp.current
+          if (r.avisos.length) console.warn('[etmo] OP final con avisos', r.avisos)
+          if (!r.ok) {
+            setAviso({ tono: 'err', texto: `No se generó la OP final. ${r.errores.join(' · ')}` })
+            setRegistrando(false)
+            return
+          }
+        } else {
+          /* Escenario de antes: la OP final la deja él. Si la dejó en la obra, se copia a la OP. */
+          const pdf = fresca ? ultimaOpFinal(fresca) : null
+          if (propios && propios.opFinal.length === 0 && pdf) {
+            await copiarArchivo(pdf, id, COL_OP.opFinal).catch((e) =>
+              console.warn('[etmo] no se pudo adjuntar la OP final', e),
+            )
+          }
         }
         await setEstadoOrden(id, ESTADO_OP.generada).catch(() => {})
         try {
@@ -494,6 +524,16 @@ export function EtmoView() {
       /* Generada: la próxima vez que se entre a esta obra, se abre una OP nueva. */
       terminarVisita(obra.id)
       setRegistrando(false)
+      /* Si la IA no pudo leer algún dato, la orden salió con una raya ahí: se muestra qué quedó
+         sin leer antes de pasar al envío, que es cuando todavía se puede revisar. */
+      const avisos = resultadoOp.current?.avisos ?? []
+      if (avisos.length) {
+        setAviso({
+          tono: 'info',
+          texto: `La OP final se generó, pero revisala antes de enviarla: ${avisos.join(' · ')}`,
+        })
+        return
+      }
       dispatch({ type: 'goto', paso: 'envio' })
     })()
     // `guardarEnOrden` lee lo último por refs: no hace falta volver a correr el efecto por él.
@@ -524,7 +564,16 @@ export function EtmoView() {
   const leerDocumento = async () => {
     setProponerLectura(false)
     setAviso(null)
-    const leidas = await lectura.leer(await ordenAbierta.current)
+    const ordenId = await ordenAbierta.current
+    /* El escenario lee UN archivo: el primero de la columna, el mismo que toma Make con `files[]`. */
+    const leidas = await lectura.leer(ordenId, etmoOrden[0] ?? null)
+    /* Si era una foto, el escenario deja en su lugar el PDF convertido: se vuelve a leer la columna
+       para mostrar lo que quedó adjunto. */
+    if (ordenId) {
+      void getArchivosOrden(ordenId)
+        .then((a) => setEtmoOrden(a.etmo))
+        .catch(() => {})
+    }
     if (!leidas) return
     /* Lo ya escrito manda: la lectura aporta la LISTA, no pisa observaciones hechas a mano. */
     edito.current = true
@@ -762,18 +811,8 @@ export function EtmoView() {
           grande, porque es lo que hay que decidir—, y recién debajo lo que falta, si falta algo. */}
       {confirmarGenerar && (
         <Modal
-          title={
-            yaTieneOp
-              ? 'Esta obra ya tiene una Orden de Producción asociada'
-              : 'Se generará la OP Final'
-          }
-          icon={
-            yaTieneOp ? (
-              <i className="fas fa-triangle-exclamation modal-icon--warn" />
-            ) : (
-              <i className="fas fa-file-circle-check modal-icon--info" />
-            )
-          }
+          title="Se generará la OP Final"
+          icon={<i className="fas fa-file-circle-check modal-icon--info" />}
           onClose={() => setConfirmarGenerar(null)}
           actions={
             <>
@@ -782,22 +821,16 @@ export function EtmoView() {
                 className="btn btn-out"
                 onClick={() => setConfirmarGenerar(null)}
               >
-                {yaTieneOp ? 'No generar' : 'Volver'}
+                Volver
               </button>
               <button type="button" className="btn btn-primary" onClick={() => void generar()}>
                 <i className="fas fa-wand-magic-sparkles" />{' '}
-                {yaTieneOp ? 'Generar otra orden' : 'Generar la OP final'}
+                Generar la OP final
               </button>
             </>
           }
         >
-          <p className="modal-clave">
-            {/* Cada orden es un ÍTEM NUEVO del tablero de órdenes, asociado a la obra: no se
-                reemplaza nada ni se suma a una columna de la obra. */}
-            {yaTieneOp
-              ? '¿Querés generar otra Orden de Producción nueva? Se crea aparte y queda asociada a la obra junto a las que ya tiene.'
-              : 'Se genera el documento final de esta obra.'}
-          </p>
+          <p className="modal-clave">Se genera el documento final de esta obra.</p>
           {confirmarGenerar.length > 0 && (
             <p className="modal-nota">
               {confirmarGenerar.length === aberturas.length

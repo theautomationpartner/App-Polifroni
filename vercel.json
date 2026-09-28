@@ -32,7 +32,7 @@
   ],
   "functions": {
     "api/make.ts": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "api/obras-indice.ts": {
       "maxDuration": 30

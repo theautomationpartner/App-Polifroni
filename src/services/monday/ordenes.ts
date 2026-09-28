@@ -372,6 +372,16 @@ export async function copiarArchivo(
   await subirArchivo(ordenId, columna, new File([blob], archivo.nombre, { type: tipo }))
 }
 
+/**
+ * Adjunta a la OP la Orden de Producción final que armó la app.
+ *
+ * Una OP lleva UNA orden final: si quedó otra de un intento anterior, se reemplaza.
+ */
+export async function subirOpFinal(ordenId: string, archivo: File): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.opFinal]: { clear_all: true } }).catch(() => {})
+  await subirArchivo(ordenId, COL_OP_ARCHIVOS.opFinal, archivo)
+}
+
 /** Guarda el N° de OP HETMO ("9.205-1") que devuelve la generación. */
 export async function guardarNroHetmo(ordenId: string, texto: string): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.nOpHetmo]: texto })

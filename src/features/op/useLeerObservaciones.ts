@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ESCENARIO, EscenarioNoConfigurado, dispararEscenario } from '@/services/make'
 import type { VidrioLeido } from '@/services/monday'
+import type { ArchivoObra } from '@/types'
 import { normalizarNombre, type Abertura } from './observaciones'
 
 export type FaseLectura = 'idle' | 'leyendo' | 'listo' | 'error'
@@ -120,7 +121,10 @@ export function useLeerObservaciones(itemId: string) {
     return () => clearInterval(t)
   }, [estado.fase])
 
-  const leer = useCallback(async (ordenId: string | null): Promise<Abertura[] | null> => {
+  const leer = useCallback(async (
+    ordenId: string | null,
+    archivo: ArchivoObra | null,
+  ): Promise<Abertura[] | null> => {
     if (corriendo.current) return null
     corriendo.current = true
     setEstado({ fase: 'leyendo', segundos: 0, problema: '' })
@@ -131,9 +135,14 @@ export function useLeerObservaciones(itemId: string) {
          acá se pide es que LEA el documento, no que reciba lo que ya había. */
       /* `ordenId`: la OP del tablero de órdenes. El escenario lee la Orden HETMO de AHÍ —cada OP
          tiene la suya—, no de la obra. */
+      /* El archivo va en el pedido: el escenario lo descarga con `assetId` y decide por el nombre
+         si hay que pasarlo a PDF, sin tener que ir a buscar la OP a Monday. */
       const respuesta = await dispararEscenario(ESCENARIO.leerObservaciones, itemId, {
         observaciones: [],
         ordenId,
+        assetId: archivo?.assetId ?? null,
+        fileName: archivo?.nombre ?? null,
+        esPdf: archivo ? /\.pdf$/i.test(archivo.nombre) : null,
       })
 
       if (respuesta.sinRespuesta) {
