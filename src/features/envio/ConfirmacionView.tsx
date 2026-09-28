@@ -4,7 +4,7 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { respuestaCliente } from '@/lib/pasos'
+import { respuestaCliente, type RespuestaCliente } from '@/lib/pasos'
 import { htmlATexto } from '@/lib/texto'
 import {
   COLOR_ESTADO_OP,
@@ -19,6 +19,20 @@ import type { EstadoObra } from '@/types'
 import { DocumentoOrden } from './DocumentoOrden'
 import { useEnviarTaller } from './useEnviarTaller'
 import { ResultadoEnvio } from './ResultadoEnvio'
+
+/** En qué está la OP elegida, visto desde el despacho al taller. */
+type Situacion = 'sinElegir' | 'sinEnviar' | RespuestaCliente
+
+const SIN_DATO: EstadoObra = { texto: '', color: '' }
+
+/** La etiqueta "Confirmación" de cada situación: sin OP elegida, "sin definir". */
+const ETIQUETA_SITUACION: Record<Situacion, EstadoObra> = {
+  sinElegir: SIN_DATO,
+  sinEnviar: { texto: 'Sin enviar al cliente', color: '#c4c4c4' },
+  pendiente: { texto: ETIQUETA.pendConfirmar, color: '#fdab3d' },
+  confirmada: { texto: ETIQUETA.confirmado, color: '#00c875' },
+  rechazada: { texto: ETIQUETA.noConfirmado, color: '#df2f4a' },
+}
 
 /** "IDOP-025 · N° A3003": cómo se nombra una OP en el selector. */
 const nombreOrden = (o: ResumenOrden) =>
@@ -73,19 +87,33 @@ export function ConfirmacionView() {
     }
   }, [obra])
 
-  const respuesta = respuestaCliente(obra, op?.estado ?? null)
-  const confirmada = respuesta === 'confirmada'
-  const rechazada = respuesta === 'rechazada'
-  /* El cartel muestra la respuesta que se usa: si la OP ya tiene la suya, ésa, no la de la obra. */
-  const etiquetaRespuesta: EstadoObra =
-    op?.estado === ESTADO_OP.confirmada
-      ? { texto: ETIQUETA.confirmado, color: '#00c875' }
-      : op?.estado === ESTADO_OP.noConfirmada
-        ? { texto: ETIQUETA.noConfirmado, color: '#df2f4a' }
-        : obra.confirmacionOp
-  /* Al taller sólo sale una OP que el cliente APROBÓ: sin una elegida y "Confirmada", no hay botón. */
-  const puedeDespachar = elegida?.estado === ESTADO_OP.confirmada
-  const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
+  /* La respuesta a la ÚLTIMA OP: es la que se copia de la obra a la OP y la que decide si hace falta
+     seguir mirando el tablero. No es lo que se muestra: eso depende de la OP elegida. */
+  const respuestaUltima = respuestaCliente(obra, op?.estado ?? null)
+
+  /* Todo lo que la pantalla dice es de la OP ELEGIDA. Sin una elegida no hay respuesta que mostrar:
+     la obra puede tener varias órdenes, cada una con la suya. */
+  const esUltima = !!elegida && elegida.id === op?.id
+  const situacion: Situacion = !elegida
+    ? 'sinElegir'
+    : elegida.estado === ESTADO_OP.confirmada
+      ? 'confirmada'
+      : elegida.estado === ESTADO_OP.noConfirmada
+        ? 'rechazada'
+        : elegida.estado === ESTADO_OP.enviada
+          ? /* La última OP puede tener la respuesta en la obra antes de que se copie a la OP. */
+            esUltima
+            ? respuestaUltima
+            : 'pendiente'
+          : 'sinEnviar'
+  const rechazada = situacion === 'rechazada'
+  const etiquetaRespuesta: EstadoObra = ETIQUETA_SITUACION[situacion]
+  /* Al taller sólo sale una OP que el cliente APROBÓ: sin una elegida y confirmada, no hay botón. */
+  const puedeDespachar = situacion === 'confirmada'
+  /* El estado del envío al taller vive en la obra, no en cada OP: sólo se puede atribuir a la
+     última. De una orden anterior no se sabe, y se dice "sin definir". */
+  const envioTaller: EstadoObra = esUltima ? obra.estadoEnvioTaller : SIN_DATO
+  const yaEnTaller = esUltima && obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
 
   const despachar = () => {
     if (!elegida) return
@@ -127,22 +155,22 @@ export function ConfirmacionView() {
   /* La respuesta del cliente se copia a la OP del tablero de órdenes —"Confirmada" o "NO
      Confirmado"— sólo si la OP la está esperando. Una OP que ya tiene respuesta no se pisa. */
   useEffect(() => {
-    if (!releida || !op || respuesta === 'pendiente') return
-    const etiqueta = respuesta === 'confirmada' ? ESTADO_OP.confirmada : ESTADO_OP.noConfirmada
+    if (!releida || !op || respuestaUltima === 'pendiente') return
+    const etiqueta = respuestaUltima === 'confirmada' ? ESTADO_OP.confirmada : ESTADO_OP.noConfirmada
     void copiarRespuestaAOrden(op.id, op.estado, etiqueta).then(
       (copiada) =>
         copiada &&
         setOrdenes((lista) => lista?.map((o) => (o.id === op.id ? { ...o, estado: etiqueta } : o))),
     )
-  }, [releida, op, respuesta])
+  }, [releida, op, respuestaUltima])
 
   /* Sin botón de "consultar": mientras el cliente no contestó, la pantalla relee la obra sola cada
      15 s. Apenas confirma o rechaza desde el formulario, el cartel cambia sin tocar nada. */
   useEffect(() => {
-    if (confirmada || rechazada || enCurso) return
+    if (respuestaUltima !== 'pendiente' || enCurso) return
     const cada = setInterval(() => void refrescar().catch(() => {}), 15_000)
     return () => clearInterval(cada)
-  }, [confirmada, rechazada, enCurso, refrescar])
+  }, [respuestaUltima, enCurso, refrescar])
 
   return (
     <section className="view paso-layout obras-v2">
@@ -171,7 +199,32 @@ export function ConfirmacionView() {
               frena. Por eso se muestra como un cartel que ocupa lugar y se lee de lejos, con una
               sola frase arriba y el detalle abajo. */}
           <div className="resultado">
-            {confirmada && (
+            {situacion === 'sinElegir' && (
+              <div className="veredicto veredicto--vacio">
+                <i className="fas fa-hand-pointer" />
+                <div>
+                  <p className="veredicto-t">Sin orden elegida</p>
+                  <p className="veredicto-d">
+                    Elegí una orden de producción para ver si el cliente la confirmó.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {situacion === 'sinEnviar' && (
+              <div className="veredicto veredicto--pend">
+                <i className="fas fa-paper-plane" />
+                <div>
+                  <p className="veredicto-t">Todavía no se mandó al cliente</p>
+                  <p className="veredicto-d">
+                    Esta orden no tiene respuesta porque no se le envió al cliente. Mandala desde el
+                    paso anterior.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {situacion === 'confirmada' && (
               <div className="veredicto veredicto--ok">
                 <i className="fas fa-circle-check" />
                 <div>
@@ -181,14 +234,14 @@ export function ConfirmacionView() {
               </div>
             )}
 
-            {!confirmada && !rechazada && (
+            {situacion === 'pendiente' && (
               <div className="veredicto veredicto--pend">
                 <i className="fas fa-hourglass-half" />
                 <div>
                   <p className="veredicto-t">Pendiente de confirmar</p>
                   <p className="veredicto-d">
                     El cliente todavía no contestó, así que <strong>no se puede mandar al taller</strong>.
-                    Cuando confirme desde el formulario, el tablero lo registra y el botón se habilita.
+                    Cuando confirme desde el formulario, el tablero lo registra y el botón aparece.
                   </p>
                 </div>
               </div>
@@ -204,7 +257,7 @@ export function ConfirmacionView() {
                       —se confía en que el tema está en manos de otro y nadie lo mira—. Cuando ese
                       aviso exista, acá vuelve el nombre. */}
                   <p className="veredicto-d">
-                    Esta obra <strong>no se manda al taller</strong>. Hay que rehacer la orden y
+                    Esta orden <strong>no se manda al taller</strong>. Hay que rehacer la orden y
                     volver a enviarla.
                   </p>
                   {motivo && (
@@ -224,7 +277,7 @@ export function ConfirmacionView() {
             <i className="fas fa-screwdriver-wrench" /> Despacho al taller
           </div>
           <div className="obs-pie" style={{ marginTop: 0, marginBottom: 12 }}>
-            <EstadoBadge label="Envío al taller" estado={obra.estadoEnvioTaller} />
+            <EstadoBadge label="Envío al taller" estado={envioTaller} />
           </div>
 
           <div className="acciones-fila">

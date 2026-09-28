@@ -1976,6 +1976,16 @@
 .veredicto--pend .veredicto-t {
   color: #b54708;
 }
+/* Sin OP elegida: todavía no hay nada que decir, y el cartel no toma el color de ningún estado. */
+.veredicto--vacio {
+  background: #f8fafc;
+  border-color: var(--o-border, #e2e8f0);
+  border-style: dashed;
+}
+.veredicto--vacio > i,
+.veredicto--vacio .veredicto-t {
+  color: #94a3b8;
+}
 .veredicto--mal {
   background: #fef3f2;
   border-color: #f4bfbb;
@@ -3191,7 +3201,7 @@
 .taller-sel {
   display: block;
   padding: 12px 14px;
-  margin-bottom: 12px;
+  margin: 4px 0 12px;
 }
 .taller-sel .vinculo-l {
   display: flex;
