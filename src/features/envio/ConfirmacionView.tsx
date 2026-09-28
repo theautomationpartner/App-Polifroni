@@ -1,22 +1,28 @@
 import { useEffect, useState } from 'react'
 import { EstadoBadge } from '@/components/ui/Aviso'
-import { VisorPdf } from '@/components/ui/VisorPdf'
+import { Dropdown } from '@/components/ui/Dropdown'
 import { useObra } from '@/features/obras/ObraFicha'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PasoNav, useRefrescarObra } from '@/features/shared/PasoNav'
-import { puedeDespacharAlTaller, respuestaCliente } from '@/lib/pasos'
+import { respuestaCliente } from '@/lib/pasos'
 import { htmlATexto } from '@/lib/texto'
 import {
+  COLOR_ESTADO_OP,
   ESTADO_OP,
   ETIQUETA,
   copiarRespuestaAOrden,
   getActividades,
-  ultimaOrdenDeObra,
+  ordenesEmitidas,
+  type ResumenOrden,
 } from '@/services/monday'
 import type { EstadoObra } from '@/types'
+import { DocumentoOrden } from './DocumentoOrden'
 import { useEnviarTaller } from './useEnviarTaller'
-import { ultimaOpFinal } from '@/features/op/ultimaOp'
 import { ResultadoEnvio } from './ResultadoEnvio'
+
+/** "IDOP-025 · N° A3003": cómo se nombra una OP en el selector. */
+const nombreOrden = (o: ResumenOrden) =>
+  [o.idOp || 'OP', o.numero ? `N° ${o.numero}` : ''].filter(Boolean).join(' · ')
 
 /**
  * Paso 5 · Confirmación del cliente y despacho al taller.
@@ -24,7 +30,10 @@ import { ResultadoEnvio } from './ResultadoEnvio'
  * Se entra con la OP final generada, esté confirmada o no: ésta es la pantalla donde se mira si el
  * cliente contestó, y cerrarla mientras se espera dejaría sin ningún lugar donde verlo. La
  * confirmación NO se decide en la app —la carga el cliente desde el formulario y el escenario la
- * escribe en el tablero—; acá se muestra y, sobre ella, se habilita el despacho al taller.
+ * escribe en el tablero—; acá se muestra.
+ *
+ * Al taller se manda UNA orden de producción, elegida de las que tiene la obra: el botón aparece
+ * recién con una elegida que esté "Confirmada", y el escenario recibe el id de esa OP.
  */
 export function ConfirmacionView() {
   const obra = useObra()
@@ -35,8 +44,13 @@ export function ConfirmacionView() {
 
   /** Si ya se releyó la obra al entrar: hasta entonces no se copia nada a la OP. */
   const [releida, setReleida] = useState(false)
-  /** La última OP enviada y su estado. `undefined` mientras se lee. */
-  const [op, setOp] = useState<{ id: string; estado: string } | null | undefined>(undefined)
+  /** Las OP emitidas de la obra, de la más nueva a la más vieja. `undefined` mientras se leen. */
+  const [ordenes, setOrdenes] = useState<ResumenOrden[] | undefined>(undefined)
+  /** La OP elegida para mandar al taller. */
+  const [elegidaId, setElegidaId] = useState<string | null>(null)
+  const elegida = ordenes?.find((o) => o.id === elegidaId) ?? null
+  /** La última OP emitida: la que espera la respuesta del cliente. */
+  const op = ordenes?.[0] ?? null
 
   /* La obra en memoria puede ser de antes del envío, con la respuesta a una orden anterior: se
      relee una vez al entrar, y recién con ésa se decide qué copiar a la OP. */
@@ -48,12 +62,12 @@ export function ConfirmacionView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  /* Se relee la OP con cada relectura de la obra: su estado es parte de la respuesta. */
+  /* Se releen las OP con cada relectura de la obra: su estado es parte de la respuesta. */
   useEffect(() => {
     let vivo = true
-    void ultimaOrdenDeObra(obra.id)
-      .then((u) => vivo && setOp(u ? { id: u.id, estado: u.estado } : null))
-      .catch(() => vivo && setOp(null))
+    void ordenesEmitidas(obra.ordenesIds)
+      .then((lista) => vivo && setOrdenes(lista))
+      .catch(() => vivo && setOrdenes((previas) => previas ?? []))
     return () => {
       vivo = false
     }
@@ -69,11 +83,21 @@ export function ConfirmacionView() {
       : op?.estado === ESTADO_OP.noConfirmada
         ? { texto: ETIQUETA.noConfirmado, color: '#df2f4a' }
         : obra.confirmacionOp
-  /* A esta pantalla se entra con la OP generada, confirmada o no: es donde se mira si el cliente
-     contestó. Lo que la confirmación gobierna es el DESPACHO. */
-  const despacho = puedeDespacharAlTaller(respuesta)
+  /* Al taller sólo sale una OP que el cliente APROBÓ: sin una elegida y "Confirmada", no hay botón. */
+  const puedeDespachar = elegida?.estado === ESTADO_OP.confirmada
   const yaEnTaller = obra.estadoEnvioTaller.texto === ETIQUETA.tallerEnviado
-  const opPdf = ultimaOpFinal(obra)
+
+  const despachar = () => {
+    if (!elegida) return
+    const pdf = elegida.opFinal.find((a) => !a.esImagen) ?? elegida.opFinal[0]
+    void correr({
+      ordenId: elegida.id,
+      idOp: elegida.idOp,
+      numero: elegida.numero,
+      assetId: pdf?.assetId ?? null,
+      fileName: pdf?.nombre ?? null,
+    })
+  }
 
   /* El motivo del rechazo no vive en una columna: el escenario lo deja como update de la obra.
      Sólo se muestra el update que HABLA del rechazo. El último update a secas no sirve: en la obra
@@ -106,7 +130,9 @@ export function ConfirmacionView() {
     if (!releida || !op || respuesta === 'pendiente') return
     const etiqueta = respuesta === 'confirmada' ? ESTADO_OP.confirmada : ESTADO_OP.noConfirmada
     void copiarRespuestaAOrden(op.id, op.estado, etiqueta).then(
-      (copiada) => copiada && setOp({ id: op.id, estado: etiqueta }),
+      (copiada) =>
+        copiada &&
+        setOrdenes((lista) => lista?.map((o) => (o.id === op.id ? { ...o, estado: etiqueta } : o))),
     )
   }, [releida, op, respuesta])
 
@@ -202,23 +228,25 @@ export function ConfirmacionView() {
           </div>
 
           <div className="acciones-fila">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!despacho.ok || enCurso}
-              title={despacho.motivo || undefined}
-              onClick={() => void correr()}
-            >
-              {enCurso ? (
-                <>
-                  <i className="fas fa-circle-notch spin" /> Enviando…
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-industry" /> Enviar OP al taller
-                </>
-              )}
-            </button>
+            {puedeDespachar || enCurso ? (
+              <button type="button" className="btn btn-primary" disabled={enCurso} onClick={despachar}>
+                {enCurso ? (
+                  <>
+                    <i className="fas fa-circle-notch spin" /> Enviando…
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-industry" /> Enviar OP al taller
+                  </>
+                )}
+              </button>
+            ) : (
+              <p className="panel-d" style={{ margin: 0 }}>
+                {elegida
+                  ? `${nombreOrden(elegida)} está en "${elegida.estado || 'sin estado'}": al taller sólo se manda una orden Confirmada.`
+                  : 'Elegí la orden de producción que se manda al taller.'}
+              </p>
+            )}
             {yaEnTaller && !enCurso && (
               <span className="obs-estado obs-estado--ok">
                 <i className="fas fa-circle-check" /> Ya enviada al taller
@@ -233,10 +261,53 @@ export function ConfirmacionView() {
           <div className="panel-t">
             <i className="fas fa-file-pdf" /> La orden que sale al taller
           </div>
-          <p className="panel-d">
-            Es el mismo documento que confirmó el cliente, y el que va a fabricarse.
-          </p>
-          <VisorPdf archivo={opPdf} vacio="Esta obra todavía no tiene una OP final generada." />
+          <div className="vinculo" style={{ marginBottom: 12 }}>
+            <div>
+              <div className="vinculo-l">
+                <i className="fas fa-list-check" /> Orden de producción
+              </div>
+              <Dropdown<ResumenOrden>
+                label={
+                  elegida ? (
+                    <span className="selbox-val">
+                      <span className="selbox-val-txt">
+                        {nombreOrden(elegida)} — {elegida.estado || 'sin estado'}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="selbox-ph">
+                      {ordenes === undefined
+                        ? 'Buscando las órdenes…'
+                        : ordenes.length
+                          ? 'Seleccionar...'
+                          : 'La obra no tiene órdenes emitidas'}
+                    </span>
+                  )
+                }
+                items={ordenes ?? []}
+                itemKey={(o) => o.id}
+                esElegido={(o) => o.id === elegidaId}
+                renderItem={(o) => (
+                  <span>
+                    {nombreOrden(o)}{' '}
+                    <span style={{ color: COLOR_ESTADO_OP[o.estado] ?? 'inherit', fontWeight: 600 }}>
+                      — {o.estado || 'sin estado'}
+                    </span>
+                  </span>
+                )}
+                disabled={!ordenes?.length || enCurso}
+                onSelect={(o) => setElegidaId(o.id)}
+              />
+            </div>
+          </div>
+          {elegida ? (
+            <DocumentoOrden orden={elegida} cargando={false} insignia="estadoOp" />
+          ) : (
+            <div className="docop docop--vacio">
+              <i className="fas fa-hand-pointer" />
+              <p>Elegí una orden de producción para ver sus datos.</p>
+            </div>
+          )}
         </div>
       </div>
 

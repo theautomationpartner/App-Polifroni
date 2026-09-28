@@ -32,8 +32,8 @@ function requisitoPropio(paso: Paso, obra: Obra): Acceso {
        —no alcanza con que la obra figure como enviada alguna vez—.
 
        Entrar al paso 5 sin la confirmación del cliente sí es válido: es la pantalla donde se mira
-       si contestó. Lo que la confirmación gobierna es el BOTÓN de despacho al taller (ver
-       `puedeDespacharAlTaller`), no el acceso. */
+       si contestó. Lo que la confirmación gobierna es el BOTÓN de despacho al taller: aparece
+       recién con una OP elegida en estado "Confirmada". */
     case 'envio':
       return obra.opFinal.length > 0
         ? LIBRE
@@ -97,24 +97,6 @@ export function respuestaCliente(obra: Obra, estadoOp: string | null): Respuesta
   if (obra.confirmacionOp.texto === ETIQUETA.confirmado) return 'confirmada'
   if (obra.confirmacionOp.texto === ETIQUETA.noConfirmado) return 'rechazada'
   return 'pendiente'
-}
-
-/**
- * Si se puede despachar al taller.
- *
- * Al taller sólo llega lo que el cliente vio y APROBÓ. Es la condición del botón, no la de la
- * pantalla: mientras la obra está en "Pend de Confirmar" se entra igual al paso 5 —ahí se ve si
- * el cliente contestó— pero el despacho queda bloqueado.
- */
-export function puedeDespacharAlTaller(respuesta: RespuestaCliente): Acceso {
-  if (respuesta === 'confirmada') return LIBRE
-  if (respuesta === 'rechazada') {
-    return { ok: false, motivo: 'El cliente rechazó la orden: no se manda al taller.' }
-  }
-  return {
-    ok: false,
-    motivo: 'El cliente todavía no confirmó la orden. Hasta que lo haga, no hay nada que mandar al taller.',
-  }
 }
 
 /**

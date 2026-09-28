@@ -88,6 +88,14 @@ export const ESTADO_OP = {
   noConfirmada: 'NO Confirmado',
 } as const
 
+/** Colores de esas etiquetas en el tablero, para pintarlas igual en la app. */
+export const COLOR_ESTADO_OP: Record<string, string> = {
+  Generada: '#fdab3d',
+  'Enviada Pend Confirmar': '#ff6d3b',
+  Confirmada: '#00c875',
+  'NO Confirmado': '#df2f4a',
+}
+
 export interface DatosOrden {
   tipo: 'PVC' | 'Aluminio'
   /** "3001" o "A3001". */
@@ -410,15 +418,17 @@ export interface ResumenOrden {
   /** Observación de la medición (long_text_mm7g7k7n). */
   observacion: string
   estadoEnvio: string
+  /** Estado OP (color_mm7g3ta4): Generada | Enviada Pend Confirmar | Confirmada | NO Confirmado. */
+  estado: string
   opFinal: ArchivoObra[]
 }
 
 /**
- * La ÚLTIMA OP EMITIDA de la obra: la más nueva que ya tiene su OP final. Es la que se le manda al
- * cliente. Una OP recién abierta (sin documento todavía) no cuenta.
+ * Las OP EMITIDAS de la obra —las que ya tienen su OP final—, de la más nueva a la más vieja. Una
+ * OP recién abierta (sin documento todavía) no cuenta.
  */
-export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenOrden | null> {
-  if (ordenesIds.length === 0) return null
+export async function ordenesEmitidas(ordenesIds: string[]): Promise<ResumenOrden[]> {
+  if (ordenesIds.length === 0) return []
   const cols = [
     COL_OP.idOp,
     COL_OP.nroPvc,
@@ -429,34 +439,44 @@ export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenO
     COL_OP.fechaMedicion,
     COL_OP.observacion,
     COL_OP.estadoEnvio,
+    COL_OP.estado,
     COL_OP.opFinal,
   ]
   const d = await mondayApi<{ items: (MondayItem & { state?: string })[] }>(
     `query ($ids: [ID!]) { items(ids: $ids) { id name state column_values(ids: ${JSON.stringify(cols)}) { id text value } } }`,
     { ids: ordenesIds },
   )
-  const emitidas = (d.items ?? [])
+  return (d.items ?? [])
     .filter((i) => i.state !== 'archived' && i.state !== 'deleted')
     .map((i) => ({ i, c: byId(i) }))
     .map(({ i, c }) => ({ i, c, opFinal: archivosDe(c[COL_OP.opFinal]?.value) }))
     .filter((x) => x.opFinal.length > 0)
     .sort((a, b) => Number(b.i.id) - Number(a.i.id))
-  const u = emitidas[0]
-  if (!u) return null
-  const t = (id: string) => (u.c[id]?.text ?? '').trim()
-  return {
-    id: u.i.id,
-    nombre: u.i.name,
-    idOp: t(COL_OP.idOp),
-    numero: t(COL_OP.nroAluminio) || t(COL_OP.nroPvc),
-    tipo: t(COL_OP.tipo),
-    nOpHetmo: t(COL_OP.nOpHetmo),
-    medidoPor: t(COL_OP.medidoPor),
-    fechaMedicion: t(COL_OP.fechaMedicion),
-    observacion: t(COL_OP.observacion),
-    estadoEnvio: t(COL_OP.estadoEnvio),
-    opFinal: u.opFinal,
-  }
+    .map((u) => {
+      const t = (id: string) => (u.c[id]?.text ?? '').trim()
+      return {
+        id: u.i.id,
+        nombre: u.i.name,
+        idOp: t(COL_OP.idOp),
+        numero: t(COL_OP.nroAluminio) || t(COL_OP.nroPvc),
+        tipo: t(COL_OP.tipo),
+        nOpHetmo: t(COL_OP.nOpHetmo),
+        medidoPor: t(COL_OP.medidoPor),
+        fechaMedicion: t(COL_OP.fechaMedicion),
+        observacion: t(COL_OP.observacion),
+        estadoEnvio: t(COL_OP.estadoEnvio),
+        estado: t(COL_OP.estado),
+        opFinal: u.opFinal,
+      }
+    })
+}
+
+/**
+ * La ÚLTIMA OP EMITIDA de la obra: la más nueva que ya tiene su OP final. Es la que se le manda al
+ * cliente.
+ */
+export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenOrden | null> {
+  return (await ordenesEmitidas(ordenesIds))[0] ?? null
 }
 
 export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise<void> {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { EstadoBadge } from '@/components/ui/Aviso'
-import { COLOR_ENVIO_OP, getUrlArchivo, type ResumenOrden } from '@/services/monday'
+import { COLOR_ENVIO_OP, COLOR_ESTADO_OP, getUrlArchivo, type ResumenOrden } from '@/services/monday'
 
 /** "2026-09-25" → "25/09/2026". */
 const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso)
@@ -11,8 +11,19 @@ const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-')
  * Sin vista previa embebida: el PDF se abre aparte, en el visor del navegador, que es donde se lee
  * bien (zoom, páginas, descarga). Acá se muestra QUÉ orden es —su número, el de HETMO, quién midió y
  * cuándo— para confirmar de un vistazo que se está por mandar la correcta.
+ *
+ * `insignia` elige qué estado va en la cabecera: el del envío al cliente (paso de envío) o el
+ * Estado OP, que es el que decide el despacho al taller.
  */
-export function DocumentoOrden({ orden, cargando }: { orden: ResumenOrden | null; cargando: boolean }) {
+export function DocumentoOrden({
+  orden,
+  cargando,
+  insignia = 'envio',
+}: {
+  orden: ResumenOrden | null
+  cargando: boolean
+  insignia?: 'envio' | 'estadoOp'
+}) {
   const [abriendo, setAbriendo] = useState(false)
   const pdf = orden ? (orden.opFinal.find((a) => !a.esImagen) ?? orden.opFinal[0]) : null
 
@@ -71,12 +82,21 @@ export function DocumentoOrden({ orden, cargando }: { orden: ResumenOrden | null
             {pdf.nombre}
           </span>
         </div>
-        <EstadoBadge
-          label="Envío"
-          estado={{ texto: orden.estadoEnvio, color: COLOR_ENVIO_OP[orden.estadoEnvio] ?? '' }}
-          vacio="Sin enviar"
-          pendiente
-        />
+        {insignia === 'envio' ? (
+          <EstadoBadge
+            label="Envío"
+            estado={{ texto: orden.estadoEnvio, color: COLOR_ENVIO_OP[orden.estadoEnvio] ?? '' }}
+            vacio="Sin enviar"
+            pendiente
+          />
+        ) : (
+          <EstadoBadge
+            label="Estado OP"
+            estado={{ texto: orden.estado, color: COLOR_ESTADO_OP[orden.estado] ?? '' }}
+            vacio="Sin estado"
+            pendiente
+          />
+        )}
       </div>
 
       <dl className="docop-datos">
