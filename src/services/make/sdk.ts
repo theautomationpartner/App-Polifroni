@@ -95,6 +95,26 @@ export const updateDeError = (r: RespuestaEscenario): string | null => {
   return id ? String(id) : null
 }
 
+/**
+ * La respuesta trae el error del módulo de IA: la ruta de error del escenario contesta
+ * `{ "error_claude": … }` cuando Claude falla (caído, saturado, sin conexión).
+ *
+ * Devuelve el detalle en texto —o "" si vino vacío— y `null` si la respuesta no es un error de la
+ * IA. Make puede mandar el error como texto o como la colección entera (`Type`, `Message`,
+ * `Detail`): se toma lo que haya.
+ */
+export const errorDeIa = (r: RespuestaEscenario): string | null => {
+  if (!r.cuerpo || !('error_claude' in r.cuerpo)) return null
+  const e = r.cuerpo.error_claude
+  if (e == null) return ''
+  if (typeof e !== 'object') return String(e).trim()
+  const c = e as Record<string, unknown>
+  const partes = [c.message ?? c.Message, c.detail ?? c.Detail, c.type ?? c.Type]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+  return partes.length ? partes.join(' · ') : JSON.stringify(e)
+}
+
 /** La respuesta dice que la orden se generó. */
 export const terminoBien = (r: RespuestaEscenario): boolean =>
   String(r.cuerpo?.estado ?? '') === 'true'

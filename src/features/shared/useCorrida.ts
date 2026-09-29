@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   EscenarioNoConfigurado,
   dispararEscenario,
+  errorDeIa,
   terminoBien,
   updateDeError,
   type Escenario,
@@ -168,6 +169,17 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
       if (idUpdate) {
         const update = await getActividadPorId(idUpdate).catch(() => null)
         await cerrar({ fase: 'error', updateError: update, origen: 'respuesta' })
+        return
+      }
+      /* La ruta de error del escenario avisa que la IA falló: se cierra YA, sin esperar al tablero
+         —en él no va a aparecer nada y la corrida se quedaría esperando hasta el corte—. */
+      const ia = errorDeIa(r)
+      if (ia !== null) {
+        await cerrar({
+          fase: 'error',
+          origen: 'respuesta',
+          problema: `La IA (Claude) no respondió${ia ? `: ${ia}` : '.'} Suele ser una falla momentánea de Claude: volvé a intentar en unos minutos.`,
+        })
         return
       }
       if (exito(r)) {

@@ -887,8 +887,9 @@ export function EtmoView() {
       {generacion.estado.fase === 'error' && (
         <div className="paso-aviso-flot">
           <Aviso tono="err">
-            No se pudo generar la Orden de Producción final. Revisá el update que dejó la
-            automatización en la obra y volvé a intentar.
+            No se pudo generar la Orden de Producción final.{' '}
+            {generacion.estado.problema ??
+              'Revisá el update que dejó la automatización en la obra y volvé a intentar.'}
           </Aviso>
         </div>
       )}
