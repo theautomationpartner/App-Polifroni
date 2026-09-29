@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { CargandoAcceso, LogoAcceso } from './PantallaAcceso'
+import { CargandoAcceso, EscudoAcceso } from './PantallaAcceso'
 import {
   confirmarEnrolamiento,
   DemasiadosIntentos,
@@ -98,7 +98,7 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
   return (
     <div className="mfa-muro">
       <div className="mfa-panel">
-        <LogoAcceso />
+        <EscudoAcceso />
 
         {paso === 'enrolar' && enrolamiento && (
           <>
