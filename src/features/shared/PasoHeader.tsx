@@ -22,7 +22,7 @@ const ETAPAS = PASOS.map((p) => ETIQUETAS_PASO[p])
  * elegir a cualquier persona de la cuenta, como el selector de vendedor de La Batea. El resto ve su
  * propio nombre y no lo puede cambiar: emite siempre a su nombre.
  */
-function SelectorUsuario() {
+export function SelectorUsuario() {
   const { usuario, usuarios, responsableId } = useApp()
   const dispatch = useDispatch()
   const elegido =
@@ -66,7 +66,7 @@ function SelectorUsuario() {
   )
 }
 
-function TopSel({ label, children }: { label: string; children: ReactNode }) {
+export function TopSel({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="topsel-item">
       <span className="topsel-lbl">{label}</span>

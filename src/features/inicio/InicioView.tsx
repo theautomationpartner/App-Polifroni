@@ -1,9 +1,13 @@
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
+import { SelectorUsuario, TopSel } from '@/features/shared/PasoHeader'
 import { PROCESOS } from '@/lib/procesos'
 import { useDispatch } from '@/state/hooks'
 
 /**
- * Pantalla de entrada: qué se va a hacer. Todavía sin autenticación: se entra directo.
+ * Pantalla de entrada: qué se va a hacer.
+ *
+ * Arriba, junto a la marca, el usuario en uso —el mismo selector del encabezado de los pasos—: desde
+ * el arranque se ve con qué sesión se entró y, si es admin, a nombre de quién se va a emitir.
  *
  * Deliberadamente escueta. Lo único que hay que decidir acá es el proceso, y explicar de dónde
  * salen los datos no ayuda a decidirlo: alarga la pantalla y hay que leerla entera para llegar al
@@ -16,6 +20,9 @@ export function InicioView() {
     <section className="view obras-v2">
       <div className="topsel">
         <LogoEmpresa />
+        <TopSel label="Usuario">
+          <SelectorUsuario />
+        </TopSel>
       </div>
 
       <div className="procesos-intro">

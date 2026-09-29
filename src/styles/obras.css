@@ -3520,4 +3520,16 @@
   .obras-v2 .btn-buscar {
     padding: 0 14px;
   }
+  /* La pantalla de inicio: la caja de usuario baja debajo de la marca. Ahí el filete de la marca
+     ya no separa nada, y la caja ocupa el ancho, igual que los selectores del encabezado. */
+  .obras-v2 > .topsel .marca {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .obras-v2 > .topsel .topsel-item {
+    flex: 1 1 100%;
+  }
+  .obras-v2 > .topsel .selbox--fix {
+    width: 100%;
+  }
 }

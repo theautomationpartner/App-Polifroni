@@ -161,8 +161,10 @@
   color: var(--text-dark);
 }
 .selbox--fix {
-  /* 240px: entra el nombre de vendedor más largo sin partirse en dos renglones. */
-  width: 240px;
+  /* Ancho FIJO, el mismo en la pantalla de inicio y en el encabezado de los pasos: sale del nombre
+     más largo de la cuenta ("Gonzalez Natalia Andrea"), y no cambia según quién esté elegido. El
+     encabezado lo achica por ancho de pantalla con `--sel-ancho`. */
+  width: var(--sel-ancho, 256px);
   height: 38px;
   box-sizing: border-box;
   justify-content: space-between;
@@ -402,16 +404,13 @@
    "The Automation Partner"): entra entero, y uno más largo se corta con "…". Las dos cajas miden
    igual para que el encabezado sea una sola línea pareja. Cambia sólo por ANCHO DE PANTALLA
    (ver los @media de abajo), nunca por lo que tenga adentro. */
-.paso-header-sel {
-  --sel-ancho: 256px;
-}
 .paso-header-sel .topsel-item {
   flex: 0 0 auto;
   min-width: 0;
 }
 .paso-header-sel .selbox,
 .paso-header-sel .selbox--fix {
-  width: var(--sel-ancho);
+  width: var(--sel-ancho, 256px);
   max-width: none;
   min-width: 0;
 }
