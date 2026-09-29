@@ -14,6 +14,7 @@ import {
   COL_OP,
   ESTADO_OP,
   completarOrden,
+  marcarRecienEmitida,
   renombrarOrdenEmitida,
   copiarArchivo,
   crearSubelementos,
@@ -508,9 +509,6 @@ export function EtmoView() {
              genera y se dice qué falta; no se marca "Generada" ni se consume el número. */
           const med = medicionRef.current
           const base = fresca ?? obra
-          /* Con "Otro", quién midió está escrito en la aclaración. */
-          const medidoPor =
-            med.medidoPor === 'Otro' && med.observacion.trim() ? med.observacion.trim() : med.medidoPor
           resultadoOp.current = await generarOpFinal({
             ordenId: id,
             etmo: propios?.etmo[0] ?? null,
@@ -520,10 +518,10 @@ export function EtmoView() {
             celular: base.celCoordinar,
             nroOrden: med.nroOrden.trim(),
             fecha: hoyLocal().split('-').reverse().join('/'),
-            medidoPor,
-            /* La misma "Observación" que queda en la OP (long_text_mm7g7k7n). Si es sólo el nombre
-               de quien midió ("Otro"), ya está en "Medido por" y no se repite. */
-            observacionOp: med.observacion.trim() === medidoPor ? '' : med.observacion,
+            /* Cada dato en su lugar, igual que en la OP del tablero: "Medido por" es lo elegido en la
+               lista (también "Otro"), y la "Observación" (long_text_mm7g7k7n) va en su renglón. */
+            medidoPor: med.medidoPor,
+            observacionOp: med.observacion,
             aberturas: aberturasRef.current,
           })
           const r = resultadoOp.current
@@ -543,6 +541,8 @@ export function EtmoView() {
           }
         }
         await setEstadoOrden(id, ESTADO_OP.generada).catch(() => {})
+        /* El paso de envío abre ESTA OP, la que se acaba de generar. */
+        marcarRecienEmitida(obra.id, id)
         /* Emitida: la OP toma su nombre definitivo, con el tipo y el número con que salió. */
         await renombrarOrdenEmitida(id, (fresca ?? obra).nombre, tipoOrden, medicionRef.current.nroOrden).catch(
           (e) => console.warn('[etmo] no se pudo renombrar la OP', e),

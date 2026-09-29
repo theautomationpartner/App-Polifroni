@@ -19,6 +19,7 @@ import {
   setEstado,
   setEstadoEnvioOrden,
   sincronizarEstadoOrden,
+  ordenRecienEmitida,
   ultimaOrdenEmitida,
   type ResumenOrden,
 } from '@/services/monday'
@@ -47,15 +48,15 @@ export function EnvioClienteView() {
   const [cambiando, setCambiando] = useState(false)
   const [verMensaje, setVerMensaje] = useState(false)
 
-  /* La orden que se manda: la ÚLTIMA OP EMITIDA de la obra, con su OP final. El documento vive en
-     la OP del tablero de órdenes, no en la obra. */
+  /* La orden que se manda: la que se ACABA de emitir en el paso 2 y, si se entró sin pasar por ahí,
+     la última emitida de la obra. El documento vive en la OP del tablero de órdenes, no en la obra. */
   const [orden, setOrden] = useState<ResumenOrden | null>(null)
   const [cargandoOrden, setCargandoOrden] = useState(true)
   const idsOrdenes = obra.ordenesIds.join(',')
   useEffect(() => {
     let vivo = true
     setCargandoOrden(true)
-    ultimaOrdenEmitida(obra.ordenesIds)
+    ultimaOrdenEmitida(obra.ordenesIds, ordenRecienEmitida(obra.id))
       .then((o) => vivo && setOrden(o))
       .catch(() => vivo && setOrden(null))
       .finally(() => vivo && setCargandoOrden(false))

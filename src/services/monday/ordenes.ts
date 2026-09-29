@@ -177,6 +177,9 @@ const COL_OBRA_ORDENES = 'board_relation_mm7hcngm'
  *
  * Una columna conectada se escribe entera: mandar sólo la nueva borraría las anteriores. Por eso se
  * leen primero las que hay y se escribe la lista completa.
+ *
+ * Sólo con las que SIGUEN EXISTIENDO: la columna guardaba ids de OP ya borradas, y al reescribirla
+ * con ellas Monday rechazaba el cambio —la OP nueva nunca quedaba vinculada en la obra—.
  */
 export async function vincularOrdenEnObra(obraId: string, ordenId: string): Promise<void> {
   const d = await mondayApi<{ items: { column_values: { linked_item_ids?: string[] }[] }[] }>(
@@ -187,8 +190,16 @@ export async function vincularOrdenEnObra(obraId: string, ordenId: string): Prom
     }`,
     { id: [obraId] },
   )
-  const previas = d.items[0]?.column_values[0]?.linked_item_ids ?? []
-  const todas = [...new Set([...previas.map(String), ordenId])].map(Number)
+  const previas = (d.items[0]?.column_values[0]?.linked_item_ids ?? []).map(String)
+  const vivas = previas.length
+    ? await mondayApi<{ items: { id: string; state?: string }[] }>(
+        `query ($ids: [ID!]) { items(ids: $ids) { id state } }`,
+        { ids: previas },
+      )
+        .then((r) => (r.items ?? []).filter((i) => i.state !== 'deleted').map((i) => String(i.id)))
+        .catch(() => previas)
+    : []
+  const todas = [...new Set([...vivas, ordenId])].map(Number)
   await mondayApi(
     `mutation ($id: ID!, $valores: JSON!) {
       change_multiple_column_values(board_id: ${BOARD_OBRAS}, item_id: $id, column_values: $valores) { id }
@@ -495,11 +506,28 @@ export async function ordenesEmitidas(ordenesIds: string[]): Promise<ResumenOrde
 }
 
 /**
- * La ÚLTIMA OP EMITIDA de la obra: la más nueva que ya tiene su OP final. Es la que se le manda al
- * cliente.
+ * La OP que se acaba de emitir en el paso 2, por obra. El paso de envío abre ESA, no "la última que
+ * encuentre": es la que la persona acaba de generar y la que espera ver.
  */
-export async function ultimaOrdenEmitida(ordenesIds: string[]): Promise<ResumenOrden | null> {
-  return (await ordenesEmitidas(ordenesIds))[0] ?? null
+const recienEmitidas = new Map<string, string>()
+
+export function marcarRecienEmitida(obraId: string, ordenId: string): void {
+  recienEmitidas.set(obraId, ordenId)
+}
+
+export const ordenRecienEmitida = (obraId: string): string | null => recienEmitidas.get(obraId) ?? null
+
+/**
+ * La OP que se le manda al cliente: la recién emitida si hay una (`preferida`), y si no, la ÚLTIMA
+ * EMITIDA de la obra —la más nueva que ya tiene su OP final—.
+ */
+export async function ultimaOrdenEmitida(
+  ordenesIds: string[],
+  preferida: string | null = null,
+): Promise<ResumenOrden | null> {
+  const ids = preferida && !ordenesIds.includes(preferida) ? [preferida, ...ordenesIds] : ordenesIds
+  const emitidas = await ordenesEmitidas(ids)
+  return emitidas.find((o) => o.id === preferida) ?? emitidas[0] ?? null
 }
 
 export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise<void> {

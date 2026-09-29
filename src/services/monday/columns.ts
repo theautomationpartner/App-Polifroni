@@ -17,6 +17,9 @@ export const BOARD_ORDENES = 18432207111
  * HETMO y su propia OP final.
  */
 export const COL_OP_ARCHIVOS = {
+  /** Obra (board_relation) de la OP: se carga al crearla y es la fuente fiable de "qué OP son de
+      qué obra" (la columna de la obra que las lista puede quedar desactualizada). */
+  obra: 'board_relation_mm7e604m',
   etmo: 'file_mm7g9dnc',
   opFinal: 'file_mm7g7emd',
   estado: 'color_mm7g3ta4',

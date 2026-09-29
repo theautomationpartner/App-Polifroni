@@ -7,7 +7,7 @@
  * entrar a los tableros vinculados.
  */
 import { memoGlobal } from './cache'
-import { BOARD_OBRAS, COL, COL_OP_ARCHIVOS } from './columns'
+import { BOARD_OBRAS, BOARD_ORDENES, COL, COL_OP_ARCHIVOS } from './columns'
 import { byId, num, sumaMirror, valor, type CV, type MondayItem } from './parse'
 import { mondayApi, mondaySubirArchivo, urlArchivo } from './sdk'
 import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types'
@@ -242,27 +242,48 @@ export async function getObra(itemId: string): Promise<Obra | null> {
  *
  * Cada OP del tablero de órdenes guarda su Orden HETMO y su OP final. La obra muestra la Orden
  * HETMO de la OP más nueva y TODAS las OP finales (el envío toma la última).
+ *
+ * QUÉ órdenes son de la obra sale, sobre todo, del tablero de órdenes: cada OP guarda su obra al
+ * crearse, y esa relación es fiable. La columna "Orden de Produccion" de la obra se suma (una OP
+ * vinculada a mano desde la obra también cuenta), pero no alcanza sola: dejó de actualizarse con
+ * ids de OP que ya no existen, y el paso de envío terminaba mostrando una orden vieja en lugar de
+ * la recién generada. `ordenesIds` queda con TODAS, sin repetir y sin las archivadas o borradas.
  */
 async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
-  if (obra.ordenesIds.length === 0) return obra
-  const d = await mondayApi<{ items: MondayItem[] }>(
-    `query ($ids: [ID!]) {
-      items(ids: $ids) {
-        id
-        state
-        column_values(ids: ${JSON.stringify([COL_OP_ARCHIVOS.etmo, COL_OP_ARCHIVOS.opFinal])}) { id text value }
-      }
-    }`,
-    { ids: obra.ordenesIds },
-  ).catch(() => null)
-  const ordenes = (d?.items ?? [])
-    .filter((i) => (i as { state?: string }).state !== 'archived' && (i as { state?: string }).state !== 'deleted')
-    .map((i) => ({ id: i.id, c: byId(i) }))
+  const cols = JSON.stringify([COL_OP_ARCHIVOS.etmo, COL_OP_ARCHIVOS.opFinal])
+  type ItemOp = MondayItem & { state?: string }
+  const [porRelacion, porObra] = await Promise.all([
+    mondayApi<{ boards: { items_page: { items: ItemOp[] } }[] }>(
+      `query ($q: ItemsQuery) {
+        boards(ids: [${BOARD_ORDENES}]) {
+          items_page(limit: 200, query_params: $q) { items { id state column_values(ids: ${cols}) { id text value } } }
+        }
+      }`,
+      { q: { rules: [{ column_id: COL_OP_ARCHIVOS.obra, compare_value: [Number(obra.id)], operator: 'any_of' }] } },
+    )
+      .then((d) => d.boards[0]?.items_page.items ?? [])
+      .catch(() => [] as ItemOp[]),
+    obra.ordenesIds.length
+      ? mondayApi<{ items: ItemOp[] }>(
+          `query ($ids: [ID!]) { items(ids: $ids) { id state column_values(ids: ${cols}) { id text value } } }`,
+          { ids: obra.ordenesIds },
+        )
+          .then((d) => d.items ?? [])
+          .catch(() => [] as ItemOp[])
+      : Promise.resolve([] as ItemOp[]),
+  ])
+  const unicas = new Map<string, ItemOp>()
+  for (const i of [...porRelacion, ...porObra]) {
+    if (i.state === 'archived' || i.state === 'deleted') continue
+    unicas.set(String(i.id), i)
+  }
+  const ordenes = [...unicas.values()]
+    .map((i) => ({ id: String(i.id), c: byId(i) }))
     .sort((a, b) => Number(b.id) - Number(a.id))
-  if (ordenes.length === 0) return obra
+  if (ordenes.length === 0) return { ...obra, ordenesIds: [] }
   const opFinal = ordenes.flatMap((o) => archivos(o.c[COL_OP_ARCHIVOS.opFinal]))
   const etmo = archivos(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
-  return { ...obra, opFinal, ordenEtmo: etmo }
+  return { ...obra, ordenesIds: ordenes.map((o) => o.id), opFinal, ordenEtmo: etmo }
 }
 
 /** Fila de la lista: sólo lo que se ve en el listado. */
