@@ -45,20 +45,24 @@ function SelectorUsuario() {
   }
 
   return (
-    <Dropdown
-      label={caja}
-      items={usuarios}
-      itemKey={(u) => u.id}
-      esElegido={(u) => u.id === elegido?.id}
-      disabled={usuarios.length === 0}
-      onSelect={(u) => dispatch({ type: 'setResponsable', id: u.id })}
-      renderItem={(u) => (
-        <>
-          <Avatar ini={u.ini} color={u.color} />
-          <span>{u.name}</span>
-        </>
-      )}
-    />
+    <div className="sel-usuario">
+      <Dropdown
+        label={caja}
+        items={usuarios}
+        itemKey={(u) => u.id}
+        esElegido={(u) => u.id === elegido?.id}
+        disabled={usuarios.length === 0}
+        onSelect={(u) => dispatch({ type: 'setResponsable', id: u.id })}
+        renderItem={(u) => (
+          /* Avatar y nombre van JUNTOS en un solo bloque: el ítem reparte el espacio para mandar el
+             tilde a la derecha, y sueltos quedaban separados según el largo de cada nombre. */
+          <span className="dd-usuario" title={u.name}>
+            <Avatar ini={u.ini} color={u.color} size="sm" />
+            <span className="dd-usuario-nombre">{u.name}</span>
+          </span>
+        )}
+      />
+    </div>
   )
 }
 

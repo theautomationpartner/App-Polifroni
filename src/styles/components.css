@@ -1492,6 +1492,68 @@ td {
   }
 }
 
+/* ── Teléfono: el encabezado en dos pisos ─────────────────────────────────────
+   Con menos de ~560 px la marca, los dos selectores y la barra de etapas no entran en una fila:
+   se pisaban —los rótulos "Operación" y "Usuario" uno arriba del otro y los selectores encima de
+   las etapas—. Acá se acomodan en dos filas con una sola lógica:
+     1. arriba, la marca a la izquierda y las etapas a la derecha (lo que ubica);
+     2. abajo, los dos selectores del MISMO ancho, lado a lado (lo que se elige).
+   `display: contents` saca del medio a los dos contenedores, así la marca, los selectores y las
+   etapas pasan a ser hermanos y se pueden ordenar entre ellos sin tocar el markup.
+   El margen de los costados baja de 24 a 12 px: en un teléfono, 48 px de aire sobre 390 es
+   desperdiciar un cuarto de la pantalla. */
+@media (max-width: 560px) {
+  .scroll {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .paso-header {
+    margin: 0;
+    padding: 8px 0 10px;
+  }
+  .paso-header-in {
+    flex-wrap: wrap;
+    column-gap: 10px;
+    row-gap: 8px;
+  }
+  .paso-header-sel,
+  .paso-header-sel .topsel {
+    display: contents;
+  }
+  .paso-header-sel .marca-btn {
+    order: 1;
+    flex: 0 0 auto;
+  }
+  /* El filete después de la marca separaba la marca de los selectores; en el teléfono los selectores
+     están en la fila de abajo y el filete quedaba cortando la nada. */
+  .paso-header-sel .marca {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .paso-header-steps {
+    order: 2;
+    margin-left: auto;
+    padding: 0;
+  }
+  /* Base de MEDIA fila: así no entran junto a la marca y las etapas, y bajan juntos a la segunda. */
+  .paso-header-sel .topsel-item {
+    order: 3;
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+  }
+  .paso-header-sel .selbox,
+  .paso-header-sel .selbox--fix {
+    width: 100%;
+    max-width: none;
+  }
+  /* La lista de usuarios no puede salirse de la pantalla por la derecha. */
+  .sel-usuario .ddmenu {
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 24px);
+  }
+}
+
 /* ── La frase que decide, dentro de una ventana ───────────────────────────────
    Cuando la ventana confirma algo que va a PASAR —generar la orden final—, lo que va a pasar se
    lee primero y en negro: el resto del cuerpo es contexto y puede leerse después, o no leerse. */

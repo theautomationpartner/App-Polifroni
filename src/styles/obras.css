@@ -3468,8 +3468,35 @@
   color: #1d4ed8;
 }
 .dditem-check {
+  flex: 0 0 auto;
+  margin-left: 8px;
   font-size: 11px;
   color: var(--primary-blue);
+}
+/* Un usuario en la lista: avatar y nombre pegados a la izquierda, siempre a la misma distancia, y
+   el nombre en UN renglón —con "…" si no entra, completo en el `title`—, así todas las filas miden
+   lo mismo y los nombres arrancan en la misma línea vertical. */
+.dd-usuario {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* La lista de usuarios puede ser más ancha que la caja: un nombre completo ("Gonzalez Natalia
+   Andrea") se lee mejor entero que cortado. Arranca alineada con la caja y crece hacia la derecha,
+   con un tope para que no tape medio encabezado. */
+.sel-usuario .ddmenu {
+  width: max-content;
+  min-width: 100%;
+  max-width: 320px;
+}
+.dd-usuario-nombre {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Los nombres de las etapas son más largos que en La Batea ("Envío De Orden Producción A
@@ -3477,4 +3504,26 @@
    en tres, que es el alto que la barra ya reserva. */
 .obras-v2 .paso-header-steps .step-nro {
   max-width: 104px;
+}
+
+/* ── Teléfono: menos aire a los costados ────────────────────────────────────────
+   Va al FINAL de esta hoja a propósito: `.obras-v2` se define acá, y esta hoja se carga después de
+   components.css, así que una regla de teléfono puesta allá perdía contra la de acá.
+   La caja del paso sumaba 24 px por lado a los 12 del contenedor: en un teléfono de 390 px eran 72
+   px de márgenes. Queda el del contenedor solo, y las tarjetas bajan su relleno de 24 a 16. */
+@media (max-width: 560px) {
+  .obras-v2 {
+    padding: 0;
+  }
+  .obras-v2 .card {
+    padding: 16px;
+  }
+  /* El buscador: el botón deja lugar al campo, que es lo que se usa. */
+  .obras-v2 .unified-toolbar {
+    padding: 12px;
+    gap: 8px;
+  }
+  .obras-v2 .btn-buscar {
+    padding: 0 14px;
+  }
 }
