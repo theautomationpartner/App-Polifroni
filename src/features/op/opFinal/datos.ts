@@ -24,7 +24,6 @@ export interface VidrioOp {
   tipo: string | null
   ancho: string | null
   alto: string | null
-  /** Vidrios a pedir de esta medida para TODO el modelo: el "ud" de la línea × la cantidad. */
   ud: number | null
 }
 
@@ -274,16 +273,6 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
     return filas.flatMap((f) => (Array.isArray(f) ? f : [f]))
   })
   const modelos = crudos.map(aModelo).filter((m): m is ModeloOp => m != null)
-  /* El "ud" de cada vidrio pasa a ser el TOTAL a pedir: el de su línea "Vid:" por la cantidad de
-     aberturas del modelo. En el listado HETMO cada línea dice los vidrios de UNA abertura; V2 con
-     "Uds: 2" y "Vid: … ud:1" lleva 2 de ese vidrio, y es lo que el taller tiene que leer.
-     La cuenta se hace acá y no en la IA: el prompt le pide copiar el "ud" tal cual (regla d), y
-     multiplicar en el código no depende de que la lectura haga bien una cuenta. Sin cantidad
-     leída, queda el de la línea (ya hay un aviso por la cantidad que falta). */
-  for (const m of modelos) {
-    if (m.cantidad == null) continue
-    for (const v of m.vidrios) if (v.ud != null) v.ud *= m.cantidad
-  }
   if (modelos.length === 0) {
     errores.push('La lectura del listado HETMO no trae ningún modelo.')
   }
@@ -373,11 +362,11 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
        paño ciego, que SÍ es una abertura. */
     if (/mosquitero/i.test(m.descripcion ?? '')) totales.mosquiteros += cantidad
     else totales.aberturas += cantidad
-    /* DVH = doble vidriado hermético: se reconoce por la cámara ("4/12/4"). El "ud" ya es el total
-       del modelo (ver arriba), así que se suma sin volver a multiplicar. */
-    if (m.cantidad != null) {
-      totales.dvh += m.vidrios.filter((v) => (v.tipo ?? '').includes('/')).reduce((s, v) => s + (v.ud ?? 0), 0)
-    }
+    /* DVH = doble vidriado hermético: se reconoce por la cámara ("4/12/4"). */
+    const dvhPorUnidad = m.vidrios
+      .filter((v) => (v.tipo ?? '').includes('/'))
+      .reduce((s, v) => s + (v.ud ?? 0), 0)
+    totales.dvh += dvhPorUnidad * cantidad
   }
 
   const observacionesSueltas = sueltas.length ? sueltas.join('\n') : null
