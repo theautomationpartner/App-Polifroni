@@ -121,3 +121,11 @@ export interface UsuarioActual {
   equipos: string[]
   equipoIds: string[]
 }
+
+/** Una persona de la cuenta, como la muestra el selector de usuario: nombre, iniciales y color. */
+export interface Usuario {
+  id: string
+  name: string
+  ini: string
+  color: string
+}

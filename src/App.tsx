@@ -13,7 +13,7 @@ import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
 import { bloqueaLaApp, notificarErrorSeguridad } from '@/lib/errorSeguridad'
 import { enMonday, getSessionToken, resumenSessionToken } from '@/lib/mondayAuth'
 import { estadoSegundoFactor } from '@/services/mfa'
-import { getUsuarioActual } from '@/services/monday'
+import { getUsuarioActual, getUsuarios } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Paso } from '@/types'
 
@@ -26,7 +26,7 @@ const VISTAS: Record<Paso, () => JSX.Element> = {
 }
 
 export function App() {
-  const { proceso, paso, obra, listado } = useApp()
+  const { proceso, paso, obra, listado, usuario } = useApp()
   const dispatch = useDispatch()
   const scrollRef = useRef<HTMLDivElement>(null)
   const { error: errorSeguridad, visible: avisoVisible } = useErrorSeguridad()
@@ -109,6 +109,20 @@ export function App() {
       vivo = false
     }
   }, [acceso, dispatch])
+
+  /* La lista del selector de usuario, sólo para el admin —el único que puede elegir— y recién con
+     el acceso confirmado: antes, los pedidos darían 403. */
+  const esAdmin = Boolean(usuario?.isAdmin)
+  useEffect(() => {
+    if (acceso !== 'permitido' || !esAdmin) return
+    let vivo = true
+    getUsuarios()
+      .then((us) => vivo && dispatch({ type: 'setUsuarios', usuarios: us }))
+      .catch(() => vivo && dispatch({ type: 'setUsuarios', usuarios: [] }))
+    return () => {
+      vivo = false
+    }
+  }, [acceso, esAdmin, dispatch])
 
   // Cada etapa arranca desde arriba, como en una navegación real.
   useEffect(() => {

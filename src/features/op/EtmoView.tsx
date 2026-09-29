@@ -145,10 +145,10 @@ function guardarBorrador(ordenId: string, texto: string): boolean {
 export function EtmoView() {
   const obra = useObra()
   const dispatch = useDispatch()
-  /** Quién usa la app: queda como "Responsable" de la OP que emite. */
-  const { usuario } = useApp()
-  const usuarioRef = useRef(usuario)
-  usuarioRef.current = usuario
+  /** A nombre de quién se emite (el usuario de la sesión, o el que elija un admin): el "Responsable". */
+  const { responsableId } = useApp()
+  const responsableRef = useRef(responsableId)
+  responsableRef.current = responsableId
   const refrescar = useRefrescarObra()
   const lectura = useLeerObservaciones(obra.id)
 
@@ -207,7 +207,7 @@ export function EtmoView() {
   useEffect(() => {
     let vivo = true
     setNumeroCargando(true)
-    const promesa = ordenDeObra(obra, usuario?.id ?? null)
+    const promesa = ordenDeObra(obra, responsableRef.current)
     ordenAbierta.current = promesa
       .then((o) => o.id)
       .catch((e) => {
@@ -443,9 +443,9 @@ export function EtmoView() {
     await completarOrden(id, {
       tipo: tipoOrden,
       numero: datos.nroOrden.trim(),
-      /* "Responsable" es quien EMITE la OP: el usuario de la sesión. Sin sesión —no pasa en
-         producción, donde no se entra sin ella— queda el asignado de la obra, como antes. */
-      personas: usuarioRef.current ? [usuarioRef.current.id] : obra.asignadoIds,
+      /* "Responsable" es quien EMITE la OP: el usuario de la sesión, o a quien eligió un admin.
+         Sin sesión —no pasa en producción, donde no se entra sin ella— queda el asignado de la obra. */
+      personas: responsableRef.current ? [responsableRef.current] : obra.asignadoIds,
       medidoPor: datos.medidoPor,
       observacion: datos.observacion,
       fecha: datos.fecha,

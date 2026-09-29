@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from 'react'
+import { Avatar } from '@/components/ui/Avatar'
 import { Dropdown } from '@/components/ui/Dropdown'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
 import { Modal } from '@/components/ui/Modal'
 import { Stepper } from '@/components/ui/Stepper'
 import { PROCESOS, procesoDe, type ProcesoDef } from '@/lib/procesos'
 import { topePermitido } from '@/lib/pasos'
+import { comoUsuario } from '@/services/monday'
 import { ETIQUETAS_PASO, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import { AccionSelect } from './AccionSelect'
@@ -13,11 +15,51 @@ import { AccionSelect } from './AccionSelect'
 const ETAPAS = PASOS.map((p) => ETIQUETAS_PASO[p])
 
 /** Item de la barra: rótulo arriba, control abajo (mismo patrón que La Batea). */
-/** "Sol Suarez" → "SS"; "Diana" → "D". Para el avatar del usuario de la sesión. */
-function iniciales(nombre: string): string {
-  const partes = nombre.trim().split(/\s+/).filter(Boolean)
-  if (partes.length === 0) return '?'
-  return (partes[0][0] + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase()
+/**
+ * A nombre de quién se emite la OP: es el "Responsable" que queda en el tablero de órdenes.
+ *
+ * Un ADMIN —el admin de la cuenta de Monday o quien tenga Tipo = Admin en la lista blanca— puede
+ * elegir a cualquier persona de la cuenta, como el selector de vendedor de La Batea. El resto ve su
+ * propio nombre y no lo puede cambiar: emite siempre a su nombre.
+ */
+function SelectorUsuario() {
+  const { usuario, usuarios, responsableId } = useApp()
+  const dispatch = useDispatch()
+  const elegido =
+    usuarios.find((u) => u.id === responsableId) ??
+    (usuario ? comoUsuario(usuario.id, usuario.name) : null)
+
+  const caja = (
+    <span className="selbox-val">
+      {elegido ? <Avatar ini={elegido.ini} color={elegido.color} size="sm" /> : <i className="fas fa-user" />}
+      <span className="selbox-val-txt">{elegido?.name ?? 'Sin sesión'}</span>
+    </span>
+  )
+
+  if (!usuario?.isAdmin) {
+    return (
+      <div className="selbox selbox--fix selbox--fijo" title={elegido ? `Emitís a tu nombre: ${elegido.name}` : undefined}>
+        {caja}
+      </div>
+    )
+  }
+
+  return (
+    <Dropdown
+      label={caja}
+      items={usuarios}
+      itemKey={(u) => u.id}
+      esElegido={(u) => u.id === elegido?.id}
+      disabled={usuarios.length === 0}
+      onSelect={(u) => dispatch({ type: 'setResponsable', id: u.id })}
+      renderItem={(u) => (
+        <>
+          <Avatar ini={u.ini} color={u.color} />
+          <span>{u.name}</span>
+        </>
+      )}
+    />
+  )
 }
 
 function TopSel({ label, children }: { label: string; children: ReactNode }) {
@@ -118,7 +160,7 @@ function SelectorProceso() {
  * derecha, el avance por etapas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { paso, obra, entrada, usuario } = useApp()
+  const { paso, obra, entrada } = useApp()
   const dispatch = useDispatch()
   /* La barra muestra SIEMPRE las cuatro etapas, con número fijo. Las que quedaron atrás —se hayan
      hecho acá o antes— van con el tilde verde: acortar la barra según por dónde se entró hacía que
@@ -152,17 +194,7 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
                 selector y era un "empezar de nuevo", y eso se descubría perdiendo lo que estabas
                 haciendo. Para cambiar de obra se vuelve por el pie del paso o por la marca. */}
             <TopSel label="Usuario">
-              <div
-                className="selbox selbox--fix selbox--off selbox--sesion"
-                title={usuario ? `Sesión de Monday: ${usuario.name}` : undefined}
-              >
-                <span className="selbox-val">
-                  <span className="sesion-avatar" aria-hidden="true">
-                    {iniciales(usuario?.name ?? '')}
-                  </span>
-                  <span className="selbox-val-txt">{usuario?.name ?? 'Sin sesión'}</span>
-                </span>
-              </div>
+              <SelectorUsuario />
             </TopSel>
 
             {children}

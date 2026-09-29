@@ -4,7 +4,7 @@
  * Mismo patrón que La Batea: un reducer con acciones explícitas y dos contextos separados (estado
  * y dispatch), así quien sólo despacha no se vuelve a dibujar cuando el estado cambia.
  */
-import type { Obra, Paso, Proceso, UsuarioActual } from '@/types'
+import type { Obra, Paso, Proceso, Usuario, UsuarioActual } from '@/types'
 
 /** Orden de los pasos del proceso de Orden de Producción. Manda el stepper y la navegación. */
 /**
@@ -68,6 +68,13 @@ export interface AppState {
    * volver al inicio: es la sesión, no el trabajo en curso.
    */
   usuario: UsuarioActual | null
+  /** Las personas de la cuenta, para el selector del admin. Vacía para el resto. */
+  usuarios: Usuario[]
+  /**
+   * A nombre de quién se emite: es el "Responsable" de la OP. Arranca en el usuario de la sesión;
+   * sólo un admin lo puede cambiar (ver el selector del encabezado).
+   */
+  responsableId: string | null
 }
 
 export const initialState: AppState = {
@@ -78,6 +85,8 @@ export const initialState: AppState = {
   listado: false,
   errorMonday: null,
   usuario: null,
+  usuarios: [],
+  responsableId: null,
 }
 
 export type Action =
@@ -93,11 +102,16 @@ export type Action =
   | { type: 'cerrarError' }
   | { type: 'reset' }
   | { type: 'setUsuario'; usuario: UsuarioActual | null }
+  | { type: 'setUsuarios'; usuarios: Usuario[] }
+  | { type: 'setResponsable'; id: string }
+
+/** Lo que es de la SESIÓN y sobrevive a volver al inicio: quién es y a nombre de quién emite. */
+const sesionDe = (s: AppState) => ({ usuario: s.usuario, usuarios: s.usuarios, responsableId: s.responsableId })
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'setProceso':
-      return { ...initialState, usuario: state.usuario, proceso: action.proceso }
+      return { ...initialState, ...sesionDe(state), proceso: action.proceso }
 
     /* A dónde se puede ir NO lo decide por dónde pasó el usuario sino el estado de la obra en el
        tablero (ver 'lib/pasos'), así que acá no hay progreso que recordar. */
@@ -138,10 +152,18 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, errorMonday: null }
 
     case 'reset':
-      return { ...initialState, usuario: state.usuario }
+      return { ...initialState, ...sesionDe(state) }
 
+    /* El responsable arranca en el usuario de la sesión. */
     case 'setUsuario':
-      return { ...state, usuario: action.usuario }
+      return { ...state, usuario: action.usuario, responsableId: state.responsableId ?? action.usuario?.id ?? null }
+
+    case 'setUsuarios':
+      return { ...state, usuarios: action.usuarios }
+
+    /* Sólo un admin elige a nombre de quién emitir; para el resto es siempre él mismo. */
+    case 'setResponsable':
+      return state.usuario?.isAdmin ? { ...state, responsableId: action.id } : state
 
     default:
       return state

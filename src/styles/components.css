@@ -672,6 +672,21 @@
 .vname {
   font-weight: 500;
 }
+/* El avatar chico, el de la caja cerrada del selector de usuario. Más chico que el de la lista para
+   que entre en la caja sin agrandarla. */
+.mini-ava {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
 /* Lista del desplegable. Cuelga del botón (`.dd` es el bloque contenedor), así que `top: 100%` cae
    en su borde de abajo y lo único que puede separarlos es el margen.
    Va PEGADA: el -1px solapa los dos bordes de 1px para no dibujar una línea doble, y sólo se
@@ -1507,6 +1522,13 @@ td {
 }
 .selbox--off .selbox-val i {
   color: #cbd5e1;
+}
+/* El usuario de quien NO es admin: se ve como un selector con su nombre y su color, pero no se
+   abre. Sin el gris de `selbox--off`: acá hay un dato, no un hueco. */
+.selbox--fijo {
+  cursor: default;
+  border-color: #e2e8f0;
+  background: #fff;
 }
 .selbox-soon {
   font-size: 9px;

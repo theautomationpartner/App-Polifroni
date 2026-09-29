@@ -264,3 +264,38 @@ export async function perfilDe(userId: string): Promise<PerfilUsuario | null> {
     return null
   }
 }
+
+/** Columna "Tipo" de la lista blanca: Miembro | Admin | Invitado | Espectador. */
+const columnaTipo = (): string => process.env.WHITELIST_COLUMN_TIPO?.trim() || 'color_mm7nasv5'
+
+/**
+ * El "Tipo" del usuario en la lista blanca ("Admin", "Miembro"...), o `null` si no se pudo leer.
+ *
+ * Es lo que permite dar el rol de administrador DE LA APP desde el tablero, sin tocar el código ni
+ * hacer admin de toda la cuenta de Monday a nadie. Igual que el perfil, es dato de rol y no de
+ * acceso: un fallo acá no deja a nadie afuera, lo deja con el rol común.
+ */
+export async function tipoEnListaBlanca(userId: string): Promise<string | null> {
+  try {
+    const board = process.env.WHITELIST_BOARD_ID?.trim() || '18433213451'
+    const data = await mondayServidor<{
+      items_page_by_column_values?: { items?: { column_values?: { text: string | null }[] }[] }
+    }>(
+      `query ($board: ID!, $columna: String!, $usuario: String!, $tipo: [String!]) {
+        items_page_by_column_values(board_id: $board, limit: 5, columns: [{ column_id: $columna, column_values: [$usuario] }]) {
+          items { column_values(ids: $tipo) { text } }
+        }
+      }`,
+      { board, columna: columnaUsuario(), usuario: userId, tipo: [columnaTipo()] },
+    )
+    const tipos = (data.items_page_by_column_values?.items ?? [])
+      .map((i) => (i.column_values?.[0]?.text ?? '').trim())
+      .filter(Boolean)
+    /* Con dos filas del mismo usuario, manda la que da más: si una dice Admin, es admin. */
+    return tipos.find((t) => t.toLowerCase() === 'admin') ?? tipos[0] ?? null
+  } catch (e) {
+    console.warn('[lista blanca] no se pudo leer el tipo del usuario:', (e as Error)?.message ?? e)
+    return null
+  }
+}
+

@@ -19,20 +19,22 @@
  */
 import type { ServerResponse } from 'node:http'
 import { endpointMfa, type Pedido } from './_http.js'
-import { perfilDe } from './_whitelist.js'
+import { perfilDe, tipoEnListaBlanca } from './_whitelist.js'
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
   await endpointMfa(req, res, async ({ sesion }) => {
-    const perfil = await perfilDe(sesion.userId)
+    const [perfil, tipo] = await Promise.all([perfilDe(sesion.userId), tipoEnListaBlanca(sesion.userId)])
 
     return {
       id: sesion.userId,
       /* Sin perfil se manda el id como nombre: es feo pero identifica, y es preferible a un
          encabezado vacío. El acceso ya se decidió arriba; esto es presentación. */
       name: perfil?.nombre || `Usuario ${sesion.userId}`,
-      /* Del token FIRMADO, no de una consulta: es lo que Monday declara de este usuario. Se acepta
-         también el `kind: admin` del perfil, que es el mismo dato visto desde la API. */
-      isAdmin: sesion.isAdmin || (perfil?.esAdminDeCuenta ?? false),
+      /* Admin de la APP: el admin de la cuenta de Monday —del token firmado o del perfil— o quien
+         tenga Tipo = "Admin" en la lista blanca. Es lo que habilita elegir a nombre de quién se
+         emite la OP; el resto de la app es igual para todos. */
+      isAdmin:
+        sesion.isAdmin || (perfil?.esAdminDeCuenta ?? false) || (tipo ?? '').toLowerCase() === 'admin',
       /* Los equipos de Monday. Hoy la app no restringe nada por equipo —todos los habilitados pueden
          hacer todo—; viajan para cuando haga falta. */
       equipos: perfil?.equipos ?? [],
