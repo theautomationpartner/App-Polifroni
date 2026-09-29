@@ -30,6 +30,7 @@ import { useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
 import { DatosMedicion, hoyLocal, medicionInicial, type Medicion } from './DatosMedicion'
+import { cantidadDe, cantidadesPorModelo } from './opFinal/datos'
 import { generarOpFinal, type ResultadoGenerar } from './opFinal/generar'
 import {
   fusionar,
@@ -427,8 +428,12 @@ export function EtmoView() {
    * (número, medido por, observación, fecha) y los subelementos —una observación por abertura y un
    * renglón por vidrio—. Cada parte se intenta por separado: que falle una no deja sin hacer las
    * otras.
+   *
+   * La cantidad de cada vidrio es el TOTAL a pedir: la de su línea "Vid:" (vidrios de UNA abertura)
+   * por las aberturas del modelo ("Uds:"), que salen de `lectura` —la de la generación—. V2 con
+   * "Uds: 2" y "ud:1" lleva 2. Sin lectura, o sin la cantidad del modelo, queda la de la línea.
    */
-  const guardarEnOrden = async (id: string): Promise<void> => {
+  const guardarEnOrden = async (id: string, lectura: unknown): Promise<void> => {
     const datos = medicionRef.current
     await completarOrden(id, {
       tipo: tipoOrden,
@@ -442,7 +447,12 @@ export function EtmoView() {
       nombre: normalizarNombre(a.nombre),
       texto: a.texto.trim(),
     }))
-    await crearSubelementos(id, observaciones, vidriosRef.current).catch((e) =>
+    const cantidades = cantidadesPorModelo(lectura)
+    const vidrios = vidriosRef.current.map((v) => {
+      const uds = cantidadDe(cantidades, v.modelo)
+      return v.cant != null && uds != null ? { ...v, cant: v.cant * uds } : v
+    })
+    await crearSubelementos(id, observaciones, vidrios).catch((e) =>
       console.warn('[etmo] no se pudieron crear los subelementos de la OP', e),
     )
   }
@@ -480,10 +490,11 @@ export function EtmoView() {
          que la pestaña siga abierta después. */
       const id = await ordenAbierta.current
       if (id) {
-        await guardarEnOrden(id)
-        /* El N° de OP HETMO ("9.205-1") viene SÓLO en la respuesta del webhook. Si la corrida se
-           cerró por el tablero antes de que contestara, se la espera unos segundos. */
+        /* La respuesta del webhook trae la lectura (con la cantidad de cada modelo) y el N° de OP
+           HETMO ("9.205-1"). Si la corrida se cerró por el tablero antes de que contestara, se la
+           espera unos segundos. */
         const cuerpo = await generacion.esperarRespuesta(20_000)
+        await guardarEnOrden(id, cuerpo?.datos)
         const nOpHetmo = String(cuerpo?.nOpHetmo ?? '').trim()
         if (nOpHetmo && !/^-?$/.test(nOpHetmo)) {
           await guardarNroHetmo(id, nOpHetmo).catch((e) =>

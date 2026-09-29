@@ -197,6 +197,31 @@ function aModelo(v: unknown): ModeloOp | null {
 const claveModelo = (codigo: string | null): string =>
   normalizarNombre(String(codigo ?? '').split(/\s+/)[0] ?? '')
 
+/**
+ * Cuántas aberturas lleva cada modelo ("Uds:" del listado), por su nombre: "V2" → 2.
+ *
+ * Sale de la MISMA lectura que arma la OP final. La usan los subelementos de vidrio: cada línea
+ * "Vid:" dice los vidrios de UNA abertura, y el subelemento lleva el total del modelo.
+ */
+export function cantidadesPorModelo(lectura: unknown): Map<string, number> {
+  const cantidades = new Map<string, number>()
+  const l = comoObjeto(lectura)
+  const crudos = (Array.isArray(l?.paginas) ? l.paginas : []).flatMap((p) => {
+    const filas = comoObjeto(p)?.filas
+    return (Array.isArray(filas) ? filas : []).flatMap((f) => (Array.isArray(f) ? f : [f]))
+  })
+  for (const m of crudos.map(aModelo)) {
+    if (!m?.codigo || m.cantidad == null) continue
+    cantidades.set(claveModelo(m.codigo), m.cantidad)
+    cantidades.set(normalizarNombre(m.codigo), m.cantidad)
+  }
+  return cantidades
+}
+
+/** La cantidad de un modelo por el nombre con que lo nombra otra lectura ("V2", "v2", "V2 DT 1"). */
+export const cantidadDe = (cantidades: Map<string, number>, modelo: string): number | null =>
+  cantidades.get(normalizarNombre(modelo)) ?? cantidades.get(claveModelo(modelo)) ?? null
+
 const nombreModelo = (m: ModeloOp, i: number): string =>
   m.codigo ? `Modelo ${m.codigo}` : `El modelo n° ${i + 1}`
 
