@@ -4,19 +4,16 @@
  * Devuelve SÓLO el id y el nombre de cada obra: es lo único que el buscador necesita para ir
  * sugiriendo mientras se escribe. Todo lo demás de la obra se lee de Monday recién al elegirla.
  *
- * ── Dónde se guarda ──
- * No hay base de datos. El índice lo guarda la CDN de Vercel: la respuesta sale con
- * `s-maxage=1800` (media hora) y `stale-while-revalidate`, así que durante media hora todos los que
- * abran la app reciben la misma copia sin que esta función ni Monday se enteren, y pasado ese tiempo
- * la siguiente visita recibe la copia vieja al instante mientras la CDN pide una nueva por detrás.
- * Consumo de base: cero.
- *
- * El cron de `vercel.json` la llama cada 30 minutos en el horario de Polifroni (lunes a sábado,
- * 6 a 18 h de Argentina) para que la copia esté siempre tibia en horario laboral. Fuera de ese
- * horario nadie la refresca: una obra dada de alta a la noche aparece a la mañana siguiente, o al
- * instante con el botón Buscar, que sigue consultando Monday directo.
+ * ── Por qué ya no la guarda la CDN ──
+ * Antes la respuesta salía con `s-maxage` y la CDN de Vercel se la daba a cualquiera durante media
+ * hora, con un cron que la mantenía tibia. Con el guardián eso no puede seguir: una copia pública en
+ * la CDN se sirve SIN pasar por esta función, o sea sin verificar a nadie —la lista de obras
+ * quedaría abierta a quien conozca la URL—. Ahora se arma en cada pedido autorizado (son dos o tres
+ * consultas a Monday) y la app la guarda en memoria mientras la pestaña está abierta.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { autorizarPedido, respuestaDeError } from './_guard.js'
+import { deviceTokenDe } from './_http.js'
 
 const API_VERSION = '2024-10'
 const BOARD_OBRAS = 9617181553
@@ -44,6 +41,16 @@ async function monday<T>(token: string, query: string, variables: Record<string,
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== 'GET') return responder(res, 405, { error: 'Method Not Allowed' })
 
+  /* Privada, siempre: es una respuesta por usuario autorizado, no una copia para la CDN. */
+  res.setHeader('cache-control', 'private, no-store')
+  /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. */
+  try {
+    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+  } catch (e) {
+    const { status, cuerpo } = respuestaDeError(e)
+    return responder(res, status, cuerpo)
+  }
+
   const token = process.env.MONDAY_TOKEN
   if (!token) return responder(res, 500, { error: 'MONDAY_TOKEN no está configurado.' })
 
@@ -66,12 +73,9 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       pagina = sig.next_items_page
     }
 
-    res.setHeader('cache-control', 'public, s-maxage=1800, stale-while-revalidate=86400')
     return responder(res, 200, { generado: new Date().toISOString(), obras })
   } catch (e) {
     console.error('[api/obras-indice]', e)
-    /* Sin caché: un error no se tiene que quedar media hora en la CDN. */
-    res.setHeader('cache-control', 'no-store')
     return responder(res, 502, { error: 'No se pudo leer el tablero de obras.' })
   }
 }

@@ -10,6 +10,7 @@
  * de Vite (`/make/...`) y en producción la Serverless Function `/api/make`, que en los dos casos
  * leen la URL de una variable de entorno del servidor.
  */
+import { cabecerasPropias, verificarRespuesta } from '@/services/monday/sdk'
 import { BOARD_OBRAS } from '../monday/columns'
 
 /** Los escenarios que la app puede disparar. El nombre es el mismo en los dos entornos. */
@@ -149,10 +150,14 @@ export async function dispararEscenario(
   try {
     const res = await fetch(rutaDe(escenario), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(cuerpo(itemId, extra)),
       signal: control.signal,
     })
+    /* Un rechazo del guardián no es un escenario que falló: se muestra la pantalla de seguridad. */
+    if (res.status === 401 || res.status === 403 || res.status === 429) {
+      await verificarRespuesta(res, 'Make')
+    }
     /* Sin URL configurada la ruta contesta 404 —en desarrollo porque no existe, en producción
        porque la función lo dice—. Se distingue para poder avisar "falta configurar el escenario"
        en vez de "el escenario falló". */

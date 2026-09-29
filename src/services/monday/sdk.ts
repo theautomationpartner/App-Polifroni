@@ -14,9 +14,17 @@
  * Los archivos no van por el endpoint GraphQL —Monday los recibe en `/v2/file`, por multipart—, así
  * que tienen su propio par de rutas.
  *
- * Todavía no hay autenticación de usuario: cuando la haya, cambia este módulo y sus funciones, y
- * ninguna vista se entera.
+ * ── Autorización (las tres capas) ──
+ * En producción la Authorization NO lleva un token de Monday sino el *session token* del usuario
+ * (`Bearer <jwt>`, ver `src/lib/mondayAuth.ts`). Es lo que le permite al backend saber QUIÉN pide:
+ * verifica la firma, consulta la lista blanca y exige el segundo factor antes de gastar el token del
+ * servidor. El dispositivo del segundo factor viaja aparte, en `X-Device-Token`. En desarrollo la app
+ * pega directo contra Monday por el proxy de Vite con el token de `.env.local`, y ninguna de las tres
+ * capas existe.
  */
+import { leerDeviceToken, olvidarDeviceToken } from '@/lib/deviceToken'
+import { notificarErrorSeguridad, type ClaseErrorSeguridad } from '@/lib/errorSeguridad'
+import { getSessionToken, invalidarSessionToken, sessionTokenEnCache } from '@/lib/mondayAuth'
 
 const DEV = import.meta.env.DEV
 
@@ -71,25 +79,135 @@ export class MondayApiError extends Error {
 }
 
 /**
- * Las cabeceras de cada pedido.
- *
- * La Authorization se manda SÓLO en desarrollo, que es cuando el destino real es api.monday.com.
- * En producción la pone el servidor: mandarla desde acá sería volver a meter el token en el
- * navegador, que es justamente lo que estas dos rutas existen para evitar.
+ * El backend rechazó al usuario: o no pudo probar quién es (401) o no está habilitado (403). No es
+ * un fallo de la API y se muestra distinto: reintentar no cambia nada, hay que pedir el alta.
  */
-function cabeceras(extra: Record<string, string> = {}): Record<string, string> {
-  if (!DEV) return extra
-  return { ...extra, Authorization: TOKEN ?? '', 'API-Version': API_VERSION }
+const MENSAJE_RECHAZO: Record<number, string> = {
+  401: 'Tu sesión de Monday no pudo verificarse. Recargá la app.',
+  403: 'No tenés acceso habilitado a esta app. Pedile el alta al administrador.',
+  429: 'Demasiados intentos. Esperá 15 minutos y volvé a probar.',
+}
+
+export class AccesoDenegado extends Error {
+  constructor(public readonly status: number) {
+    super(MENSAJE_RECHAZO[status] ?? 'No se pudo verificar tu acceso a esta app.')
+    this.name = 'AccesoDenegado'
+  }
+}
+
+/** Falta el segundo factor: tiene arreglo, y lo tiene el propio usuario (volver a verificar). */
+export class SegundoFactorRequerido extends Error {
+  constructor() {
+    super('Necesitás verificar tu segundo factor para seguir.')
+    this.name = 'SegundoFactorRequerido'
+  }
+}
+
+/**
+ * La Authorization de cada pedido: en desarrollo el token local (el destino es api.monday.com por
+ * el proxy de Vite); en producción, el session token del usuario.
+ *
+ * Devuelve un `string` cuando ya se sabe —así el `fetch` sale en el mismo turno— y una promesa sólo
+ * la primera vez, cuando todavía hay que pedirle el token al contenedor de Monday.
+ */
+function autorizacion(): string | Promise<string> {
+  if (DEV) return TOKEN ?? ''
+  const enCache = sessionTokenEnCache()
+  if (enCache !== undefined) return enCache ? `Bearer ${enCache}` : ''
+  return getSessionToken().then((token) => (token ? `Bearer ${token}` : ''))
+}
+
+/** Las cabeceras de cada pedido a Monday: la Authorization, la versión y el dispositivo. */
+function cabeceras(auth: string, extra: Record<string, string> = {}): Record<string, string> {
+  const device = leerDeviceToken()
+  return {
+    ...extra,
+    ...(auth ? { Authorization: auth } : {}),
+    ...(DEV ? { 'API-Version': API_VERSION } : {}),
+    ...(device && !DEV ? { 'X-Device-Token': device } : {}),
+  }
+}
+
+/**
+ * Cabeceras autenticadas para NUESTROS endpoints (`/api/*`): la sesión, el segundo factor, los
+ * escenarios de Make, la numeración y el índice de obras. Existe para que ningún pedido se olvide de
+ * la credencial: sin ella, el backend lo rechaza como a un desconocido.
+ */
+export async function cabecerasPropias(
+  extra: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  if (DEV) return extra
+  const auth = autorizacion()
+  const device = leerDeviceToken()
+  return {
+    ...extra,
+    Authorization: typeof auth === 'string' ? auth : await auth,
+    ...(device ? { 'X-Device-Token': device } : {}),
+  }
+}
+
+/** Un intento, con el `fetch` disparado apenas se sabe la Authorization. */
+function conAutorizacion(url: string, init: (auth: string) => RequestInit): Promise<Response> {
+  const auth = autorizacion()
+  return typeof auth === 'string' ? fetch(url, init(auth)) : auth.then((a) => fetch(url, init(a)))
+}
+
+/**
+ * Reintenta UNA vez ante un 401 con el token renovado: el caso real es un token que venció antes de
+ * lo calculado (relojes corridos). Un 403 no se reintenta: la firma estaba bien y no va a cambiar.
+ */
+async function pedir(url: string, init: (auth: string) => RequestInit): Promise<Response> {
+  const res = await conAutorizacion(url, init)
+  if (res.status !== 401 || DEV) return res
+  invalidarSessionToken()
+  return conAutorizacion(url, init)
+}
+
+/**
+ * Traduce el rechazo del backend. Si trae la pista `mfa`, lo que falta es el segundo factor y no el
+ * permiso: se tira el dispositivo guardado —seguir mandando uno muerto no lleva a nada— y se lanza el
+ * error que la pantalla sabe interpretar. Un 5xx de NUESTRO backend también se avisa: una pantalla
+ * que se ve entera pero donde nada funciona es peor que un cartel.
+ */
+export async function verificarRespuesta(res: Response, contexto: string): Promise<void> {
+  if (res.status === 401 || res.status === 403 || res.status === 429) {
+    const cuerpo = (await res.clone().json().catch(() => ({}))) as { codigo?: string }
+    const clase = claseDeRechazo(res.status, cuerpo.codigo)
+
+    if (clase === 'segundoFactor') olvidarDeviceToken()
+    notificarErrorSeguridad(clase, res.status)
+
+    if (clase === 'segundoFactor') throw new SegundoFactorRequerido()
+    throw new AccesoDenegado(res.status)
+  }
+  if (!DEV && res.status >= 500 && res.status !== 502 && res.status !== 504) {
+    notificarErrorSeguridad('servidor', res.status)
+  }
+  if (!res.ok) throw new Error(`${contexto} HTTP ${res.status}`)
+}
+
+/**
+ * Qué pantalla corresponde según lo que el servidor dice que falló: al servidor le falta
+ * configuración, la credencial no vale, o el usuario no está dado de alta. Sin el `codigo` los tres
+ * se verían como el mismo 401 mudo.
+ */
+function claseDeRechazo(status: number, codigo: string | undefined): ClaseErrorSeguridad {
+  if (codigo === 'mfa') return 'segundoFactor'
+  if (codigo === 'no_habilitado') return 'sinPermiso'
+  if (codigo === 'config') return 'configuracion'
+  if (status === 429) return 'demasiadosIntentos'
+  return status === 401 ? 'sesion' : 'sinPermiso'
 }
 
 /** Ejecuta una query/mutation contra la API y devuelve `data`; lanza si Monday rechaza. */
 export async function mondayApi<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const res = await fetch(ENDPOINT, {
+  const cuerpo = JSON.stringify({ query, variables: variables ?? {} })
+  const res = await pedir(ENDPOINT, (auth) => ({
     method: 'POST',
-    headers: cabeceras({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ query, variables: variables ?? {} }),
-  })
-  if (!res.ok) throw new Error(`Monday API HTTP ${res.status}`)
+    headers: cabeceras(auth, { 'Content-Type': 'application/json' }),
+    body: cuerpo,
+  }))
+  await verificarRespuesta(res, 'Monday API')
   const json = (await res.json()) as { data?: T; errors?: ApiError[] }
   if (json.errors?.length) throw new MondayApiError(json.errors)
   if (!json.data) throw new Error('Monday no devolvió datos.')
@@ -102,16 +220,15 @@ export async function mondayApi<T>(query: string, variables?: Record<string, unk
  * `boundary`—.
  */
 export async function mondaySubirArchivo<T>(query: string, archivo: File): Promise<T> {
-  const form = new FormData()
-  form.append('query', query)
-  form.append('variables[file]', archivo, archivo.name)
-
-  const res = await fetch(ENDPOINT_ARCHIVO, {
-    method: 'POST',
-    headers: cabeceras(),
-    body: form,
+  /* El `FormData` se arma de nuevo en cada intento: un cuerpo ya consumido no se puede reenviar, y
+     el reintento por token vencido necesita uno entero. */
+  const res = await pedir(ENDPOINT_ARCHIVO, (auth) => {
+    const form = new FormData()
+    form.append('query', query)
+    form.append('variables[file]', archivo, archivo.name)
+    return { method: 'POST', headers: cabeceras(auth), body: form }
   })
-  if (!res.ok) throw new Error(`Monday API (archivos) HTTP ${res.status}`)
+  await verificarRespuesta(res, 'Monday API (archivos)')
   const json = (await res.json()) as { data?: T; errors?: ApiError[] }
   if (json.errors?.length) throw new MondayApiError(json.errors)
   if (!json.data) throw new Error('Monday no devolvió datos al subir el archivo.')

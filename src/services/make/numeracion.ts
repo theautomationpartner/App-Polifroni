@@ -4,6 +4,8 @@
  * PVC y Aluminio llevan contadores separados. El de Aluminio siempre va con una "A" adelante:
  * "A3000" → la próxima es "A3001".
  */
+import { cabecerasPropias, verificarRespuesta } from '@/services/monday/sdk'
+
 export type TipoOrden = 'PVC' | 'Aluminio'
 
 export interface Numeracion {
@@ -22,8 +24,8 @@ export function siguiente(n: Numeracion, tipo: TipoOrden): string {
 }
 
 export async function getNumeracion(): Promise<Numeracion> {
-  const r = await fetch('/api/numeracion', { cache: 'no-store' })
-  if (!r.ok) throw new Error(`Numeración: HTTP ${r.status}`)
+  const r = await fetch('/api/numeracion', { cache: 'no-store', headers: await cabecerasPropias() })
+  await verificarRespuesta(r, 'Numeración')
   return (await r.json()) as Numeracion
 }
 
@@ -31,8 +33,8 @@ export async function getNumeracion(): Promise<Numeracion> {
 export async function registrarNumero(tipo: TipoOrden, numero: string): Promise<void> {
   const r = await fetch('/api/numeracion', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ tipo, numero }),
   })
-  if (!r.ok) throw new Error(`Numeración: HTTP ${r.status}`)
+  await verificarRespuesta(r, 'Numeración')
 }

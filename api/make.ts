@@ -9,6 +9,8 @@
  * Equivale a las rutas `/make/*` del proxy de Vite en desarrollo.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { autorizarPedido, respuestaDeError } from './_guard.js'
+import { deviceTokenDe } from './_http.js'
 
 /**
  * Los únicos escenarios que se pueden disparar, y de qué variable sale la URL de cada uno.
@@ -37,6 +39,15 @@ function urlDelEscenario(nombres: string[] | undefined): { variable: string; url
 type Pedido = IncomingMessage & { body?: unknown }
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
+  /* El guardián antes que nada: disparar un escenario gasta operaciones de Make y manda mensajes
+     de WhatsApp de verdad, así que sólo lo hace un usuario habilitado. */
+  try {
+    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+  } catch (e) {
+    const { status, cuerpo } = respuestaDeError(e)
+    return responder(res, status, cuerpo)
+  }
+
   const escenario = new URL(req.url ?? '', 'http://local').searchParams.get('escenario') ?? ''
   const nombres = ESCENARIOS[escenario]
   const cargada = urlDelEscenario(nombres)

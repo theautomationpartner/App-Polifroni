@@ -16,6 +16,8 @@
  * Sólo se puede tocar ESE registro y esos dos campos: la función no recibe ni ids ni claves.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { autorizarPedido, respuestaDeError } from './_guard.js'
+import { deviceTokenDe } from './_http.js'
 
 const ZONA = 'https://us1.make.com/api/v2'
 const DATA_STORE = 92748
@@ -40,6 +42,14 @@ async function leer(token: string): Promise<Registro> {
 }
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
+  /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. */
+  try {
+    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+  } catch (e) {
+    const { status, cuerpo } = respuestaDeError(e)
+    return responder(res, status, cuerpo)
+  }
+
   const token = process.env.MAKE_TOKEN?.trim()
   if (!token) return responder(res, 500, { error: 'MAKE_TOKEN no está configurado en el servidor.' })
 

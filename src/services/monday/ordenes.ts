@@ -142,6 +142,8 @@ export async function crearOrdenVacia(
   obraNombre: string,
   tipo: 'PVC' | 'Aluminio',
   numero: string,
+  /** Quién la está emitiendo: el usuario de la sesión. Queda en "Responsable" desde que nace. */
+  responsableId: string | null = null,
 ): Promise<string> {
   const d = await mondayApi<{ create_item: { id: string } }>(
     `mutation ($nombre: String!) {
@@ -165,6 +167,9 @@ export async function crearOrdenVacia(
     [COL_OP.tipo]: { label: tipo },
     ...(numero ? columnasNumero(tipo, numero) : {}),
     ...(idOp ? { name: `${obraNombre} - ${idOp}` } : {}),
+    ...(responsableId
+      ? { [COL_OP.personas]: { personsAndTeams: [{ id: Number(responsableId), kind: 'person' }] } }
+      : {}),
   })
   return id
 }
@@ -222,10 +227,11 @@ export function iniciarOrden(
   obraNombre: string,
   tipo: 'PVC' | 'Aluminio',
   proximoNumero: () => Promise<string>,
+  responsableId: string | null = null,
 ): Promise<OrdenAbierta> {
   const p = (async () => {
     const numero = await proximoNumero().catch(() => '')
-    const id = await crearOrdenVacia(obraId, obraNombre, tipo, numero)
+    const id = await crearOrdenVacia(obraId, obraNombre, tipo, numero, responsableId)
     await vincularOrdenEnObra(obraId, id).catch((e) =>
       console.warn('[ordenes] no se pudo sumar la OP a la obra', e),
     )
@@ -241,8 +247,9 @@ export function ordenDeLaVisita(
   obraNombre: string,
   tipo: 'PVC' | 'Aluminio',
   proximoNumero: () => Promise<string>,
+  responsableId: string | null = null,
 ): Promise<OrdenAbierta> {
-  return visitas.get(obraId) ?? iniciarOrden(obraId, obraNombre, tipo, proximoNumero)
+  return visitas.get(obraId) ?? iniciarOrden(obraId, obraNombre, tipo, proximoNumero, responsableId)
 }
 
 /** La OP ya se generó: la visita terminó, y la próxima vez que se elija la obra se crea otra. */

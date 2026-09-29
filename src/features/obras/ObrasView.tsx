@@ -35,7 +35,7 @@ import { validarEntrada, type ValidacionEntrada } from './validaciones'
  */
 export function ObrasView() {
   const dispatch = useDispatch()
-  const { paso } = useApp()
+  const { paso, usuario } = useApp()
 
   /* Se eligió una acción pero todavía no hay obra: la app cayó acá sola. Decirlo evita que la
      pantalla se lea como "se perdió lo que elegí" —la acción sigue elegida, y se retoma sola en
@@ -203,7 +203,7 @@ export function ObrasView() {
     /* Elegir la obra para emitir —"Generar una nueva", o una obra que todavía no tiene OP— crea
        SIEMPRE una OP nueva en el tablero de órdenes. Arranca acá, en el click, y la etapa la toma
        cuando se abre. */
-    if (paso === 'etmo') void iniciarOrdenDeObra(obra).catch(() => {})
+    if (paso === 'etmo') void iniciarOrdenDeObra(obra, usuario?.id ?? null).catch(() => {})
     dispatch({ type: 'goto', paso })
     dispatch({ type: 'setObra', obra })
   }

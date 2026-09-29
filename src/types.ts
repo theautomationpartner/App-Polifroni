@@ -106,3 +106,18 @@ export type Paso = 'obra' | 'etmo' | 'envio' | 'confirmacion'
 
 /** Operaciones que ofrece la pantalla principal. */
 export type Proceso = 'obras'
+
+/**
+ * Quién está usando la app, ya verificado por el backend (firma de Monday + lista blanca).
+ *
+ * Sale del session token firmado por Monday, NO de la query `me`: por el proxy, `me` contesta quién
+ * es el dueño del token del SERVIDOR, que es el mismo para todos. Ver `api/usuario.ts`.
+ */
+export interface UsuarioActual {
+  /** Id de usuario de Monday. Es el que se carga como "quién emitió" en la OP. */
+  id: string
+  name: string
+  isAdmin: boolean
+  equipos: string[]
+  equipoIds: string[]
+}

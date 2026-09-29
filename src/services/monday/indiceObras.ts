@@ -1,6 +1,6 @@
 import { memoGlobal } from './cache'
 import { BOARD_OBRAS } from './columns'
-import { mondayApi } from './sdk'
+import { cabecerasPropias, mondayApi } from './sdk'
 
 /** Una obra del índice del buscador rápido: sólo lo necesario para sugerirla. */
 export interface ObraIndice {
@@ -35,13 +35,14 @@ async function armarLocal(): Promise<ObraIndice[]> {
 /**
  * El índice de obras (id + nombre), una sola vez por sesión.
  *
- * En producción sale de `/api/obras-indice`, que lo sirve desde la CDN de Vercel y lo refresca el
- * cron cada media hora en horario laboral. Si no se puede bajar, el buscador rápido queda vacío y
+ * En producción sale de `/api/obras-indice`, que lo arma en cada pedido autorizado (ya no lo guarda
+ * la CDN: una copia pública saltearía el guardián) y la app lo guarda en memoria mientras dura la
+ * pestaña. Si no se puede bajar, el buscador rápido queda vacío y
  * el botón Buscar sigue yendo a Monday: no se rompe nada, se pierde la sugerencia.
  */
 export const getIndiceObras = memoGlobal(async (): Promise<ObraIndice[]> => {
   if (import.meta.env.DEV) return armarLocal()
-  const r = await fetch('/api/obras-indice')
+  const r = await fetch('/api/obras-indice', { headers: await cabecerasPropias() })
   if (!r.ok) throw new Error(`Índice de obras: HTTP ${r.status}`)
   const d = (await r.json()) as { obras?: ObraIndice[] }
   return d.obras ?? []

@@ -6,10 +6,13 @@ import type { Obra } from '@/types'
 const proximoNumero = (obra: Obra) => async () =>
   siguiente(await getNumeracion(), tipoDeObra(obra.tipo.texto))
 
-/** Crea la OP nueva de la obra (al elegirla para emitir). */
-export const iniciarOrdenDeObra = (obra: Obra): Promise<OrdenAbierta> =>
-  iniciarOrden(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra))
+/**
+ * Crea la OP nueva de la obra (al elegirla para emitir). `responsableId` es el usuario de la
+ * sesión: la OP nace sabiendo quién la emite.
+ */
+export const iniciarOrdenDeObra = (obra: Obra, responsableId: string | null): Promise<OrdenAbierta> =>
+  iniciarOrden(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra), responsableId)
 
 /** La OP de esta visita; la crea sólo si no se inició ninguna. */
-export const ordenDeObra = (obra: Obra): Promise<OrdenAbierta> =>
-  ordenDeLaVisita(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra))
+export const ordenDeObra = (obra: Obra, responsableId: string | null): Promise<OrdenAbierta> =>
+  ordenDeLaVisita(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra), responsableId)

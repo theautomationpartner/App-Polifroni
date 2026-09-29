@@ -4,7 +4,7 @@
  * Mismo patrón que La Batea: un reducer con acciones explícitas y dos contextos separados (estado
  * y dispatch), así quien sólo despacha no se vuelve a dibujar cuando el estado cambia.
  */
-import type { Obra, Paso, Proceso } from '@/types'
+import type { Obra, Paso, Proceso, UsuarioActual } from '@/types'
 
 /** Orden de los pasos del proceso de Orden de Producción. Manda el stepper y la navegación. */
 /**
@@ -63,6 +63,11 @@ export interface AppState {
   listado: boolean
   /** Acción que falló contra Monday, para el aviso global ("no se pudo <accion>"). */
   errorMonday: string | null
+  /**
+   * Quién abrió la app, ya verificado. Se carga UNA vez al entrar (ver `App.tsx`) y no se borra al
+   * volver al inicio: es la sesión, no el trabajo en curso.
+   */
+  usuario: UsuarioActual | null
 }
 
 export const initialState: AppState = {
@@ -72,6 +77,7 @@ export const initialState: AppState = {
   entrada: 'obra',
   listado: false,
   errorMonday: null,
+  usuario: null,
 }
 
 export type Action =
@@ -86,11 +92,12 @@ export type Action =
   | { type: 'errorMonday'; accion: string }
   | { type: 'cerrarError' }
   | { type: 'reset' }
+  | { type: 'setUsuario'; usuario: UsuarioActual | null }
 
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'setProceso':
-      return { ...initialState, proceso: action.proceso }
+      return { ...initialState, usuario: state.usuario, proceso: action.proceso }
 
     /* A dónde se puede ir NO lo decide por dónde pasó el usuario sino el estado de la obra en el
        tablero (ver 'lib/pasos'), así que acá no hay progreso que recordar. */
@@ -131,7 +138,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, errorMonday: null }
 
     case 'reset':
-      return initialState
+      return { ...initialState, usuario: state.usuario }
+
+    case 'setUsuario':
+      return { ...state, usuario: action.usuario }
 
     default:
       return state

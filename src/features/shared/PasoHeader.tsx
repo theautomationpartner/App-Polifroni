@@ -13,6 +13,13 @@ import { AccionSelect } from './AccionSelect'
 const ETAPAS = PASOS.map((p) => ETIQUETAS_PASO[p])
 
 /** Item de la barra: rótulo arriba, control abajo (mismo patrón que La Batea). */
+/** "Sol Suarez" → "SS"; "Diana" → "D". Para el avatar del usuario de la sesión. */
+function iniciales(nombre: string): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean)
+  if (partes.length === 0) return '?'
+  return (partes[0][0] + (partes.length > 1 ? partes[partes.length - 1][0] : '')).toUpperCase()
+}
+
 function TopSel({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="topsel-item">
@@ -111,7 +118,7 @@ function SelectorProceso() {
  * derecha, el avance por etapas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { paso, obra, entrada } = useApp()
+  const { paso, obra, entrada, usuario } = useApp()
   const dispatch = useDispatch()
   /* La barra muestra SIEMPRE las cuatro etapas, con número fijo. Las que quedaron atrás —se hayan
      hecho acá o antes— van con el tilde verde: acortar la barra según por dónde se entró hacía que
@@ -137,19 +144,24 @@ export function PasoHeader({ children }: { children?: ReactNode }) {
               <SelectorProceso />
             </TopSel>
 
-            {/* Quién está usando la app. Todavía no hay sesión, así que la caja existe apagada: es
-                el lugar donde va a ir, y verla vacía dice eso mejor que no verla.
+            {/* Quién está usando la app: el usuario de Monday que abrió la app, ya verificado por el
+                backend (firma de la sesión + lista blanca). No se elige: es la sesión, y es quien
+                queda como responsable de la OP que emita.
 
                 Acá estaba la caja de la obra, que al tocarla volvía a la lista. Se fue: parecía un
                 selector y era un "empezar de nuevo", y eso se descubría perdiendo lo que estabas
                 haciendo. Para cambiar de obra se vuelve por el pie del paso o por la marca. */}
             <TopSel label="Usuario">
-              <div className="selbox selbox--fix selbox--off" aria-disabled="true">
+              <div
+                className="selbox selbox--fix selbox--off selbox--sesion"
+                title={usuario ? `Sesión de Monday: ${usuario.name}` : undefined}
+              >
                 <span className="selbox-val">
-                  <i className="fas fa-user" />
-                  <span className="selbox-val-txt">Sin sesión</span>
+                  <span className="sesion-avatar" aria-hidden="true">
+                    {iniciales(usuario?.name ?? '')}
+                  </span>
+                  <span className="selbox-val-txt">{usuario?.name ?? 'Sin sesión'}</span>
                 </span>
-                <span className="selbox-soon">Próximamente</span>
               </div>
             </TopSel>
 

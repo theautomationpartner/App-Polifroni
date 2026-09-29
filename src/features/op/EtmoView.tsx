@@ -27,7 +27,7 @@ import {
   getUrlArchivo,
   limpiarEstado,
 } from '@/services/monday'
-import { useDispatch } from '@/state/hooks'
+import { useApp, useDispatch } from '@/state/hooks'
 import type { ArchivoObra } from '@/types'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
 import { DatosMedicion, hoyLocal, medicionInicial, type Medicion } from './DatosMedicion'
@@ -145,6 +145,10 @@ function guardarBorrador(ordenId: string, texto: string): boolean {
 export function EtmoView() {
   const obra = useObra()
   const dispatch = useDispatch()
+  /** Quién usa la app: queda como "Responsable" de la OP que emite. */
+  const { usuario } = useApp()
+  const usuarioRef = useRef(usuario)
+  usuarioRef.current = usuario
   const refrescar = useRefrescarObra()
   const lectura = useLeerObservaciones(obra.id)
 
@@ -203,7 +207,7 @@ export function EtmoView() {
   useEffect(() => {
     let vivo = true
     setNumeroCargando(true)
-    const promesa = ordenDeObra(obra)
+    const promesa = ordenDeObra(obra, usuario?.id ?? null)
     ordenAbierta.current = promesa
       .then((o) => o.id)
       .catch((e) => {
@@ -439,7 +443,9 @@ export function EtmoView() {
     await completarOrden(id, {
       tipo: tipoOrden,
       numero: datos.nroOrden.trim(),
-      personas: obra.asignadoIds,
+      /* "Responsable" es quien EMITE la OP: el usuario de la sesión. Sin sesión —no pasa en
+         producción, donde no se entra sin ella— queda el asignado de la obra, como antes. */
+      personas: usuarioRef.current ? [usuarioRef.current.id] : obra.asignadoIds,
       medidoPor: datos.medidoPor,
       observacion: datos.observacion,
       fecha: datos.fecha,
