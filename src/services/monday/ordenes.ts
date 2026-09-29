@@ -390,6 +390,29 @@ export async function subirOpFinal(ordenId: string, archivo: File): Promise<void
   await subirArchivo(ordenId, COL_OP_ARCHIVOS.opFinal, archivo)
 }
 
+/**
+ * El nombre definitivo de la OP, una vez emitida: "<obra> - IDOP-030 - PVC 2281".
+ *
+ * Se pone al emitir la OP final y no al crearla: recién ahí el tipo y el número quedaron firmes
+ * (el número se puede corregir a mano con el lápiz hasta el último momento). El número es el de la
+ * columna de su tipo: el de PVC es numérico ("2281"), el de Aluminio lleva la "A" ("A3003").
+ */
+export async function renombrarOrdenEmitida(
+  ordenId: string,
+  obraNombre: string,
+  tipo: 'PVC' | 'Aluminio',
+  numero: string,
+): Promise<void> {
+  const d = await mondayApi<{ items: { column_values: { text: string | null }[] }[] }>(
+    `query ($id: [ID!]) { items(ids: $id) { column_values(ids: ["${COL_OP.idOp}"]) { text } } }`,
+    { id: [ordenId] },
+  )
+  const idOp = d.items[0]?.column_values[0]?.text?.trim() ?? ''
+  const nro = tipo === 'PVC' ? numero.replace(/\D/g, '') : numero.trim()
+  const nombre = [obraNombre.trim(), idOp, [tipo, nro].filter(Boolean).join(' ')].filter(Boolean).join(' - ')
+  await cambiarColumnas(ordenId, { name: nombre })
+}
+
 /** Guarda el N° de OP HETMO ("9.205-1") que devuelve la generación. */
 export async function guardarNroHetmo(ordenId: string, texto: string): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.nOpHetmo]: texto })

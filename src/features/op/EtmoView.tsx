@@ -14,6 +14,7 @@ import {
   COL_OP,
   ESTADO_OP,
   completarOrden,
+  renombrarOrdenEmitida,
   copiarArchivo,
   crearSubelementos,
   getArchivosOrden,
@@ -496,6 +497,9 @@ export function EtmoView() {
              genera y se dice qué falta; no se marca "Generada" ni se consume el número. */
           const med = medicionRef.current
           const base = fresca ?? obra
+          /* Con "Otro", quién midió está escrito en la aclaración. */
+          const medidoPor =
+            med.medidoPor === 'Otro' && med.observacion.trim() ? med.observacion.trim() : med.medidoPor
           resultadoOp.current = await generarOpFinal({
             ordenId: id,
             etmo: propios?.etmo[0] ?? null,
@@ -505,9 +509,10 @@ export function EtmoView() {
             celular: base.celCoordinar,
             nroOrden: med.nroOrden.trim(),
             fecha: hoyLocal().split('-').reverse().join('/'),
-            /* Con "Otro", quién midió está escrito en la aclaración. */
-            medidoPor:
-              med.medidoPor === 'Otro' && med.observacion.trim() ? med.observacion.trim() : med.medidoPor,
+            medidoPor,
+            /* La misma "Observación" que queda en la OP (long_text_mm7g7k7n). Si es sólo el nombre
+               de quien midió ("Otro"), ya está en "Medido por" y no se repite. */
+            observacionOp: med.observacion.trim() === medidoPor ? '' : med.observacion,
             aberturas: aberturasRef.current,
           })
           const r = resultadoOp.current
@@ -527,6 +532,10 @@ export function EtmoView() {
           }
         }
         await setEstadoOrden(id, ESTADO_OP.generada).catch(() => {})
+        /* Emitida: la OP toma su nombre definitivo, con el tipo y el número con que salió. */
+        await renombrarOrdenEmitida(id, (fresca ?? obra).nombre, tipoOrden, medicionRef.current.nroOrden).catch(
+          (e) => console.warn('[etmo] no se pudo renombrar la OP', e),
+        )
         try {
           sessionStorage.removeItem(`vidrios:${id}`)
         } catch {

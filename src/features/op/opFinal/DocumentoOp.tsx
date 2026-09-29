@@ -13,9 +13,22 @@
  * Lo que cambia respecto del HTML: react-pdf no tiene grid ni `calc()`. Las columnas tienen ancho
  * fijo y el recorte del dibujo llega hecho (ver `hojas.ts`). Y el bloque de datos crece con la
  * cantidad de líneas "Vid:" del modelo que más tiene en la hoja, porque ahora se imprimen todas.
+ *
+ * La hoja es SIEMPRE una A4 vertical. Ojo con `wrap={false}` en el `Page`: en react-pdf eso no
+ * significa "no cortar" sino "la hoja mide lo que su contenido" —con un renglón de tarjetas salía
+ * una hoja de 210 × 158 mm, más ancha que alta, y la impresora la ponía apaisada—. Que todo entre
+ * en la A4 lo resuelve `enPaginas` (datos.ts), que reparte los renglones con las mismas medidas.
  */
 import { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
-import type { DatosOp, ModeloOp, PaginaOp } from './datos'
+import {
+  ALTO_DATOS_MM,
+  ALTO_OBS_MM,
+  ALTO_VIDRIO_MM,
+  LINEAS_OBS_OP,
+  type DatosOp,
+  type ModeloOp,
+  type PaginaOp,
+} from './datos'
 
 /* Sin guiones de corte: un código o una medida partidos al final del renglón se leen mal. */
 Font.registerHyphenationCallback((palabra) => [palabra])
@@ -26,10 +39,6 @@ const RAYA = '—'
 
 /** Ancho de cada columna: 210 mm − 2 × 5 mm de margen − 2 × 3 mm entre columnas, dividido 3. */
 const ANCHO_TARJETA = '64.6mm'
-/** Alto del bloque de vidrio + tapajuntas con UNA línea "Vid:" (el de la plantilla). */
-const ALTO_DATOS_MM = 20.5
-/** Lo que suma cada línea "Vid:" de más. */
-const ALTO_VIDRIO_MM = 3.6
 
 const s = StyleSheet.create({
   pagina: { fontFamily: 'Helvetica', fontSize: 8, color: '#000', flexDirection: 'column' },
@@ -112,10 +121,28 @@ const s = StyleSheet.create({
   kv: { fontSize: 8, marginBottom: '0.5mm', lineHeight: 1.2 },
   negrita: { fontFamily: 'Helvetica-Bold' },
   cant: { fontFamily: 'Helvetica-Bold', fontSize: 8, marginTop: '0.5mm', lineHeight: 1.2 },
-  dib: { flex: 1, minHeight: '12mm', maxHeight: '44mm', marginVertical: '1.5mm', overflow: 'hidden' },
+  dib: {
+    flex: 1,
+    minHeight: '12mm',
+    maxHeight: '44mm',
+    marginVertical: '1.5mm',
+    overflow: 'hidden',
+    position: 'relative',
+  },
   dibRecorte: { width: '31mm' },
   dibEntero: { width: '100%' },
-  dibImg: { width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'left top' },
+  /* El dibujo va FUERA del flujo (absoluto, ocupando su caja): así no empuja el renglón con su
+     tamaño natural. La caja la mide el espacio que queda en la hoja, entre 12 y 44 mm, y el dibujo
+     se acomoda adentro. Sin esto, una foto alta estiraba el renglón y la hoja no entraba en A4. */
+  dibImg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    objectPosition: 'left top',
+  },
   datos: { overflow: 'hidden' },
   vid: { flexDirection: 'row', marginBottom: '1mm', paddingLeft: '3mm' },
   vidSep: { marginLeft: '2mm' },
@@ -123,7 +150,7 @@ const s = StyleSheet.create({
   tapL: { fontFamily: 'Helvetica-Bold', width: '9mm', paddingLeft: '3mm' },
   tapC: { width: '16mm' },
   obs: {
-    height: '12mm',
+    height: `${ALTO_OBS_MM}mm`,
     overflow: 'hidden',
     marginTop: '0.6mm',
     paddingTop: '0.8mm',
@@ -141,6 +168,21 @@ const s = StyleSheet.create({
   pie: { paddingTop: '1.5mm', paddingHorizontal: '5mm', paddingBottom: '2.5mm', alignItems: 'flex-end' },
   pieFila: { flexDirection: 'row', fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25 },
   pieVal: { minWidth: '18mm', marginLeft: '1.5mm' },
+  /* La observación de la OP: texto libre, puede ser largo. Va debajo de "Medido por", alineada con
+     el resto del pie, y con un tope de renglones para que la hoja no se pase de la A4. */
+  pieObs: { flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'flex-end', marginTop: '0.8mm' },
+  pieObsL: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25, flexShrink: 0 },
+  pieObsV: {
+    fontFamily: 'Helvetica',
+    fontSize: 10,
+    lineHeight: 1.3,
+    marginLeft: '1.5mm',
+    marginTop: '0.4mm',
+    maxWidth: '125mm',
+    flexShrink: 1,
+    maxLines: LINEAS_OBS_OP,
+    textOverflow: 'ellipsis',
+  },
   sueltas: {
     paddingHorizontal: '5mm',
     paddingBottom: '5mm',
@@ -236,7 +278,7 @@ export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
   return (
     <Document title={`Orden de Produccion ${datos.nroOrden} - ${datos.obra}`} author="Polifroni">
       {datos.paginas.map((pagina) => (
-        <Page key={pagina.nro} size="A4" style={s.pagina} wrap={false}>
+        <Page key={pagina.nro} size="A4" orientation="portrait" style={s.pagina}>
           <View style={s.head}>
             <View style={s.logo}>
               <Image src={logo} style={s.logoImg} />
@@ -299,6 +341,11 @@ export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
                 <View style={s.pieFila}>
                   <Text>MEDIDO POR:</Text>
                   <Text style={s.pieVal}>{o(datos.medidoPor)}</Text>
+                </View>
+                {/* Va siempre: sin observación, con una raya. */}
+                <View style={s.pieObs}>
+                  <Text style={s.pieObsL}>OBSERVACIÓN OP:</Text>
+                  <Text style={s.pieObsV}>{o(datos.observacionOp)}</Text>
                 </View>
               </View>
               {/* Sólo lo que NO se pudo asignar a ningún modelo. */}

@@ -74,6 +74,8 @@ export interface DatosOp {
   totales: { aberturas: number; dvh: number; mosquiteros: number }
   /** Observaciones que no encontraron su modelo: van al pie para no perderlas. */
   observacionesSueltas: string | null
+  /** La observación de la OP (paso 2, "Observación" de la medición): va al pie, debajo de "Medido por". */
+  observacionOp: string | null
   /** Cuántas hojas del HETMO hacen falta para los dibujos (el `hojaIdx` más alto + 1). */
   hojasNecesarias: number
 }
@@ -88,6 +90,8 @@ export interface EntradaOp {
   /** DD/MM/AAAA. */
   fecha: string
   medidoPor: string
+  /** La observación de la OP: la que se escribe junto a "Medido por" en el paso 2. */
+  observacionOp?: string
   vista?: string
   /** Las observaciones escritas en el paso 2, una por abertura. */
   aberturas: Abertura[]
@@ -101,6 +105,42 @@ export interface ResultadoDatos {
 
 const MODELOS_POR_FILA = 3
 const FILAS_POR_PAGINA = 3
+
+/* ── Medidas de la hoja, en mm ─────────────────────────────────────────────
+   Las usa `DocumentoOp` para dibujar y `enPaginas` para saber cuántos renglones entran en una A4:
+   la hoja es SIEMPRE una A4 vertical, así que lo que no entra va a la hoja siguiente. */
+/** Alto del bloque de vidrio + tapajuntas con UNA línea "Vid:" (el de la plantilla). */
+export const ALTO_DATOS_MM = 20.5
+/** Lo que suma cada línea "Vid:" de más. */
+export const ALTO_VIDRIO_MM = 3.6
+/** El bloque de la observación de cada tarjeta, en las hojas que tienen alguna. */
+export const ALTO_OBS_MM = 12
+/** Renglones que puede ocupar la observación de la OP en el pie. */
+export const LINEAS_OBS_OP = 3
+/*
+ * Lo que ocupa cada parte, CALIBRADO contra react-pdf: se armaron hojas de 1 a 3 renglones con 1 a 8
+ * líneas "Vid:", con y sin observaciones y con y sin pie, y se midió cuáles entran en una A4. Estos
+ * números dejan ~5 mm de margen sobre lo medido (un nombre de obra en dos renglones, redondeos):
+ * nunca prometen más de lo que entra, así que la hoja no se corta ni se estira.
+ */
+/** Alto útil para los renglones: la A4 menos el encabezado y el margen. */
+const DISPONIBLE_MM = 263.5
+/** Lo fijo de un renglón: código, descripción, color, medidas, cantidad, márgenes y el dibujo en su
+    alto mínimo (12 mm). El dibujo crece con lo que sobra de la hoja, hasta 44 mm. */
+const ALTO_FILA_FIJO_MM = 42
+/** El pie: los cuatro totales y la observación de la OP con todos sus renglones. */
+const ALTO_PIE_MM = 32.5
+
+const altoFilas = (filas: ModeloOp[][]): number => {
+  const modelos = filas.flat()
+  const maxVidrios = Math.max(1, ...modelos.map((m) => m.vidrios.length))
+  const hayObs = modelos.some((m) => m.observacion)
+  const fila = ALTO_FILA_FIJO_MM + ALTO_DATOS_MM + (maxVidrios - 1) * ALTO_VIDRIO_MM + (hayObs ? ALTO_OBS_MM + 0.6 : 0)
+  return fila * filas.length
+}
+
+const altoSueltas = (sueltas: string | null): number =>
+  sueltas ? 5 + (sueltas.split('\n').length + 1) * 4.4 : 0
 
 /** Texto recortado, o `null` si no hay nada. */
 function texto(v: unknown): string | null {
@@ -160,26 +200,56 @@ const claveModelo = (codigo: string | null): string =>
 const nombreModelo = (m: ModeloOp, i: number): string =>
   m.codigo ? `Modelo ${m.codigo}` : `El modelo n° ${i + 1}`
 
-/** Una hoja A4 por cada 9 modelos, de a 3 por renglón, en el orden en que los leyó la IA. */
-function enPaginas(modelos: ModeloOp[]): PaginaOp[] {
-  const porPagina = MODELOS_POR_FILA * FILAS_POR_PAGINA
-  const paginas: PaginaOp[] = []
-  for (let i = 0; i < modelos.length; i += porPagina) {
-    const deLaPagina = modelos.slice(i, i + porPagina)
-    const filas: ModeloOp[][] = []
-    for (let j = 0; j < deLaPagina.length; j += MODELOS_POR_FILA) {
-      filas.push(deLaPagina.slice(j, j + MODELOS_POR_FILA))
+/**
+ * Las hojas: A4 vertical, de a 3 modelos por renglón y hasta 3 renglones, en el orden en que los
+ * leyó la IA.
+ *
+ * Un renglón pasa a la hoja siguiente cuando no entra: los modelos con muchas líneas "Vid:" hacen
+ * renglones más altos, y la última hoja además lleva el pie. Así la hoja nunca se estira ni se
+ * corta: cualquiera sea la cantidad de aberturas, se imprime vertical y entera.
+ */
+function enPaginas(modelos: ModeloOp[], sueltas: string | null): PaginaOp[] {
+  const renglones: ModeloOp[][] = []
+  for (let i = 0; i < modelos.length; i += MODELOS_POR_FILA) {
+    renglones.push(modelos.slice(i, i + MODELOS_POR_FILA))
+  }
+  const disponible = DISPONIBLE_MM
+  const hojas: ModeloOp[][][] = []
+  let actual: ModeloOp[][] = []
+  for (const r of renglones) {
+    const conEste = [...actual, r]
+    if (actual.length && (conEste.length > FILAS_POR_PAGINA || altoFilas(conEste) > disponible)) {
+      hojas.push(actual)
+      actual = [r]
+    } else {
+      actual = conEste
     }
-    paginas.push({
-      nro: paginas.length + 1,
-      esUltima: false,
+  }
+  if (actual.length) hojas.push(actual)
+  /* La última lleva el pie: si con él no entra, sus últimos renglones pasan a una hoja nueva. */
+  const pie = ALTO_PIE_MM + altoSueltas(sueltas)
+  for (;;) {
+    const ultima = hojas[hojas.length - 1]
+    if (!ultima || altoFilas(ultima) + pie <= disponible) break
+    if (ultima.length === 1) {
+      /* Un solo renglón con el pie no entra: el pie va solo en una hoja más. */
+      hojas.push([])
+      break
+    }
+    const nueva: ModeloOp[][] = []
+    while (ultima.length > 1 && altoFilas(ultima) + pie > disponible) nueva.unshift(ultima.pop() as ModeloOp[])
+    hojas.push(nueva)
+  }
+  return hojas.map((filas, i) => {
+    const deLaPagina = filas.flat()
+    return {
+      nro: i + 1,
+      esUltima: i === hojas.length - 1,
       filas,
       hayObs: deLaPagina.some((m) => m.observacion),
       maxVidrios: Math.max(1, ...deLaPagina.map((m) => m.vidrios.length)),
-    })
-  }
-  if (paginas.length) paginas[paginas.length - 1].esUltima = true
-  return paginas
+    }
+  })
 }
 
 export function armarDatosOp(e: EntradaOp): ResultadoDatos {
@@ -299,7 +369,8 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
     totales.dvh += dvhPorUnidad * cantidad
   }
 
-  const paginas = enPaginas(modelos)
+  const observacionesSueltas = sueltas.length ? sueltas.join('\n') : null
+  const paginas = enPaginas(modelos, observacionesSueltas)
   const hojasNecesarias = Math.max(0, ...modelos.map((m) => (m.hojaIdx == null ? 0 : m.hojaIdx + 1)))
 
   if (errores.length) return { datos: null, errores, avisos }
@@ -317,7 +388,8 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
       paginas,
       totalPaginas: paginas.length,
       totales,
-      observacionesSueltas: sueltas.length ? sueltas.join('\n') : null,
+      observacionesSueltas,
+      observacionOp: e.observacionOp?.trim() || null,
       hojasNecesarias,
     },
     errores,
