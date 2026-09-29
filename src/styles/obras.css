@@ -3483,14 +3483,8 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-/* La lista de usuarios puede ser más ancha que la caja: un nombre completo ("Gonzalez Natalia
-   Andrea") se lee mejor entero que cortado. Arranca alineada con la caja y crece hacia la derecha,
-   con un tope para que no tape medio encabezado. */
-.sel-usuario .ddmenu {
-  width: max-content;
-  min-width: 100%;
-  max-width: 320px;
-}
+/* La lista mide EXACTAMENTE lo que la caja (el `.ddmenu` base ya es 100%): caja y lista se leen
+   como un solo panel, y ninguna de las dos cambia de ancho según quién esté elegido. */
 .dd-usuario-nombre {
   flex: 1 1 auto;
   min-width: 0;

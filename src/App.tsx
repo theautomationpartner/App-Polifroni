@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Cargando } from '@/components/ui/Cargando'
+import { CargandoAcceso, MuroAcceso } from '@/components/ui/PantallaAcceso'
 import { MfaGuard } from '@/components/ui/MfaGuard'
 import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ModalErrorSeguridad } from '@/components/ui/ModalErrorSeguridad'
@@ -146,7 +146,16 @@ export function App() {
     <div className="scroll" ref={scrollRef}>
       {/* La app se dibuja SÓLO con los tres pasos superados. */}
       {acceso === 'permitido' && !bloqueada && <Vista />}
-      {acceso === 'verificando' && <Cargando mensaje="Verificando acceso" />}
+      {acceso === 'verificando' && <CargandoAcceso mensaje="Verificando acceso" />}
+      {/* Rechazado: el aviso de seguridad va sobre el mismo fondo con la marca, no sobre una pantalla
+          en blanco que parece rota. */}
+      {(acceso === 'rechazado' || (acceso === 'permitido' && bloqueada)) && (
+        /* Si se cierra el aviso, la tarjeta no queda vacía: dice qué pasó y qué hacer. */
+        <MuroAcceso>
+          <h2 className="mfa-titulo">Acceso no disponible</h2>
+          <p className="mfa-texto">Abrí la aplicación desde Monday. Si ya estás ahí, recargá la página.</p>
+        </MuroAcceso>
+      )}
       {acceso === 'mfa' && <MfaGuard onListo={() => setAcceso('permitido')} />}
       {/* Un solo aviso a la vez, y el de seguridad manda: el otro invita a reintentar, y un rechazo
           del borde no se arregla reintentando. */}

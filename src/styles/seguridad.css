@@ -37,9 +37,31 @@
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
-.mfa-icono {
-  font-size: 34px;
-  color: var(--yellow);
+/* La marca arriba de la tarjeta, separada del contenido por un filete: lo primero que se lee es
+   DÓNDE se está entrando. Alto fijo, así la tarjeta no salta mientras el archivo carga. */
+.mfa-logo {
+  height: 48px;
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #eef0f4;
+  box-sizing: content-box;
+}
+/* La espera, dentro de la tarjeta: spinner y texto en una fila, sin caja propia. */
+.mfa-cargando {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #676879;
+}
+.mfa-cargando i {
+  font-size: 18px;
+  color: var(--primary-blue);
 }
 .mfa-titulo {
   margin: 0;
@@ -185,7 +207,7 @@
   .mfa-input--sacudir {
     animation: none;
   }
-  .cargando-pantalla i {
+  .mfa-cargando i {
     animation-duration: 2s;
   }
 }

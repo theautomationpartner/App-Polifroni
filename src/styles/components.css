@@ -396,14 +396,23 @@
    El `width: 240px` fijo que traen de la pantalla de inicio pasa acá a ser un TECHO: si se deja
    fijo, los controles no encogen, el lado izquierdo de la barra reclama más ancho del que hay y la
    barra de etapas —que no baja de línea— termina dibujándose encima de ellos. */
+/* ANCHO FIJO, como en La Batea: la caja mide lo mismo elija quien elija. Con ancho automático
+   "Diana" achicaba la caja y "The Automation Partner" la agrandaba, y todo el encabezado se movía
+   con cada elección. El ancho sale del nombre más largo de la cuenta ("Gonzalez Natalia Andrea",
+   "The Automation Partner"): entra entero, y uno más largo se corta con "…". Las dos cajas miden
+   igual para que el encabezado sea una sola línea pareja. Cambia sólo por ANCHO DE PANTALLA
+   (ver los @media de abajo), nunca por lo que tenga adentro. */
+.paso-header-sel {
+  --sel-ancho: 256px;
+}
 .paso-header-sel .topsel-item {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 .paso-header-sel .selbox,
 .paso-header-sel .selbox--fix {
-  width: auto;
-  max-width: 240px;
+  width: var(--sel-ancho);
+  max-width: none;
   min-width: 0;
 }
 /* La marca también cede: primero el nombre, y si hace falta se queda en el isotipo. */
@@ -1458,9 +1467,8 @@ td {
   .paso-header-in {
     gap: 12px;
   }
-  .paso-header-sel .selbox,
-  .paso-header-sel .selbox--fix {
-    max-width: 170px;
+  .paso-header-sel {
+    --sel-ancho: 200px;
   }
   .paso-header-steps {
     padding: 10px 0;
@@ -1478,9 +1486,8 @@ td {
   .paso-header-sel .topsel {
     gap: 10px;
   }
-  .paso-header-sel .selbox,
-  .paso-header-sel .selbox--fix {
-    max-width: 120px;
+  .paso-header-sel {
+    --sel-ancho: 150px;
   }
   /* El nombre escrito de la marca se va: el isotipo solo sigue llevando al inicio. */
   .paso-header-sel .marca-txt {
@@ -1545,12 +1552,6 @@ td {
   .paso-header-sel .selbox--fix {
     width: 100%;
     max-width: none;
-  }
-  /* La lista de usuarios no puede salirse de la pantalla por la derecha. */
-  .sel-usuario .ddmenu {
-    left: auto;
-    right: 0;
-    max-width: calc(100vw - 24px);
   }
 }
 

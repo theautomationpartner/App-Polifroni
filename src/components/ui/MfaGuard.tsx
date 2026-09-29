@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Cargando } from './Cargando'
+import { CargandoAcceso, LogoAcceso } from './PantallaAcceso'
 import {
   confirmarEnrolamiento,
   DemasiadosIntentos,
@@ -91,14 +91,14 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
     }
   }
 
-  /* Mientras se prepara, la animación va sola sobre la app: todavía no hay nada que mostrar dentro
-     del panel, y dibujarlo vacío con un texto adentro es una caja por el gusto de la caja. */
-  if (paso === 'cargando' && !error) return <Cargando mensaje="Preparando la verificación" />
+  /* Mientras se prepara, la misma tarjeta con el logo y el spinner: así pasar de la espera al QR
+     no cambia de fondo ni de lugar, sólo de contenido. */
+  if (paso === 'cargando' && !error) return <CargandoAcceso mensaje="Preparando la verificación" />
 
   return (
     <div className="mfa-muro">
       <div className="mfa-panel">
-        <i className="fas fa-shield-halved mfa-icono" />
+        <LogoAcceso />
 
         {paso === 'enrolar' && enrolamiento && (
           <>
