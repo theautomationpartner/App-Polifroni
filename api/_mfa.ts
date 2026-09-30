@@ -40,9 +40,11 @@ import { mfaStore, type Usuario } from './_mfaStore.js'
  */
 const TOLERANCIA_S = 30
 
-/** Límite de velocidad: cinco fallos en quince minutos y la puerta se cierra. */
-const MAX_FALLOS = 5
-const VENTANA_LIMITE_MS = 15 * 60_000
+/*
+ * SIN límite de intentos, a pedido de Polifroni: la cuenta de clients se comparte y un bloqueo de
+ * 15 minutos dejaba a todo el equipo afuera por los errores de uno. Los intentos se siguen anotando
+ * (`mfa_intentos`) para poder auditarlos; lo que ya no hacen es cerrar la puerta.
+ */
 
 /**
  * Cuánto dura el dispositivo. Una sola duración: la jornada.
@@ -154,14 +156,56 @@ export interface Enrolamiento {
 }
 
 /**
- * Arranca el enrolamiento: secreto nuevo, guardado cifrado y en estado pendiente.
+ * La clave que trae el usuario, lista para usar, o `null` si no es una clave TOTP válida.
+ *
+ * Acepta la clave sola ("JBSW Y3DP EHPK 3PXP", con o sin espacios) o el link completo que muestra
+ * 1Password o Google Authenticator (`otpauth://totp/...?secret=...`). Sólo sirven las claves
+ * estándar —SHA1, 6 dígitos, 30 segundos—, que es lo que usa Monday: con otra configuración los
+ * códigos de la app del teléfono no coincidirían nunca con los que calcula el servidor.
+ */
+export function clavePropia(entrada: string): string | null {
+  let texto = entrada.trim()
+  if (/^otpauth:/i.test(texto)) {
+    let url: URL
+    try {
+      url = new URL(texto)
+    } catch {
+      return null
+    }
+    const p = url.searchParams
+    if ((p.get('algorithm') ?? 'SHA1').toUpperCase() !== 'SHA1') return null
+    if ((p.get('digits') ?? '6') !== '6') return null
+    if ((p.get('period') ?? '30') !== '30') return null
+    texto = p.get('secret') ?? ''
+  }
+  const clave = texto.toUpperCase().replace(/[\s-]/g, '').replace(/=+$/, '')
+  /* Base32: letras A-Z y dígitos 2-7. Menos de 16 caracteres (80 bits) no es una clave real. */
+  return /^[A-Z2-7]{16,}$/.test(clave) ? clave : null
+}
+
+/**
+ * Arranca el enrolamiento: secreto guardado cifrado y en estado pendiente.
+ *
+ * El secreto es uno nuevo, o el que trae el usuario (`propio`): la clave del segundo factor de su
+ * cuenta de Monday, que ya tiene en 1Password. Con la misma clave, el MISMO código entra a Monday y
+ * a la app, que es lo que pidió Polifroni para la cuenta de clients.
  *
  * Queda PENDIENTE a propósito. Si se marcara confirmado acá, alguien que abandona a mitad de camino
  * —cerró la pestaña sin escanear— se quedaría con un segundo factor que no puede usar, y sin forma
  * de entrar. Confirmado significa que probó que su app genera códigos que validan.
  */
-export async function iniciarEnrolamiento(u: Usuario, etiqueta: string): Promise<Enrolamiento> {
-  const secreto = generateSecret()
+export async function iniciarEnrolamiento(
+  u: Usuario,
+  etiqueta: string,
+  propio?: string,
+): Promise<Enrolamiento> {
+  let secreto = generateSecret()
+  if (propio !== undefined) {
+    const clave = clavePropia(propio)
+    /* Un SyntaxError es un pedido mal armado: el andamiaje lo devuelve como 400. */
+    if (!clave) throw new SyntaxError('la clave del segundo factor no es válida')
+    secreto = clave
+  }
   await mfaStore().guardarPendiente(u, cifrar(secreto))
 
   const uri = generateURI({
@@ -228,18 +272,11 @@ export interface ResultadoVerificacion {
 /**
  * Verifica un código —de la app o de recuperación— y, si corresponde, emite el dispositivo confiable.
  *
- * El orden importa: primero el límite de velocidad, que corta ANTES de mirar el código. Un límite
- * que sólo se aplica después de verificar no frena una fuerza bruta, apenas la registra.
+ * Sin límite de intentos (ver arriba): un código incorrecto se rechaza y se anota, y se puede volver
+ * a probar en el acto.
  */
 export async function verificar(u: Usuario, codigo: string): Promise<ResultadoVerificacion> {
   const almacen = mfaStore()
-
-  const fallos = await almacen.contarFallos(u, new Date(Date.now() - VENTANA_LIMITE_MS))
-  if (fallos >= MAX_FALLOS) {
-    /* Se corta incluso si el código es correcto. Es a propósito: si el atacante pudiera distinguir
-       bloqueado de código malo probando uno bueno, el límite le contaría cuándo acertó. */
-    throw new ErrorAuth(429, 'límite de intentos alcanzado: ' + fallos + ' fallos en 15 min')
-  }
 
   const registro = await almacen.leerRegistro(u)
   if (!registro?.confirmado) throw new ErrorAuth(403, 'segundo factor no enrolado')

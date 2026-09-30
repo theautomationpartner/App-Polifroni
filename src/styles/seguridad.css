@@ -119,6 +119,33 @@
   color: var(--text-dark);
   cursor: pointer;
 }
+/* Acción secundaria de la tarjeta: se lee como un link, no compite con el botón principal. */
+.mfa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-blue);
+  cursor: pointer;
+}
+.mfa-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.mfa-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* La clave es texto largo, no seis dígitos: letra normal y sin el espaciado del código. */
+.mfa-input--clave {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-align: left;
+}
 .mfa-boton {
   width: 100%;
   padding: 12px;

@@ -5,7 +5,8 @@
  * convierten un TOTP decorativo en uno real:
  *  · un código NO se puede usar dos veces, aunque le queden segundos de vida;
  *  · la tolerancia es de un período para cada lado y ni uno más;
- *  · el límite de intentos corta ANTES de mirar el código, así que ni siquiera uno correcto pasa;
+ *  · SIN límite de intentos (pedido de Polifroni): los fallos se anotan pero no bloquean;
+ *  · una clave propia —la del segundo factor de Monday— sirve igual que una generada;
  *  · el dispositivo confiable vale para un usuario y hasta su vencimiento, no más.
  *
  * Corre contra un almacén en memoria que imita al de Postgres, así que no hace falta base.
@@ -209,33 +210,44 @@ reiniciar()
   assert.equal(codigos.length, 10, 'el código del período anterior entra')
 }
 
-// ── Límite de velocidad: 5 fallos cada 15 minutos ───────────────────────────────────────────────
+// ── Sin límite de intentos: después de varios fallos, el código correcto entra igual ──────────────
 reiniciar()
 {
   const secreto = await enrolar()
 
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 8; i++) {
     assert.equal(await status(() => verificar(usuario, '000000')), 401, `fallo ${i}`)
   }
-
-  /* El sexto intento se corta ANTES de mirar el código. Se prueba con uno CORRECTO a propósito: si
-     un código bueno pasara igual, el límite no estaría frenando la fuerza bruta sino apenas
-     contándola, y además le diría al atacante cuándo acertó. */
   const bueno = generateSync({ secret: secreto, epoch: Math.floor(Date.now() / 1000) + 30 })
-  assert.equal(await status(() => verificar(usuario, bueno)), 429, 'sexto intento: bloqueado')
+  assert.equal(await status(() => verificar(usuario, bueno)), 'ok', 'tras 8 fallos, el código bueno entra')
+  assert.equal(memoria.intentos.filter((x) => !x.exito).length, 8, 'los fallos quedan anotados')
+}
 
-  // El bloqueo es por usuario: otra persona no paga por los fallos ajenos.
-  const secretoOtro = await enrolar(otro)
-  const buenoOtro = generateSync({ secret: secretoOtro, epoch: Math.floor(Date.now() / 1000) + 30 })
-  assert.equal(await status(() => verificar(otro, buenoOtro)), 'ok', 'el límite es por usuario')
+// ── Clave propia: la del segundo factor de Monday, cargada a mano ─────────────────────────────────
+reiniciar()
+{
+  const clave = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+  // Con espacios y en minúscula, como la copia la gente.
+  const alta = await iniciarEnrolamiento(usuario, 'test', 'jbsw y3dp ehpk 3pxp jbsw y3dp ehpk 3pxp')
+  assert.equal(alta.secreto, clave, 'se normaliza')
+  await confirmarEnrolamiento(usuario, generateSync({ secret: clave }))
+  const hoy = generateSync({ secret: clave, epoch: Math.floor(Date.now() / 1000) + 30 })
+  assert.equal(await status(() => verificar(usuario, hoy)), 'ok', 'el MISMO código de la clave entra')
 
-  // Cuando la ventana pasa, la puerta se vuelve a abrir sola.
-  for (const intento of memoria.intentos) intento.cuando -= 16 * 60_000
-  /* +30 s y no más: la tolerancia es de UN período, así que un código de dos períodos adelante
-     estaría fuera de rango y el test estaría probando otra cosa. Este nunca se consumió: el
-     intento anterior murió en el límite, antes de mirar el código. */
-  const otroBueno = generateSync({ secret: secreto, epoch: Math.floor(Date.now() / 1000) + 30 })
-  assert.equal(await status(() => verificar(usuario, otroBueno)), 'ok', 'a los 15 min se libera')
+  // El link completo de 1Password / Google Authenticator también sirve.
+  const link = await iniciarEnrolamiento(otro, 'test', `otpauth://totp/Monday:clients?secret=${clave}&issuer=Monday`)
+  assert.equal(link.secreto, clave, 'se lee el secret del link')
+
+  // Lo que no es una clave TOTP estándar se rechaza como pedido mal armado.
+  for (const mala of ['123456', 'no-es-una-clave', `otpauth://totp/x?secret=${clave}&digits=8`]) {
+    let tipo = ''
+    try {
+      await iniciarEnrolamiento(usuario, 'test', mala)
+    } catch (e) {
+      tipo = (e as Error).name
+    }
+    assert.equal(tipo, 'SyntaxError', `se rechaza: ${mala}`)
+  }
 }
 
 // ── Códigos de recuperación ─────────────────────────────────────────────────────────────────────
