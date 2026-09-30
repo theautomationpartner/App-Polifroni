@@ -156,56 +156,14 @@ export interface Enrolamiento {
 }
 
 /**
- * La clave que trae el usuario, lista para usar, o `null` si no es una clave TOTP válida.
- *
- * Acepta la clave sola ("JBSW Y3DP EHPK 3PXP", con o sin espacios) o el link completo que muestra
- * 1Password o Google Authenticator (`otpauth://totp/...?secret=...`). Sólo sirven las claves
- * estándar —SHA1, 6 dígitos, 30 segundos—, que es lo que usa Monday: con otra configuración los
- * códigos de la app del teléfono no coincidirían nunca con los que calcula el servidor.
- */
-export function clavePropia(entrada: string): string | null {
-  let texto = entrada.trim()
-  if (/^otpauth:/i.test(texto)) {
-    let url: URL
-    try {
-      url = new URL(texto)
-    } catch {
-      return null
-    }
-    const p = url.searchParams
-    if ((p.get('algorithm') ?? 'SHA1').toUpperCase() !== 'SHA1') return null
-    if ((p.get('digits') ?? '6') !== '6') return null
-    if ((p.get('period') ?? '30') !== '30') return null
-    texto = p.get('secret') ?? ''
-  }
-  const clave = texto.toUpperCase().replace(/[\s-]/g, '').replace(/=+$/, '')
-  /* Base32: letras A-Z y dígitos 2-7. Menos de 16 caracteres (80 bits) no es una clave real. */
-  return /^[A-Z2-7]{16,}$/.test(clave) ? clave : null
-}
-
-/**
- * Arranca el enrolamiento: secreto guardado cifrado y en estado pendiente.
- *
- * El secreto es uno nuevo, o el que trae el usuario (`propio`): la clave del segundo factor de su
- * cuenta de Monday, que ya tiene en 1Password. Con la misma clave, el MISMO código entra a Monday y
- * a la app, que es lo que pidió Polifroni para la cuenta de clients.
+ * Arranca el enrolamiento: secreto nuevo, guardado cifrado y en estado pendiente.
  *
  * Queda PENDIENTE a propósito. Si se marcara confirmado acá, alguien que abandona a mitad de camino
  * —cerró la pestaña sin escanear— se quedaría con un segundo factor que no puede usar, y sin forma
  * de entrar. Confirmado significa que probó que su app genera códigos que validan.
  */
-export async function iniciarEnrolamiento(
-  u: Usuario,
-  etiqueta: string,
-  propio?: string,
-): Promise<Enrolamiento> {
-  let secreto = generateSecret()
-  if (propio !== undefined) {
-    const clave = clavePropia(propio)
-    /* Un SyntaxError es un pedido mal armado: el andamiaje lo devuelve como 400. */
-    if (!clave) throw new SyntaxError('la clave del segundo factor no es válida')
-    secreto = clave
-  }
+export async function iniciarEnrolamiento(u: Usuario, etiqueta: string): Promise<Enrolamiento> {
+  const secreto = generateSecret()
   await mfaStore().guardarPendiente(u, cifrar(secreto))
 
   const uri = generateURI({

@@ -6,7 +6,6 @@
  *  · un código NO se puede usar dos veces, aunque le queden segundos de vida;
  *  · la tolerancia es de un período para cada lado y ni uno más;
  *  · SIN límite de intentos (pedido de Polifroni): los fallos se anotan pero no bloquean;
- *  · una clave propia —la del segundo factor de Monday— sirve igual que una generada;
  *  · el dispositivo confiable vale para un usuario y hasta su vencimiento, no más.
  *
  * Corre contra un almacén en memoria que imita al de Postgres, así que no hace falta base.
@@ -221,33 +220,6 @@ reiniciar()
   const bueno = generateSync({ secret: secreto, epoch: Math.floor(Date.now() / 1000) + 30 })
   assert.equal(await status(() => verificar(usuario, bueno)), 'ok', 'tras 8 fallos, el código bueno entra')
   assert.equal(memoria.intentos.filter((x) => !x.exito).length, 8, 'los fallos quedan anotados')
-}
-
-// ── Clave propia: la del segundo factor de Monday, cargada a mano ─────────────────────────────────
-reiniciar()
-{
-  const clave = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
-  // Con espacios y en minúscula, como la copia la gente.
-  const alta = await iniciarEnrolamiento(usuario, 'test', 'jbsw y3dp ehpk 3pxp jbsw y3dp ehpk 3pxp')
-  assert.equal(alta.secreto, clave, 'se normaliza')
-  await confirmarEnrolamiento(usuario, generateSync({ secret: clave }))
-  const hoy = generateSync({ secret: clave, epoch: Math.floor(Date.now() / 1000) + 30 })
-  assert.equal(await status(() => verificar(usuario, hoy)), 'ok', 'el MISMO código de la clave entra')
-
-  // El link completo de 1Password / Google Authenticator también sirve.
-  const link = await iniciarEnrolamiento(otro, 'test', `otpauth://totp/Monday:clients?secret=${clave}&issuer=Monday`)
-  assert.equal(link.secreto, clave, 'se lee el secret del link')
-
-  // Lo que no es una clave TOTP estándar se rechaza como pedido mal armado.
-  for (const mala of ['123456', 'no-es-una-clave', `otpauth://totp/x?secret=${clave}&digits=8`]) {
-    let tipo = ''
-    try {
-      await iniciarEnrolamiento(usuario, 'test', mala)
-    } catch (e) {
-      tipo = (e as Error).name
-    }
-    assert.equal(tipo, 'SyntaxError', `se rechaza: ${mala}`)
-  }
 }
 
 // ── Códigos de recuperación ─────────────────────────────────────────────────────────────────────

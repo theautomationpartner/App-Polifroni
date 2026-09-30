@@ -139,13 +139,6 @@
   opacity: 0.5;
   cursor: default;
 }
-/* La clave es texto largo, no seis dígitos: letra normal y sin el espaciado del código. */
-.mfa-input--clave {
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-align: left;
-}
 .mfa-boton {
   width: 100%;
   padding: 12px;

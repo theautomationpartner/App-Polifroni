@@ -81,24 +81,8 @@ export async function estadoSegundoFactor(): Promise<EstadoSegundoFactor> {
 }
 
 /** Paso 1: el QR para escanear. El secreto queda pendiente hasta que se confirme. */
-export async function iniciarEnrolamiento(clavePropia?: string): Promise<Enrolamiento> {
-  const res = await fetch('/api/mfa/setup', {
-    method: 'POST',
-    headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(clavePropia ? { secreto: clavePropia } : {}),
-  })
-  /* 400 = la clave que pegó no es una clave TOTP válida. Se distingue para decírselo así. */
-  if (res.status === 400) throw new ClaveInvalida()
-  if (!res.ok) throw new Error(`Segundo factor: HTTP ${res.status}`)
-  return (await res.json()) as Enrolamiento
-}
-
-/** La clave pegada no es una clave de verificación válida (o no es de 6 dígitos cada 30 s). */
-export class ClaveInvalida extends Error {
-  constructor() {
-    super('Esa clave no es válida. Copiala completa desde 1Password (o pegá el link otpauth://).')
-    this.name = 'ClaveInvalida'
-  }
+export async function iniciarEnrolamiento(): Promise<Enrolamiento> {
+  return pedir<Enrolamiento>('setup')
 }
 
 /**

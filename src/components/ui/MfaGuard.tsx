@@ -5,7 +5,6 @@ import {
   DemasiadosIntentos,
   estadoSegundoFactor,
   iniciarEnrolamiento,
-  ClaveInvalida,
   verificarCodigo,
   type Enrolamiento,
 } from '@/services/mfa'
@@ -39,15 +38,6 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
   /* La sacudida del campo ante un código incorrecto. Es feedback físico: se entiende antes de leer
      el mensaje, y es lo que el ojo espera de un campo que rechaza algo. */
   const [sacudir, setSacudir] = useState(false)
-  /**
-   * Cargar una clave que el usuario YA tiene —la del segundo factor de su cuenta de Monday, en
-   * 1Password— en lugar de escanear una nueva. Con la misma clave, el mismo código de 6 dígitos
-   * entra a Monday y a la app.
-   */
-  const [conClavePropia, setConClavePropia] = useState(false)
-  const [clave, setClave] = useState('')
-  /** Se acaba de cargar una clave propia: se le dice que ahora ponga el código de ESA entrada. */
-  const [claveCargada, setClaveCargada] = useState(false)
   const campo = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -71,26 +61,6 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
     }
   }, [])
 
-  /** Usa la clave pegada: el servidor la guarda (pendiente) y se confirma con su código actual. */
-  async function usarClavePropia(e: FormEvent) {
-    e.preventDefault()
-    if (enviando || !clave.trim()) return
-    setEnviando(true)
-    setError(null)
-    try {
-      setEnrolamiento(await iniciarEnrolamiento(clave.trim()))
-      setConClavePropia(false)
-      setClaveCargada(true)
-      setClave('')
-    } catch (err) {
-      setError(
-        err instanceof ClaveInvalida ? err.message : 'No se pudo guardar la clave. Probá de nuevo.',
-      )
-    } finally {
-      setEnviando(false)
-    }
-  }
-
   /**
    * Vuelve a configurar el segundo factor desde cero (otra clave u otro teléfono). El servidor
    * reemplaza la clave anterior: hasta confirmar la nueva, se pide configurarla.
@@ -102,7 +72,6 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
     try {
       setEnrolamiento(await iniciarEnrolamiento())
       setCodigo('')
-      setClaveCargada(false)
       setPaso('enrolar')
     } catch {
       setError('No se pudo empezar la configuración. Recargá la página.')
@@ -150,7 +119,7 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
       <div className="mfa-panel">
         <EscudoAcceso />
 
-        {paso === 'enrolar' && enrolamiento && !conClavePropia && !claveCargada && (
+        {paso === 'enrolar' && enrolamiento && (
           <>
             <h2 className="mfa-titulo">Configurá tu segundo factor</h2>
             <p className="mfa-texto">
@@ -165,63 +134,6 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
             <p className="mfa-secreto">
               ¿No podés escanear? Cargalo a mano: <code>{enrolamiento.secreto}</code>
             </p>
-            <button type="button" className="mfa-link" onClick={() => setConClavePropia(true)}>
-              <i className="fas fa-key" /> Usar la clave de mi cuenta de Monday (1Password)
-            </button>
-          </>
-        )}
-
-        {paso === 'enrolar' && claveCargada && (
-          <>
-            <h2 className="mfa-titulo">Clave cargada</h2>
-            <p className="mfa-texto">
-              Escribí el código de seis dígitos que te muestra <strong>1Password</strong> para esa
-              cuenta. Desde ahora, ese mismo código sirve para Monday y para esta app.
-            </p>
-          </>
-        )}
-
-        {paso === 'enrolar' && conClavePropia && (
-          <>
-            <h2 className="mfa-titulo">Usar la clave de Monday</h2>
-            <p className="mfa-texto">
-              En 1Password, editá la entrada de la cuenta de Monday y copiá la clave de la
-              <strong> contraseña de un solo uso</strong> (el texto largo, o el link{' '}
-              <code>otpauth://</code>). Pegala acá: vas a entrar con el mismo código que usás en
-              Monday.
-            </p>
-            <form onSubmit={usarClavePropia} className={`mfa-form${enviando ? ' mfa-form--enviando' : ''}`}>
-              <input
-                className="mfa-input mfa-input--clave"
-                value={clave}
-                onChange={(e) => {
-                  setClave(e.target.value)
-                  if (error) setError(null)
-                }}
-                placeholder="Pegá la clave o el link otpauth://"
-                autoComplete="off"
-                spellCheck={false}
-                autoFocus
-                disabled={enviando}
-              />
-              <button type="submit" className="btn btn-primary mfa-boton" disabled={enviando || !clave.trim()}>
-                {enviando && <i className="fas fa-circle-notch spin" />}
-                {enviando ? 'Guardando…' : 'Usar esta clave'}
-              </button>
-              <p className={`mfa-error${error ? '' : ' mfa-error--vacio'}`} role="alert">
-                {error ?? ''}
-              </p>
-            </form>
-            <button
-              type="button"
-              className="mfa-link"
-              onClick={() => {
-                setConClavePropia(false)
-                setError(null)
-              }}
-            >
-              Volver al código QR
-            </button>
           </>
         )}
 
@@ -265,7 +177,7 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
           </>
         )}
 
-        {(paso === 'verificar' || (paso === 'enrolar' && !conClavePropia)) && (
+        {(paso === 'enrolar' || paso === 'verificar') && (
           /* No se reemplaza por un loading: se OSCURECE y se bloquea. Cambiar el formulario por
              una animación borra lo que la persona acaba de escribir de su vista y la deja sin
              referencia de qué está pasando; atenuarlo dice "esto sigue acá, esperá". */
@@ -320,7 +232,7 @@ export function MfaGuard({ onListo }: { onListo: () => void }) {
 
         {paso === 'verificar' && (
           <button type="button" className="mfa-link" onClick={() => void configurarDeNuevo()} disabled={enviando}>
-            ¿Querés usar otra clave (por ejemplo, la de Monday)? Configurar de nuevo
+            ¿Cambiaste de celular o de app? Configurar de nuevo
           </button>
         )}
 
