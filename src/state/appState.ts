@@ -71,6 +71,8 @@ export interface BorradorOp {
 /** Un envío hecho con el documento de la app: a quiénes, cuándo y el link que devolvió Make. */
 export interface EnvioLocal {
   roles: ('Cliente' | 'Constructor')[]
+  /** El responsable de confirmar la orden (con un solo destinatario, ése). */
+  confirmador: 'Cliente' | 'Constructor' | null
   link: string
   /** ISO. */
   cuando: string

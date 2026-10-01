@@ -3,6 +3,7 @@ import {
   COL,
   ESTADO_OP,
   ETIQUETA,
+  guardarConfirmador,
   guardarLinkOrden,
   leerOrden,
   setEstado,
@@ -17,7 +18,8 @@ const VIA = 'Whatsapp'
 /**
  * Deja en Monday el envío que se hizo con el PDF de la app (Aluminio y PVC), al finalizar la
  * operación: la OP "Enviada Pend Confirmar"; en la obra a quiénes y por dónde, y "Pend de
- * Confirmar"; el link del PDF en la OP y la actividad "OP Enviada". El estado de envío de la OP no
+ * Confirmar"; quién confirma (`🤖Responsable de Confirmar`), el link del PDF en la OP y la
+ * actividad "OP Enviada". El estado de envío de la OP no
  * se escribe: sólo se marca cuando el envío falla ("Error De Envio").
  */
 export async function registrarEnvioLocal(
@@ -34,6 +36,7 @@ export async function registrarEnvioLocal(
   },
 ): Promise<void> {
   await setEstadoOrden(ordenId, ESTADO_OP.enviada)
+  if (envio.confirmador) await guardarConfirmador(ordenId, envio.confirmador)
   const etiqueta = envio.roles.length === 2 ? 'Ambos' : (envio.roles[0] ?? '')
   if (etiqueta && obra.opDestinatario.texto !== etiqueta) await setEstado(obra.id, COL.opDestinatario, etiqueta)
   if (obra.opVia.texto !== VIA) await setEstado(obra.id, COL.opVia, VIA)

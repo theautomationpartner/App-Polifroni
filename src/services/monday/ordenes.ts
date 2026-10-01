@@ -39,6 +39,8 @@ export const COL_OP = {
   /** 🤖Estado de Envio OP al Taller (status): Enviando... | Enviado | Error de Envio. Lo escribe el
       escenario del taller (la app le pasa la columna en `columnId`). */
   estadoEnvioTaller: 'color_mm7qjqgr',
+  /** 🤖Responsable de Confirmar (dropdown, una sola): Cliente | Constructor. Lo escribe el envío. */
+  confirmador: 'dropdown_mm7qyr8k',
   /** Link al PDF enviado (link): la URL compartida que devuelve el envío. */
   linkPdf: 'link_mm7hmk9d',
   /** 🤖Motivo (long_text): por qué se canceló la OP. */
@@ -455,6 +457,8 @@ export interface ResumenOrden {
   estadoEnvio: string
   /** `🤖Estado de Envio OP al Taller`: decide si la OP todavía se puede mandar al taller. */
   envioTaller: string
+  /** `🤖Responsable de Confirmar`: "Cliente", "Constructor" o vacío. */
+  confirmador: string
   /** La etiqueta de `🤖Estado OP` tal cual está en el tablero. */
   estado: string
   /** El estado de la OP ya interpretado (ver `lib/estadosOp`). Es el que manda. */
@@ -481,6 +485,7 @@ const COLS_RESUMEN = [
   COL_OP.observacion,
   COL_OP.estadoEnvio,
   COL_OP.estadoEnvioTaller,
+  COL_OP.confirmador,
   COL_OP.estado,
   COL_OP.motivo,
   COL_OP.linkPdf,
@@ -536,6 +541,7 @@ function aResumen(i: ItemOrden): ResumenOrden {
     observacion: t(COL_OP.observacion),
     estadoEnvio: t(COL_OP.estadoEnvio),
     envioTaller: t(COL_OP.estadoEnvioTaller),
+    confirmador: t(COL_OP.confirmador),
     estado,
     estadoOrden: estadoDeOrden(estado, opFinal.length > 0),
     motivo: t(COL_OP.motivo),
@@ -676,6 +682,11 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
  *
  * El motivo lleva quién y cuándo, porque la columna es un texto y no guarda autor.
  */
+/** Quién es el responsable de confirmar la OP (`🤖Responsable de Confirmar`). */
+export async function guardarConfirmador(ordenId: string, rol: 'Cliente' | 'Constructor'): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.confirmador]: { labels: [rol] } })
+}
+
 export async function cancelarOrden(ordenId: string, motivo: string, autor: string): Promise<void> {
   const cuando = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
   const texto = `${motivo.trim()}\n— Cancelada por ${autor || 'la app'} el ${cuando}`

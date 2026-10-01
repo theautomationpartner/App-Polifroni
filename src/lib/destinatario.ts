@@ -44,7 +44,16 @@ const valores = (v: string) =>
     .map((x) => x.trim())
     .filter(Boolean)
 
-const digitos = (v: string) => v.replace(/\D/g, '')
+export const digitos = (v: string) => v.replace(/\D/g, '')
+
+/**
+ * Un celular escrito a mano, en la forma en que se guarda: sólo dígitos y, si vino con los 10 de
+ * característica + número, con el 549 de los móviles adelante ("249 436-9123" → "5492494369123").
+ */
+export function normalizarCelular(texto: string): string {
+  const d = digitos(texto)
+  return /^\d{10}$/.test(d) ? `549${d}` : d
+}
 
 /** "SIN ARQUITECTO", "SIN CONSTRUCTOR": el tablero usa un ítem comodín cuando no hay nadie. */
 const esComodin = (nombre: string) => /^sin\s+(arquitecto|constructor)/i.test(nombre.trim())

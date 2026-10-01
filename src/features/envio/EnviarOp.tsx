@@ -20,6 +20,7 @@ import {
   ESTADO_ENVIO_OP,
   ESTADO_OP,
   ETIQUETA,
+  guardarConfirmador,
   guardarLinkOrden,
   leerOrden,
   setEstado,
@@ -28,6 +29,7 @@ import {
   type ResumenOrden,
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
+import { EditarCelular } from './EditarCelular'
 import { MensajeEjemplo } from './MensajeEjemplo'
 import { linkDeRespuesta, registrarActividadEnvio } from './actividadEnvio'
 import { useEnviarOp } from './useEnviarOp'
@@ -152,12 +154,19 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
    */
   const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(null)
   const [verMensaje, setVerMensaje] = useState(false)
+  /** El destinatario cuyo celular se está corrigiendo (ver `EditarCelular`). */
+  const [editandoCel, setEditandoCel] = useState<Rol | null>(null)
   const [faltan, setFaltan] = useState<{ titulo: string; items: string[] } | null>(null)
   const [preparando, setPreparando] = useState(false)
   const [cerrando, setCerrando] = useState(false)
   const [fallo, setFallo] = useState<string | null>(null)
   /** La OP y los destinatarios con que salió ESTA corrida: el cierre los usa aunque la pantalla cambie. */
-  const enCurso = useRef<{ orden: ResumenOrden | null; roles: Rol[]; reenvio: boolean } | null>(null)
+  const enCurso = useRef<{
+    orden: ResumenOrden | null
+    roles: Rol[]
+    reenvio: boolean
+    confirmador: Rol | null
+  } | null>(null)
   const disparando = useRef(false)
 
   const enviando = preparando || corrida.enCurso || cerrando
@@ -225,7 +234,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       if (local) {
         if (antesDeEnviar) await antesDeEnviar()
         const destinos = roles.map((r) => destinoDe(obra, r))
-        enCurso.current = { orden: null, roles: [...roles], reenvio: false }
+        enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador }
         void cliente.correr({
           ...sobreDeLaOp(local.ordenId),
           ordenId: local.ordenId,
@@ -280,7 +289,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       }
       const pdf = fresca.opFinal.find((a) => !a.esImagen) ?? fresca.opFinal[0]
       if (modo === 'taller') {
-        enCurso.current = { orden: fresca, roles: [], reenvio: false }
+        enCurso.current = { orden: fresca, roles: [], reenvio: false, confirmador: null }
         void taller.correr({
           ...sobreDeLaOp(fresca.id),
           ordenId: fresca.id,
@@ -299,7 +308,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       if (obra.opDestinatario.texto !== etiqueta) await setEstado(obra.id, COL.opDestinatario, etiqueta)
       if (obra.opVia.texto !== VIA) await setEstado(obra.id, COL.opVia, VIA)
       const esReenvio = fresca.estadoOrden === 'pendiente'
-      enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio }
+      enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio, confirmador }
       void cliente.correr({
         ...sobreDeLaOp(fresca.id),
         ordenId: fresca.id,
@@ -359,7 +368,14 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
         const cuerpo = await cliente.esperarRespuesta(15_000)
         dispatch({
           type: 'setBorrador',
-          cambios: { envio: { roles: e.roles, link: linkDeRespuesta(cuerpo), cuando: new Date().toISOString() } },
+          cambios: {
+            envio: {
+              roles: e.roles,
+              confirmador: e.confirmador,
+              link: linkDeRespuesta(cuerpo),
+              cuando: new Date().toISOString(),
+            },
+          },
         })
       } else if (modo === 'taller') {
         await setEstadoOrden(e.orden.id, ESTADO_OP.taller).catch((err) =>
@@ -367,6 +383,12 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
         )
       } else {
         if (!e.reenvio) await setEstadoOrden(e.orden.id, ESTADO_OP.enviada).catch(() => {})
+        /* Quién confirma esta orden: la consulta lo muestra cuando la confirman. */
+        if (e.confirmador) {
+          await guardarConfirmador(e.orden.id, e.confirmador).catch((err) =>
+            console.warn('[envio] no se pudo guardar el responsable de confirmar', err),
+          )
+        }
         /* Una OP nueva todavía no tiene respuesta: una respuesta vieja en la obra no es la suya. */
         if (obra.confirmacionOp.texto !== ETIQUETA.pendConfirmar) {
           await setEstado(obra.id, COL.confirmacionOp, ETIQUETA.pendConfirmar).catch(() => {})
@@ -508,6 +530,17 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
                       : celularValido(d.whatsapp)
                         ? formatoMonday(d.whatsapp)
                         : `TELEFONO INVALIDO (${d.whatsapp})`}
+                    {/* Corregir el número sin salir del envío. Enviada la orden, ya no. */}
+                    {!enviado && (
+                      <button
+                        type="button"
+                        className="citem-editar"
+                        disabled={enviando}
+                        onClick={() => setEditandoCel(r)}
+                      >
+                        Editar
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -629,6 +662,24 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           </div>
         )}
       </div>
+
+      {editandoCel && (
+        <EditarCelular
+          obra={obra}
+          rol={editandoCel}
+          nombre={destinoDe(obra, editandoCel).nombre}
+          actual={destinoDe(obra, editandoCel).whatsapp}
+          onCerrar={() => setEditandoCel(null)}
+          onActualizado={(celular) => {
+            /* La app sigue con el número nuevo: el de la obra es un espejo del de la persona. */
+            setFallo(null)
+            dispatch({
+              type: 'refrescarObra',
+              obra: editandoCel === 'Cliente' ? { ...obra, celCliente: celular } : { ...obra, celArquitecto: celular },
+            })
+          }}
+        />
+      )}
 
       {verMensaje && (
         <MensajeEjemplo destinatario={etiquetaDestinatarios(roles) || 'Cliente'} onClose={() => setVerMensaje(false)} />

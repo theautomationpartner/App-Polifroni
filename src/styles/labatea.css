@@ -1867,3 +1867,193 @@
 .obras-v2 select.is-falta {
   border-color: var(--red, #e2445c);
 }
+
+/* ═══════════════ Consultar órdenes de producción ═══════════════ */
+/* La ficha de la obra, sólo el encabezado: sin la línea de abajo de la ficha de "Enviar". */
+.obras-v2 .consulta-ficha .client-header {
+  margin-bottom: 0;
+}
+/* Los filtros por estado, entre la bajada de la card y la tabla. */
+.anticipos-v2 .consulta-filtros {
+  margin: 4px 0 14px;
+}
+.anticipos-v2 .consulta-filtros .filtro-op:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* Columnas de la tabla de la consulta (sin casilla, con la acción). */
+.anticipos-v2 .consulta-tabla .cq-w-orden {
+  width: 19%;
+}
+.anticipos-v2 .consulta-tabla .cq-w-fecha {
+  width: 12%;
+}
+.anticipos-v2 .consulta-tabla .cq-w-medido {
+  width: 15%;
+}
+.anticipos-v2 .consulta-tabla .cq-w-estado {
+  width: 20%;
+}
+.anticipos-v2 .consulta-tabla .cq-w-op {
+  width: 9%;
+}
+.anticipos-v2 .consulta-tabla .cq-w-acc {
+  width: 13%;
+}
+/* Quién confirmó: debajo del estado, en chico. */
+.anticipos-v2 .ant-confirmo {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0b7a4b;
+  white-space: normal;
+  line-height: 1.3;
+}
+.anticipos-v2 .ant-confirmo > i {
+  margin-right: 3px;
+}
+/* Cancelar: el botón rojo de la fila. */
+.anticipos-v2 .ant-cancelar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 104px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #df2f4a;
+  border-radius: var(--c-radius-md);
+  background: #df2f4a;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.anticipos-v2 .ant-cancelar:hover:not(:disabled) {
+  background: #c0273c;
+  border-color: #c0273c;
+}
+.anticipos-v2 .ant-cancelar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.anticipos-v2 .ant-cancelar[aria-busy='true'] {
+  opacity: 1;
+  cursor: progress;
+}
+/* La fila que se está cancelando: late suave mientras Monday responde. */
+.anticipos-v2 .ant-row--cancelando td {
+  animation: ant-cancelando 1.1s ease-in-out infinite;
+}
+@keyframes ant-cancelando {
+  0%,
+  100% {
+    background: #fff;
+  }
+  50% {
+    background: #fdecee;
+  }
+}
+/* Cancelada: la fila apagada, con la etiqueta en la columna de la acción. */
+.anticipos-v2 .ant-row--cancelada td {
+  color: #8a94a6;
+}
+.anticipos-v2 .ant-cancelada {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #fdecee;
+  color: #df2f4a;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* Recién cancelada en esta visita: la etiqueta entra con un pequeño salto. */
+.anticipos-v2 .ant-row--recien .ant-cancelada {
+  animation: ant-cancelada-entra 0.35s ease-out;
+}
+@keyframes ant-cancelada-entra {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anticipos-v2 .ant-row--cancelando td,
+  .anticipos-v2 .ant-row--recien .ant-cancelada {
+    animation: none;
+  }
+}
+
+/* "Editar" al lado del celular del destinatario: un botón con estilo de enlace. */
+.obras-v2 .citem-editar {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--marca);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.obras-v2 .citem-editar:hover:not(:disabled) {
+  color: var(--marca-hover);
+}
+.obras-v2 .citem-editar:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* La ventana de editar el celular. */
+.celular-in {
+  width: 100%;
+  height: 42px;
+  margin-top: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--marca-borde);
+  border-radius: 10px;
+  background: #f4f6f9;
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  text-align: left;
+}
+.celular-in:focus {
+  border-color: var(--marca);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(137, 38, 60, 0.12);
+}
+.celular-in--error {
+  border-color: #df2f4a;
+}
+.celular-error {
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  color: #c0273c;
+}
+/* "Confirmado": verde con el tilde blanco. */
+.modal-actions .btn-celular--ok,
+.modal-actions .btn-celular--ok:disabled {
+  background: var(--green, #00c875);
+  border-color: var(--green, #00c875);
+  color: #fff;
+  opacity: 1;
+}
+.modal-actions .btn-celular[aria-busy='true'] {
+  opacity: 1;
+  cursor: progress;
+}
