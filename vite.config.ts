@@ -12,20 +12,69 @@ import { fileURLToPath, URL } from 'node:url'
  *  - `/monday-files`     → bucket S3 de Monday          (bytes de los PDF; S3 no manda CORS)
  *  - `/make/<escenario>` → webhooks de Make             (el hook no responde con cabeceras CORS)
  */
+/**
+ * La numeración de las OP en local, sin el data store de Make: el mayor N° de PVC y de Aluminio
+ * que ya hay en el tablero de órdenes. Contesta con la misma forma que `api/numeracion`.
+ */
+async function numeracionLocal(
+  metodo: string,
+  token: string,
+  res: import('node:http').ServerResponse,
+): Promise<void> {
+  res.setHeader('content-type', 'application/json')
+  if (metodo === 'POST') {
+    res.end(JSON.stringify({ ok: true, local: true }))
+    return
+  }
+  try {
+    const pedir = async (query: string, variables: Record<string, unknown> = {}) => {
+      const r = await fetch('https://api.monday.com/v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': '2024-10' },
+        body: JSON.stringify({ query, variables }),
+      })
+      return (await r.json()) as { data?: Record<string, unknown> }
+    }
+    type Pagina = { cursor: string | null; items: { column_values: { id: string; text: string | null }[] }[] }
+    const campos = 'cursor items { column_values(ids: ["numeric_mm7ep0eq", "text_mm7gjg24"]) { id text } }'
+    const primera = await pedir(`query { boards(ids: [18432207111]) { items_page(limit: 500) { ${campos} } } }`)
+    let pagina = (primera.data?.boards as { items_page: Pagina }[] | undefined)?.[0]?.items_page
+    let pvc = 0
+    let alu = 0
+    for (let n = 0; pagina && n < 20; n++) {
+      for (const i of pagina.items) {
+        for (const c of i.column_values) {
+          const v = Number(String(c.text ?? '').replace(/\D/g, '')) || 0
+          if (c.id === 'numeric_mm7ep0eq') pvc = Math.max(pvc, v)
+          else alu = Math.max(alu, v)
+        }
+      }
+      if (!pagina.cursor) break
+      const sig = await pedir(`query ($c: String!) { next_items_page(limit: 500, cursor: $c) { ${campos} } }`, {
+        c: pagina.cursor,
+      })
+      pagina = sig.data?.next_items_page as Pagina | undefined
+    }
+    res.end(JSON.stringify({ nroOrdenPVC: String(pvc), nroOrdenAluminio: `A${alu}` }))
+  } catch {
+    res.statusCode = 502
+    res.end(JSON.stringify({ error: 'No se pudo calcular la numeración desde el tablero.' }))
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // Prefijo vacío: también se leen las variables SIN `VITE_`, que se usan sólo acá (nunca en el bundle).
   const env = loadEnv(mode, process.cwd(), '')
 
-  /**
-   * La app ya desplegada. Se usa como respaldo para los escenarios que NO tienen su URL en
-   * `.env.local`: en vez de dejar la ruta muerta, el pedido va a `/api/make` del deploy, que sí
-   * tiene la variable cargada. Así se prueba el circuito completo en local sin repartir las URLs
-   * de los hooks por las máquinas de cada uno.
-   *
-   * No agrega exposición: esa ruta ya es pública. Se puede apuntar a otro lado con `APP_URL`, y
-   * apagar el respaldo poniéndola vacía.
+  /*
+   * En local NO hay respaldo en el deploy. Se probó: las funciones de Vercel exigen la sesión
+   * firmada de Monday y la lista blanca, así que un pedido que sale del navegador de la
+   * computadora vuelve con 403 ("esta app sólo funciona dentro de monday.com") y la app lo leía
+   * como "usuario sin permisos". Lo que corre en local, corre ACÁ:
+   *  - los escenarios de Make, con su URL en `.env.local` (sin ella, la app avisa qué falta);
+   *  - la numeración, con `MAKE_TOKEN` contra el data store o, sin él, leída del tablero de
+   *    órdenes con el token de desarrollo (ver `numeracionLocal`).
    */
-  const desplegada = (env.APP_URL ?? 'https://app-polifroni.vercel.app').trim()
 
   /* Los escenarios leen el PDF con IA: los 30 s por defecto de http-proxy los cortarían a mitad de
      camino. Acompaña al tope del cliente. */
@@ -34,9 +83,8 @@ export default defineConfig(({ mode }) => {
   /**
    * Un escenario de Make detrás de una ruta del propio origen.
    *
-   * Con la URL del hook en `.env.local` se le pega directo. Sin ella, se pasa por la función del
-   * deploy. Si tampoco hay deploy configurado, la ruta no existe y la app avisa que falta
-   * configurar el escenario.
+   * Con la URL del hook en `.env.local` se le pega directo. Sin ella la ruta no existe (404) y la
+   * app avisa qué variable falta, en vez de mandarlo a un lugar que lo va a rechazar.
    */
   const hook = (escenario: string, url: string | undefined): Record<string, ProxyOptions> => {
     const ruta = `/make/${escenario}`
@@ -53,15 +101,7 @@ export default defineConfig(({ mode }) => {
       }
     }
 
-    if (!desplegada) return {}
-    return {
-      [ruta]: {
-        target: desplegada,
-        changeOrigin: true,
-        rewrite: () => `/api/make?escenario=${escenario}`,
-        ...espera,
-      },
-    }
+    return {}
   }
 
   /**
@@ -76,24 +116,11 @@ export default defineConfig(({ mode }) => {
     configureServer(server) {
       if (env.MAKE_TOKEN) process.env.MAKE_TOKEN = env.MAKE_TOKEN
       server.middlewares.use('/api/numeracion', async (req, res) => {
-        /* Sin `MAKE_TOKEN` en `.env.local` se usa la función del deploy, que sí lo tiene: igual que
-           los escenarios de Make, así se prueba en local sin repartir el token por las máquinas. */
-        if (!env.MAKE_TOKEN && desplegada) {
-          try {
-            const partes: Buffer[] = []
-            for await (const trozo of req) partes.push(Buffer.from(trozo))
-            const r = await fetch(`${desplegada}/api/numeracion`, {
-              method: req.method,
-              headers: { 'Content-Type': 'application/json' },
-              body: req.method === 'POST' ? Buffer.concat(partes).toString('utf8') : undefined,
-            })
-            res.statusCode = r.status
-            res.setHeader('content-type', 'application/json')
-            res.end(await r.text())
-          } catch {
-            res.statusCode = 502
-            res.end(JSON.stringify({ error: 'No se pudo llegar a la numeración del deploy.' }))
-          }
+        /* Sin `MAKE_TOKEN` en `.env.local` no se puede leer el data store de Make: la numeración
+           se calcula del tablero de órdenes (el último N° de cada tipo), y registrar un número
+           usado no escribe nada —el data store real lo sigue llevando producción—. */
+        if (!env.MAKE_TOKEN) {
+          await numeracionLocal(req.method ?? 'GET', env.VITE_MONDAY_TOKEN ?? '', res)
           return
         }
         const mod = await server.ssrLoadModule('/api/numeracion.ts')
@@ -108,7 +135,8 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
-      port: 5191,
+      /* 5190 y 5191 los usa La Batea en la misma máquina: Polifroni va en el 5192. */
+      port: 5192,
       strictPort: true,
       proxy: {
         ...hook('leer-documento', env.MAKE_WEBHOOK_LEER_DOC),

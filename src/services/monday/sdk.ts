@@ -170,6 +170,14 @@ async function pedir(url: string, init: (auth: string) => RequestInit): Promise<
  * que se ve entera pero donde nada funciona es peor que un cartel.
  */
 export async function verificarRespuesta(res: Response, contexto: string): Promise<void> {
+  /* En local no hay capa de acceso (no hay iframe de Monday ni sesión firmada): un 401/403 ahí no
+     es "usuario sin permisos", es un pedido que fue a parar a algo que lo exige. No se tapa la app
+     con la pantalla de seguridad: se falla ESE pedido, con lo que hay que revisar. */
+  if (DEV && (res.status === 401 || res.status === 403)) {
+    throw new Error(
+      `${contexto}: el servidor rechazó el pedido (HTTP ${res.status}). En local los pedidos no pasan por la capa de acceso de Monday: revisá que no esté yendo al deploy.`,
+    )
+  }
   if (res.status === 401 || res.status === 403 || res.status === 429) {
     const cuerpo = (await res.clone().json().catch(() => ({}))) as { codigo?: string }
     const clase = claseDeRechazo(res.status, cuerpo.codigo)

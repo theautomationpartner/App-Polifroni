@@ -189,7 +189,7 @@ export function useLeerObservaciones(itemId: string) {
         problema:
           e instanceof EscenarioNoConfigurado
             ? import.meta.env.DEV
-              ? 'El pedido no salió de esta máquina: no hay ruta para el escenario. Cargá MAKE_WEBHOOK_LEER_OBSERVACIONES en .env.local (o dejá que use el deploy con APP_URL) y reiniciá npm run dev.'
+              ? 'El pedido no salió de esta máquina: no hay ruta para el escenario. Cargá MAKE_WEBHOOK_LEER_OBSERVACIONES en .env.local y reiniciá npm run dev.'
               : 'Falta cargar la URL del escenario de observaciones en las variables del proyecto.'
             : 'No se pudo hablar con el escenario que lee el documento.',
       }))
