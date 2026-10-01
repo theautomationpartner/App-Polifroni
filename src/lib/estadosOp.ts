@@ -66,15 +66,16 @@ export function estadoDeOrden(etiqueta: string, tieneOpFinal: boolean): EstadoOr
   }
 }
 
-/** Cómo se ve cada estado: el mismo rótulo y color en la consulta, el selector y la ficha. */
+/** Cómo se ve cada estado: el mismo rótulo y color en la consulta, el selector y la ficha. Los
+    colores son los de `🤖Estado OP` en el tablero. */
 export const VISTA_ESTADO: Record<EstadoOrden, { rotulo: string; color: string; icono: string }> = {
   borrador: { rotulo: 'Sin generar', color: '#c4c4c4', icono: 'fa-file-circle-question' },
   generada: { rotulo: 'Generada · sin enviar', color: '#fdab3d', icono: 'fa-file-circle-check' },
-  pendiente: { rotulo: 'Pend de Confirmar', color: '#ff6d3b', icono: 'fa-hourglass-half' },
+  pendiente: { rotulo: 'Pend de Confirmar', color: '#fdab3d', icono: 'fa-hourglass-half' },
   confirmada: { rotulo: 'Confirmada', color: '#00c875', icono: 'fa-circle-check' },
   rechazada: { rotulo: 'No confirmada', color: '#df2f4a', icono: 'fa-circle-xmark' },
-  taller: { rotulo: 'Enviada a taller', color: '#579bfc', icono: 'fa-industry' },
-  cancelada: { rotulo: 'Cancelada', color: '#7e7e7e', icono: 'fa-ban' },
+  taller: { rotulo: 'Enviada a taller', color: '#9d50dd', icono: 'fa-industry' },
+  cancelada: { rotulo: 'Cancelada', color: '#df2f4a', icono: 'fa-ban' },
 }
 
 /** Las acciones que se pueden hacer sobre UNA orden. */
