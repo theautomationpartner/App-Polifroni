@@ -17,7 +17,15 @@ npm install
 npm run dev
 ```
 
-Abrir <http://localhost:5191>.
+Abrir <http://localhost:5192> (el 5190 y el 5191 los usa La Batea).
+
+En local no hay capa de acceso: se entra con el usuario dueño de `VITE_MONDAY_TOKEN` (hoy *The
+Automation Partner*), desde el navegador, sin Monday. Nada se reenvía al deploy —sus funciones
+exigen la sesión firmada de Monday y contestaban 403—:
+
+- la numeración de las OP se calcula del tablero de órdenes (con `MAKE_TOKEN` usa el data store);
+- los escenarios de Make necesitan su URL en `.env.local` (`MAKE_WEBHOOK_*`); sin ella la app dice
+  qué variable falta.
 
 Todavía **no hay autenticación**: se entra directo a la pantalla de selección de procesos.
 
@@ -51,8 +59,8 @@ En **Settings → Environment Variables** van estas cinco, **ninguna con prefijo
 | `MONDAY_TOKEN` | El token de Monday de Polifroni |
 | `MAKE_WEBHOOK_LEER_DOC` | `https://hook.us1.make.com/9chqbwa4...` |
 | `MAKE_WEBHOOK_LEER_OBSERVACIONES` | Escenario que lee el ETMO y devuelve una entrada por abertura. **También se acepta `LEER_OBSERVACIONES`**, que es como quedó cargada |
-| `MAKE_WEBHOOK_ENVIAR_OP` | `https://hook.us1.make.com/p0q6e8ga...` |
-| `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | `https://hook.us1.make.com/…` (envío al taller) |
+| `MAKE_WEBHOOK_ENVIAR_OP` | `https://hook.us1.make.com/iu1vkqarj...` |
+| `MAKE_WEBHOOK_ENVIAR_OP_TALLER` | `https://hook.us1.make.com/p0q6e8ga...` (envío al taller) |
 
 > Cargalas en **Production Y Preview**. Una variable que sólo está en Production hace que los
 > deploys de preview de `dev` fallen justo en lo que se quería probar.
@@ -95,23 +103,51 @@ está fuera de git (`.gitignore`):
 Las variables de Make **no** llevan prefijo `VITE_` a propósito: las lee el proxy de Vite, así
 la URL del escenario nunca entra en el código que corre en el navegador.
 
-**Un escenario sin URL local no queda muerto**: el proxy lo manda a `/api/make` de la app ya
-desplegada, que sí tiene la variable. Así se prueba el circuito completo sin repartir las URLs de
-los hooks por las máquinas de cada uno. Se apunta a otro deploy con `APP_URL`, y se apaga el
-respaldo poniéndola vacía.
+**Un escenario sin URL local no se manda al deploy.** Antes se reenviaba a `/api/make` de la app
+desplegada, pero esa función exige la sesión firmada de Monday y la lista blanca: desde el
+navegador de la computadora contestaba 403 y la app lo mostraba como "usuario sin permisos". Para
+probar un escenario en local, cargá su URL en `.env.local`.
 
-## Las cinco etapas
+## Sección Producción: las operaciones
 
-| # | Etapa | Qué hace | Columnas del tablero |
+La pantalla inicial tiene tres secciones: Presupuesto, Obras y Producción (hoy sólo Producción está
+construida). El encabezado es el de La Batea: **Producción → [Seleccionar tipo de operación]** y el
+usuario, con el stepper a la derecha.
+
+| Operación | Qué hace |
+| --- | --- |
+| **ENVIAR ORDEN DE PRODUCCION** | Pregunta *¿A quién vas a enviarle la orden?* (A Cliente/Constructor · Al Taller) y recorre tres etapas |
+| **CONSULTAR ORDENES DE PRODUCCION** | Todas las OP del tablero, filtradas por estado, con acciones rápidas por orden |
+
+Las etapas de "Enviar" cambian de nombre y de contenido según el destinatario y el tipo de obra:
+
+| Etapa | Cliente · PVC | Cliente · Aluminio | Taller |
 | --- | --- | --- | --- |
-| 1 | **Obra** | Buscador + el tablero entero, traído de a lotes y paginado en memoria (25/50). | — |
-| 2 | **Orden ETMO** | Carga el PDF de ETMO, lo lee y escribe las observaciones, una caja por abertura. | `file_mktkkjnj`, `text_mm73nvda` |
-| 3 | **OP Final** | Botón *Leer documento* (habilitado sólo con ETMO adjunto) → webhook de Make → espera a que el tablero traiga el documento. | `color_mm72nxsj`, `file_mm72n55y` |
-| 4 | **Envío al cliente** | Elige destinatario y vía, manda la OP por WhatsApp con el enlace al formulario de confirmación. | `color_mm12ez80`, `color_mktzfcdt`, `color_mm0h8j4m`, `color_mm5jsjea` |
-| 5 | **Confirmación y taller** | Muestra la respuesta del cliente y despacha al taller. Se entra con la OP generada; el despacho pide la confirmación. | `color_mm73rxg7`, `color_mkzrjgcj` |
+| 1 | Seleccionar Obra | Seleccionar Obra | Seleccionar Obra |
+| 2 | **Cargar OP Hetmo**: arrastrar y soltar el PDF de HETMO + desplegables *Datos de Medición* y *Cargar Observaciones* | **Cargar OP**: arrastrar y soltar el PDF + *Datos de Medición* | **Seleccionar OP A Enviar**: tabla de las OP de la obra, se elige una confirmada |
+| 3 | **Emitir y Enviar OP**: *Resumen OP final a generar* (Generar · Ver OP Final) + envío | **Enviar OP** | **Enviar OP** |
 
-La ficha de la obra —cuenta corriente del cliente, constructor/arquitecto, teléfonos, estados,
-importes, documentos— está presente en todas las etapas.
+Cada tercera etapa cierra con **Finalizar Operación** (tilde y vuelta al inicio). Las piezas de La
+Batea (arrastre del cobro CONTADO, desplegable de comprobantes, resumen de emisión y envío de
+presupuesto) están portadas en `src/styles/labatea.css`.
+
+Reglas (ver `src/lib/estadosOp.ts`, probadas en `npm run test:produccion`):
+
+- **Un estado por OP**, en `🤖Estado OP`. `🤖Estado De Envio OP` es técnico y no decide nada.
+  Las etiquetas *Enviada a Taller* y *Cancelada* se crean solas la primera vez que se escriben.
+- **Una OP no se modifica ni se borra**: se cancela (queda el motivo en `🤖Motivo`) y se genera otra.
+- **La OP nace al cargar el PDF original**, no al elegir la obra: navegar no deja ítems vacíos.
+  Los que quedaron de antes aparecen como *Sin generar* en la consulta y se pueden cancelar.
+- **Antes de cada acción se relee la OP** en el tablero: si cambió de estado, no se hace nada.
+- **El destinatario es uno**: cliente o constructor. Se muestra el nombre y el celular, se valida el
+  formato y se avisa si el número es el mismo en los dos roles. La confirmación previa lo repite.
+- **Cuenta inactiva** = la cuenta corriente vinculada vive en el tablero *Cuentas Corrientes Cliente
+  ARCHIVADOS* (18425935891). No hay otra columna que lo diga.
+- Mientras corre un envío o una generación, no se puede cambiar de acción, de obra ni volver al inicio.
+
+> **Pendiente en Make:** el mensaje de WhatsApp tiene que llevar el enlace de confirmación para el
+> constructor también (hoy lo filtra por tipo). La app manda `conEnlaceConfirmacion: true`, y el
+> módulo 71 (`formularios/make-code-destinatarios.js`) devuelve `con_enlace: true` en cada destino.
 
 ## Cómo está organizado
 
@@ -207,7 +243,6 @@ un `text_xxxxx` suelto.
 
 ## Pendientes
 
-- Autenticación (hoy la app entra directo).
 - El logo de `public/logo-polifroni.png` es la versión **blanca** (pensada para fondos oscuros).
   Sobre la barra blanca no se veía, así que se invierte por CSS: es monocromo puro, y al invertirlo
   queda negro limpio. Con el archivo en oscuro, se borra el `filter: invert(1)` de `.marca-img`.
