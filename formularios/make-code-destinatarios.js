@@ -7,11 +7,18 @@
 //
 //  Devuelve SIEMPRE un array `destinos`, una entrada por persona:
 //
-//      { tipo, nombre_destinatario, whatsapp_destinatario, email_destinatario }
+//      { tipo, nombre_destinatario, whatsapp_destinatario, email_destinatario,
+//        con_enlace }
 //
 //    - destinatario "Cliente"      -> 1 entrada (el cliente)
 //    - destinatario "Constructor"  -> 1 entrada (el constructor/arquitecto)
-//    - destinatario "Ambos"        -> 2 entradas
+//    - destinatario "Ambos"        -> 2 entradas (cliente y constructor). La app
+//      manda la lista armada en destinos_app, una entrada por persona.
+//
+//  con_enlace: SIEMPRE true. El módulo de WhatsApp tiene que incluir el enlace
+//  de confirmación para CUALQUIER tipo, no sólo para "Cliente": antes al
+//  constructor le llegaba sin el enlace, y una orden se podía fabricar sin que
+//  nadie la validara. Quitar el filtro por tipo del mensaje con enlace.
 //
 //  Después de este módulo va un ITERATOR sobre 71.destinos: cada vuelta es una
 //  persona, y los módulos de WhatsApp / Email usan del iterator:
@@ -73,6 +80,7 @@ function armarDestinos(input) {
         nombre_destinatario: nombreOrol(d && d.nombre, tipo),
         whatsapp_destinatario: soloDigitos(d && d.whatsapp),
         email_destinatario: texto(d && d.email),
+        con_enlace: true,
       };
     });
   } else {
@@ -83,6 +91,7 @@ function armarDestinos(input) {
         nombre_destinatario: nombreOrol(primero(input.nombre_cliente), 'Cliente'),
         whatsapp_destinatario: soloDigitos(primero(input.cel_cliente)),
         email_destinatario: primero(input.email_clien),
+        con_enlace: true,
       });
     }
     if (pedido !== 'Cliente') {
@@ -91,6 +100,7 @@ function armarDestinos(input) {
         nombre_destinatario: nombreOrol(primero(input.nombre_constructor), 'Constructor'),
         whatsapp_destinatario: soloDigitos(primero(input.cel_constructor)),
         email_destinatario: '',
+        con_enlace: true,
       });
     }
   }
