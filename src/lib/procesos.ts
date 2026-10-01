@@ -6,6 +6,8 @@ export interface ProcesoDef {
   id: Proceso | null
   icono: string
   titulo: string
+  /** Qué se hace en la sección, en una línea, debajo del título. Sin ella la tarjeta no la muestra. */
+  descripcion?: string
   /** Pie de la tarjeta: cuántas operaciones tiene, o que todavía no está. Nada más. */
   detalle: string
 }
@@ -18,7 +20,14 @@ export interface ProcesoDef {
 export const PROCESOS: ProcesoDef[] = [
   { id: null, icono: 'fa-file-invoice-dollar', titulo: 'Presupuesto', detalle: 'Próximamente' },
   { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
-  { id: 'obras', icono: 'fa-industry', titulo: 'Producción', detalle: '2 operaciones' },
+  {
+    id: 'obras',
+    icono: 'fa-industry',
+    titulo: 'Producción',
+    descripcion:
+      'Carga órdenes de producción, envíalas a tus clientes/constructores o a la fábrica, y gestiona los estados de cada una de ellas.',
+    detalle: '2 operaciones',
+  },
 ]
 
 /** La sección en curso, para nombrarla en el encabezado. */

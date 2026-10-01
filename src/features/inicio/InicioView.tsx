@@ -8,12 +8,14 @@ import type { Operacion } from '@/types'
 function Tarjeta({
   icono,
   titulo,
+  descripcion,
   detalle,
   disponible = true,
   onElegir,
 }: {
   icono: string
   titulo: string
+  descripcion?: string
   detalle: string
   disponible?: boolean
   onElegir: () => void
@@ -25,10 +27,13 @@ function Tarjeta({
       disabled={!disponible}
       onClick={onElegir}
     >
-      <span className="proceso-card-ic">
-        <i className={`fas ${icono}`} />
+      <span className="proceso-card-cab">
+        <span className="proceso-card-ic">
+          <i className={`fas ${icono}`} />
+        </span>
+        <span className="proceso-card-t">{titulo}</span>
       </span>
-      <span className="proceso-card-t">{titulo}</span>
+      {descripcion && <span className="proceso-card-d">{descripcion}</span>}
       <span className="proceso-card-pasos">{detalle}</span>
     </button>
   )
@@ -58,6 +63,7 @@ export function InicioView() {
             key={p.titulo}
             icono={p.icono}
             titulo={p.titulo}
+            descripcion={p.descripcion}
             detalle={p.detalle}
             disponible={!!p.id}
             onElegir={() => p.id && dispatch({ type: 'setProceso', proceso: p.id })}

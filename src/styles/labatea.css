@@ -1596,6 +1596,19 @@
 .proceso-card:not(.proceso-card--soon) .proceso-card-pasos {
   color: var(--marca);
 }
+/* El ícono y el título de la tarjeta, uno al lado del otro. */
+.proceso-card-cab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.proceso-card-cab .proceso-card-ic {
+  flex-shrink: 0;
+}
+/* Qué se hace en el área, debajo del título: en negro, no en el gris de las descripciones. */
+.proceso-card .proceso-card-d {
+  color: #0f172a;
+}
 
 /* El área elegida en el encabezado: el nombre en negro y el ícono en bordó. */
 .topsel-seccion {
