@@ -1,0 +1,1869 @@
+/**
+ * Piezas de La Batea (operaciones-de-venta) portadas TAL CUAL a la operación de Producción.
+ *
+ * Mismas medidas, colores y estados que allá. En La Batea viven bajo `.cobro-v2`, `.emision-v2` y
+ * `.factura-v2`; acá van bajo `.obras-v2`, que es el contenedor de todas las vistas del proceso, y
+ * las variables de cada namespace se declaran una sola vez abajo con sus mismos valores.
+ *
+ *  - La zona de arrastrar y soltar del cobro CONTADO (`cobro-lector*`, cobro.css).
+ *  - El desplegable de los comprobantes (`comp-*`, factura.css + `CompBody`).
+ *  - El resumen previo a emitir (`resumen-emision`, `rrow`, `btn-generar`, emision.css).
+ *  - El envío del documento (`igp`, `citem`, `cobro-ok`, `envio-medio-*`, views.css).
+ */
+
+.obras-v2 {
+  /* cobro.css */
+  --c-bg-input: #ffffff;
+  --c-text-main: #1f2937;
+  --c-text-secondary: #667085;
+  --c-primary: #0052cc;
+  --c-primary-hover: #0043a6;
+  --c-success: #00c875;
+  --c-danger: #e44258;
+  --c-warning: #fdab3d;
+  --c-radius-lg: 12px;
+  /* emision.css */
+  --e-border: #e4e7ec;
+  --e-text-main: #1f2937;
+  --e-text-label: #64748b;
+  --e-primary: #0052cc;
+  --e-primary-hover: #0043a6;
+  --e-success: #00c875;
+  --e-danger: #e44258;
+  --e-radius: 12px;
+  --e-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
+  /* factura.css */
+  --f-border: #e4e7ec;
+  --f-text-main: #1f2937;
+  --f-text-label: #64748b;
+  --f-radius: 12px;
+  --f-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+/* ════════════════════ Arrastrar y soltar (cobro CONTADO) ════════════════════ */
+.obras-v2 .cobro-lector {
+  --lector-ancho: 500px;
+  --lector-alto: 300px;
+
+  position: relative;
+  width: var(--lector-ancho);
+  height: var(--lector-alto);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 32px;
+  border: 2px dashed var(--c-primary);
+  border-radius: var(--c-radius-lg);
+  background: #f2f7ff;
+  color: var(--c-primary);
+  font-size: 46px;
+  box-sizing: border-box;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.12s;
+}
+.obras-v2 .cobro-lector-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.obras-v2 .cobro-lector-hit:hover:not(:disabled) {
+  background: rgba(0, 82, 204, 0.04);
+}
+.obras-v2 .cobro-lector-hit:disabled {
+  cursor: default;
+}
+.obras-v2 .cobro-lector-hit:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  border-radius: var(--c-radius-lg);
+}
+.obras-v2 .cobro-lector.is-falta {
+  border-color: var(--c-danger);
+}
+.obras-v2 .cobro-lector-reclamo {
+  display: block;
+  max-width: 340px;
+  min-height: 1.35em;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  color: #c0273c;
+}
+.obras-v2 .cobro-lector.is-over {
+  border-style: solid;
+  background: #e4eeff;
+  transform: scale(1.01);
+}
+.obras-v2 .cobro-lector--procesando,
+.obras-v2 .cobro-lector--listo,
+.obras-v2 .cobro-lector--advertencia,
+.obras-v2 .cobro-lector--error {
+  border-style: solid;
+}
+.obras-v2 .cobro-lector--procesando {
+  background: var(--c-bg-input);
+}
+.obras-v2 .cobro-lector--listo {
+  border-color: var(--c-success);
+  background: #f2fbf7;
+}
+.obras-v2 .cobro-lector--advertencia {
+  border-color: var(--c-warning);
+  background: #fffaf0;
+}
+.obras-v2 .cobro-lector--error {
+  border-color: var(--c-danger);
+  background: #fff6f6;
+}
+.obras-v2 .cobro-lector-cara {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+.obras-v2 .cobro-lector-cara--listo {
+  color: var(--c-success);
+}
+.obras-v2 .cobro-lector-cara--listo .cobro-lector-titulo {
+  color: #0b7a4b;
+}
+.obras-v2 .cobro-lector-cara--advertencia {
+  color: var(--c-warning);
+}
+.obras-v2 .cobro-lector-cara--advertencia .cobro-lector-titulo {
+  color: #b26a00;
+}
+.obras-v2 .cobro-lector-cara--error {
+  color: var(--c-danger);
+}
+.obras-v2 .cobro-lector-cara--error .cobro-lector-titulo {
+  color: #c0273c;
+}
+.obras-v2 .cobro-lector-titulo {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-text-main);
+}
+.obras-v2 .cobro-lector-consigna {
+  max-width: 340px;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--c-text-secondary);
+}
+.obras-v2 .cobro-lector-spin {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #d5dceb;
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  animation: cobro-lector-giro 0.7s linear infinite;
+}
+@keyframes cobro-lector-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.obras-v2 .cobro-lector-archivo {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--c-text-secondary);
+}
+.obras-v2 .cobro-lector-nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  color: var(--c-text-main);
+}
+.obras-v2 .cobro-lector-accion {
+  flex: 0 0 auto;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--c-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.obras-v2 .cobro-lector-accion:hover {
+  color: var(--c-primary-hover);
+}
+.obras-v2 .cobro-lector-accion--quitar {
+  color: var(--c-danger);
+}
+.obras-v2 .cobro-lector-accion--quitar:hover {
+  color: #b8202f;
+}
+.obras-v2 .cobro-lector-falta {
+  position: relative;
+  z-index: 2;
+  max-width: 380px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  color: #c0273c;
+}
+
+/* ════════════════════ Desplegable (comprobantes de la factura) ════════════════════ */
+.obras-v2 .comp-card {
+  background: #fff;
+  border: 1px solid var(--f-border);
+  border-radius: var(--f-radius);
+  box-shadow: var(--f-shadow);
+  overflow: hidden;
+}
+.obras-v2 .comp-card + .comp-card {
+  margin-top: 16px;
+}
+.obras-v2 .comp-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+}
+.obras-v2 .comp-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.obras-v2 .comp-chev {
+  color: var(--f-text-label);
+  font-size: 13px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.obras-v2 .comp-chev.open {
+  transform: rotate(180deg);
+}
+.obras-v2 .comp-tit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  font-weight: 700;
+}
+.obras-v2 .comp-tit > i {
+  color: var(--primary-blue);
+}
+.obras-v2 .comp-head-datos {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  flex-shrink: 0;
+}
+.obras-v2 .comp-head-dato {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.obras-v2 .comp-head-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--f-text-label);
+}
+.obras-v2 .comp-head-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--f-text-main);
+}
+.obras-v2 .comp-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.obras-v2 .comp-body-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.obras-v2 .comp-body-wrap.open {
+  grid-template-rows: 1fr;
+}
+.obras-v2 .comp-body-inner {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s linear 0.28s;
+}
+.obras-v2 .comp-body-wrap.open .comp-body-inner {
+  visibility: visible;
+  transition-delay: 0s;
+}
+.obras-v2 .comp-body-wrap .comp-body {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.obras-v2 .comp-body-wrap.open .comp-body {
+  opacity: 1;
+  transform: none;
+}
+.obras-v2 .comp-body {
+  padding: 4px 18px 18px;
+  border-top: 1px solid var(--f-border);
+}
+/* Adentro del desplegable, las piezas de la app no llevan su propio marco: el marco es la card. */
+.obras-v2 .comp-body .med {
+  border: 0;
+  padding: 12px 0 0;
+  margin: 0;
+}
+.obras-v2 .comp-body .med-t {
+  display: none;
+}
+
+/* ════════════════════ Resumen previo a emitir ════════════════════ */
+.obras-v2 .resumen-emision {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.obras-v2 .resumen-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--e-text-main);
+  margin: 0 0 20px;
+}
+.obras-v2 .rgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.obras-v2 .rsep {
+  height: 1px;
+  background: var(--e-border);
+  border: none;
+  margin: 18px 0;
+}
+.obras-v2 .rrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 15px;
+}
+.obras-v2 .rlabel {
+  color: var(--e-text-label);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.obras-v2 .rreq {
+  color: var(--e-danger);
+  margin-left: 2px;
+}
+.obras-v2 .rvalue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 700;
+  color: var(--e-text-main);
+  text-align: right;
+}
+.obras-v2 .rvalue-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.obras-v2 .rvalue--green {
+  color: var(--e-success);
+}
+.obras-v2 .rvalue--red {
+  color: var(--red);
+}
+.obras-v2 .rvalue--falta {
+  color: #a1a3b1;
+  font-weight: 600;
+}
+.obras-v2 .btn-generar {
+  width: 100%;
+  margin-top: 24px;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--e-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+.obras-v2 .btn-generar:hover:not(:disabled) {
+  background: var(--e-primary-hover);
+}
+.obras-v2 .btn-generar:disabled {
+  background: #e6e9ef;
+  color: #a1a3b1;
+  cursor: not-allowed;
+}
+.obras-v2 .pres-pdf {
+  margin-top: 10px;
+}
+.obras-v2 .pres-pdf-btn {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+  justify-content: center;
+  gap: 8px;
+}
+.obras-v2 .pres-pdf-btn:disabled {
+  cursor: not-allowed;
+  background: #f4f5f7;
+  color: #a1a3b1;
+}
+.obras-v2 .pres-pdf-aviso {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--red);
+}
+
+/* Resumen a la izquierda, envío a la derecha: las mismas medidas del paso de emisión. */
+.obras-v2 .emision-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 503px) minmax(360px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.obras-v2 .emision-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (max-width: 1279px) {
+  .obras-v2 .emision-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.obras-v2 .emision-grid > .card,
+.obras-v2 .emision-col .card {
+  margin-bottom: 0;
+}
+.obras-v2 .card-pad {
+  padding: 24px;
+}
+
+/* La carga: el recuadro de arrastre a la izquierda y los desplegables a la derecha. */
+.obras-v2 .carga-grid {
+  display: grid;
+  grid-template-columns: 500px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .obras-v2 .carga-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ════════════════════ Envío del documento ════════════════════ */
+.obras-v2 .igp {
+  margin-bottom: 14px;
+  position: relative;
+}
+.obras-v2 .igp label {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.obras-v2 .full {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+}
+.obras-v2 .full:focus {
+  outline: none;
+  border-color: #575ce5;
+}
+.obras-v2 .w-contactos {
+  width: 337px;
+  max-width: 100%;
+}
+.obras-v2 .envio-medio-fila {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.obras-v2 .envio-medio-lbl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark, #323338);
+}
+.obras-v2 .envio-medio-fijo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-suave, #e4e7ec);
+  border-radius: 8px;
+  background: var(--tint-neutral, #f7f8fa);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dark, #323338);
+}
+.obras-v2 .envio-medio-fijo i {
+  color: var(--primary-blue, #0073ea);
+}
+.obras-v2 .envio-medio-fijo .fa-whatsapp {
+  color: #25d366;
+}
+.obras-v2 .selc {
+  margin-top: 16px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.obras-v2 .citem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.obras-v2 .cinfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.obras-v2 .cava {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.obras-v2 .citem--sin-dato {
+  background: #fff5f6;
+  box-shadow: inset 3px 0 0 var(--red);
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-left: -10px;
+  margin-right: -10px;
+  border-radius: 4px;
+}
+.obras-v2 .citem--sin-dato .citem-name {
+  color: var(--red);
+}
+.obras-v2 .citem-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.obras-v2 .citem-sub {
+  font-size: 14px;
+  color: var(--text-gray);
+}
+.obras-v2 .citem-sub--falta {
+  color: var(--red);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.obras-v2 .citem-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.obras-v2 .cbadge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 6px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.obras-v2 .cbadge.ok {
+  background: #e5f9f0;
+  color: #00a25b;
+}
+.obras-v2 .cbadge.no {
+  background: #ffeced;
+  color: #e2445c;
+}
+.obras-v2 .del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-gray);
+  font-size: 16px;
+  padding: 4px;
+}
+.obras-v2 .del:hover:not(:disabled) {
+  color: var(--red);
+}
+.obras-v2 .del:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.obras-v2 .cobro-ok {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #e6e9ef;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.obras-v2 .cobro-ok.on {
+  background: var(--green);
+}
+.obras-v2 .cobro-ok.err {
+  background: var(--red);
+}
+.obras-v2 .cobro-ok--cargando {
+  background: transparent;
+  color: var(--text-gray);
+  font-size: 15px;
+}
+.obras-v2 .contactos-cargando {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 4px;
+  color: var(--text-gray);
+  font-size: 13px;
+  font-weight: 500;
+}
+.obras-v2 .contactos-cargando i {
+  color: var(--primary-blue);
+}
+.obras-v2 .envio-sin-contactos {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px 18px;
+  background: #fff8e8;
+  border: 1px solid #ffdf9e;
+  border-radius: 10px;
+}
+.obras-v2 .envio-sin-contactos > i {
+  font-size: 20px;
+  color: var(--yellow);
+  margin-top: 2px;
+}
+.obras-v2 .envio-sin-contactos-t {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 4px;
+}
+.obras-v2 .envio-sin-contactos p {
+  font-size: 13px;
+  color: var(--text-gray);
+  line-height: 1.5;
+  margin: 0;
+}
+.obras-v2 .enviar-aviso--warn {
+  color: #b26a00;
+}
+.obras-v2 .enviar-aviso--warn i {
+  color: var(--orange);
+}
+.obras-v2 .enviar-mas {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-top: 6px;
+  color: var(--primary-blue);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ════════════════════ Selección de la OP para el taller ════════════════════ */
+.obras-v2 .op-tabla-wrap {
+  overflow-x: auto;
+}
+.obras-v2 .op-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.obras-v2 .op-tabla th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--f-text-label);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--f-border);
+  white-space: nowrap;
+}
+.obras-v2 .op-tabla td {
+  padding: 12px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+}
+.obras-v2 .op-tabla tbody tr {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.obras-v2 .op-tabla tbody tr:hover:not(.is-off) {
+  background: #f7faff;
+}
+.obras-v2 .op-tabla tbody tr.is-on {
+  background: #eef5ff;
+  box-shadow: inset 3px 0 0 var(--primary-blue);
+}
+.obras-v2 .op-tabla tbody tr.is-off {
+  cursor: not-allowed;
+  color: #98a2b3;
+}
+.obras-v2 .op-tabla-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #c3cad6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.obras-v2 tr.is-on .op-tabla-radio {
+  border-color: var(--primary-blue);
+}
+.obras-v2 tr.is-on .op-tabla-radio::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary-blue);
+}
+.obras-v2 .op-tabla-id {
+  font-weight: 700;
+  color: var(--o-text-title, #0f172a);
+}
+.obras-v2 .op-tabla-vacia {
+  padding: 28px;
+  text-align: center;
+  color: var(--o-text-muted, #64748b);
+}
+.obras-v2 .op-tabla-pie {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--o-text-muted, #64748b);
+}
+
+/* El recorrido en el encabezado: la sección en la que se está, y la operación elegida. */
+.topsel-ruta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* Alineada con la CAJA del selector (la barra se alinea por abajo), no con su rótulo. El margen
+     negativo acerca la flecha a la caja: el `gap` de la barra la separaba como a un control más. */
+  margin-right: -8px;
+}
+.topsel-seccion {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--border-suave, #e4e7ec);
+  border-radius: 8px;
+  background: var(--tint-neutral, #f7f8fa);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark, #323338);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.topsel-seccion:hover:not(:disabled) {
+  border-color: var(--primary-blue);
+}
+.topsel-seccion:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.topsel-seccion i {
+  color: var(--primary-blue);
+}
+.topsel-flecha {
+  color: var(--text-gray);
+  font-size: 12px;
+}
+.topsel-op {
+  display: block;
+  /* La caja mide lo que su opción más larga ("CONSULTAR ORDENES DE PRODUCCION") necesita para
+     entrar en UN renglón, y el menú mide lo mismo que la caja. */
+  --sel-ancho: 340px;
+}
+/* El usuario, igual: el nombre más largo de la cuenta entra entero en un renglón. */
+.topsel .sel-usuario,
+.topsel .selbox--fijo {
+  --sel-ancho: 290px;
+}
+
+/* Los desplegables del encabezado son un RECTÁNGULO pegado a la caja —sin esquinas redondeadas ni
+   separación—, y cada opción va en un solo renglón. Es sólo para estos dos: el resto de los
+   desplegables de la app (p. ej. "Medido por") conservan su menú. */
+.topsel .ddmenu {
+  top: 100%;
+  margin-top: -1px;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+.topsel .dditem {
+  border-radius: 0;
+  white-space: nowrap;
+  padding: 10px 14px;
+}
+.topsel .dditem + .dditem {
+  margin-top: 0;
+  border-top: 1px solid var(--border-suave, #e4e7ec);
+}
+@media (max-width: 860px) {
+  .topsel-op {
+    --sel-ancho: 300px;
+  }
+}
+
+/* ════════════════════ Ficha del cliente (PRESUPUESTAR · cliente.css) ════════════════════
+   La obra elegida se muestra con la ficha del cliente de La Batea: código y nombre arriba, la
+   dirección, los badges y el estado a la derecha; debajo, las cajas de importes y la barra de
+   uso. Mismas medidas y colores; el violeta propio de la ficha va en su variable. */
+.obras-v2 .cliente-ficha {
+  --cl-primary: #6c4cf1;
+  --cl-border: #e2e8f0;
+  --cl-text-main: #1f2937;
+  --cl-text-muted: #64748b;
+  --cl-badge-blue-bg: #eef5ff;
+  --cl-badge-blue-text: #2563eb;
+  --cl-badge-green-bg: #eafbf2;
+  --cl-badge-green-text: #16a34a;
+  --cl-badge-purple-bg: #f0ebff;
+  --cl-badge-purple-text: #6200ee;
+  --cl-badge-gray-bg: #f1f5f9;
+  --cl-badge-gray-text: #475569;
+}
+.obras-v2 .card.no-radius {
+  border-radius: 0;
+}
+.obras-v2 .client-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}
+.obras-v2 .client-id {
+  color: var(--cl-primary);
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+  display: block;
+}
+.obras-v2 .client-name {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--cl-text-main);
+}
+.obras-v2 .client-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--cl-text-muted);
+  margin-bottom: 16px;
+}
+.obras-v2 .status-indicators {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.obras-v2 .status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.obras-v2 .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.obras-v2 .badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.obras-v2 .badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.obras-v2 .badge-gray {
+  background: var(--cl-badge-gray-bg);
+  color: var(--cl-badge-gray-text);
+}
+.obras-v2 .badge-green {
+  background: var(--cl-badge-green-bg);
+  color: var(--cl-badge-green-text);
+}
+.obras-v2 .badge-blue {
+  background: var(--cl-badge-blue-bg);
+  color: var(--cl-badge-blue-text);
+}
+.obras-v2 .badge-purple {
+  background: var(--cl-badge-purple-bg);
+  color: var(--cl-badge-purple-text);
+}
+.obras-v2 .badge--falta {
+  background: #ffe9ec;
+  color: var(--red);
+  border: 1px solid #ffc2cc;
+  font-weight: 700;
+}
+.obras-v2 .badge--cond {
+  background: #f1edfe;
+  color: var(--cl-primary);
+}
+.obras-v2 .badge--cond strong {
+  font-weight: 800;
+}
+.obras-v2 .cliente-ficha .divider {
+  height: 1px;
+  background: var(--cl-border);
+  border: none;
+  margin: 24px 0;
+}
+.obras-v2 .kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+.obras-v2 .kpi-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.obras-v2 .kpi-card {
+  background: #f8fafc;
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.obras-v2 .kpi-label {
+  font-size: 13px;
+  color: var(--cl-text-muted);
+  font-weight: 500;
+}
+.obras-v2 .kpi-value {
+  font-size: 20px;
+  font-weight: 800;
+}
+.obras-v2 .credito-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.obras-v2 .credito-fila-inferior {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.obras-v2 .credito-metrica {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  flex: 0 0 auto;
+}
+.obras-v2 .credito-metrica .kpi-label {
+  font-size: 15px;
+}
+.obras-v2 .credito-metrica .kpi-value {
+  font-size: 22px;
+}
+.obras-v2 .credito-uso {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+.obras-v2 .credito-fila-inferior .credito-uso {
+  flex: 1;
+  min-width: 240px;
+}
+.obras-v2 .progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+.obras-v2 .progress-header span {
+  color: var(--cl-text-muted);
+}
+.obras-v2 .progress-header strong {
+  font-size: 16px;
+  color: var(--cl-text-main);
+}
+.obras-v2 .progress-track {
+  height: 10px;
+  background: var(--cl-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.obras-v2 .progress-fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s ease;
+}
+.obras-v2 .cliente-ficha .skeleton--valor {
+  height: 24px;
+  width: 130px;
+}
+.obras-v2 .cliente-ficha .skeleton--badge {
+  display: inline-block;
+  height: 24px;
+  width: 96px;
+  border-radius: 16px;
+  margin: 0 8px 8px 0;
+}
+.obras-v2 .cliente-ficha .skeleton--estado {
+  height: 18px;
+  width: 130px;
+  margin-bottom: 10px;
+}
+.obras-v2 .actions-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  margin-bottom: 64px;
+}
+@media (max-width: 680px) {
+  .obras-v2 .kpi-grid,
+  .obras-v2 .kpi-grid--3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .obras-v2 .credito-fila-inferior {
+    gap: 24px;
+  }
+}
+
+/* "¿A quién vas a enviarle la orden?": aire contra la barra de contexto de arriba. */
+.destino-cfg {
+  padding-top: 16px;
+}
+
+/* El TIPO de la obra: una etiqueta que se ve de lejos, como un cartel de "oferta". El fondo es el
+   color de su estado en el tablero (verde PVC, naranja Aluminio); el texto va blanco, en
+   mayúsculas, con la esquina doblada abajo. */
+.obras-v2 .obra-tipo {
+  position: relative;
+  display: inline-block;
+  min-width: 132px;
+  padding: 8px 18px;
+  border-radius: 6px 6px 6px 0;
+  background: #579bfc;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.12),
+    0 3px 8px rgba(15, 23, 42, 0.18);
+  margin-bottom: 6px;
+}
+.obras-v2 .obra-tipo::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  border-top: 6px solid rgba(0, 0, 0, 0.28);
+  border-left: 8px solid transparent;
+}
+.obras-v2 .obra-tipo--falta {
+  background: #fff;
+  color: var(--red);
+  border: 2px dashed #ffc2cc;
+  text-shadow: none;
+  box-shadow: none;
+}
+.obras-v2 .obra-tipo--falta::after {
+  display: none;
+}
+.obras-v2 .cliente-ficha .skeleton--tipo {
+  height: 38px;
+  width: 132px;
+  border-radius: 6px;
+}
+/* El celular con el formato de Monday: azul y subrayado. Es sólo el formato: no es un enlace. */
+.obras-v2 .obra-cel {
+  color: var(--primary-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.obras-v2 .obra-coord-rol {
+  font-weight: 600;
+  color: var(--cl-text-muted);
+}
+
+/* La etiqueta del tipo va en la ESQUINA superior derecha de la ficha, pegada al borde: el cartel
+   cuelga de la card. El estado de las órdenes baja lo que ocupa la etiqueta. */
+.obras-v2 .cliente-ficha {
+  position: relative;
+}
+.obras-v2 .cliente-ficha .obra-tipo {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  margin: 0;
+  border-radius: 0 0 0 10px;
+}
+.obras-v2 .cliente-ficha .obra-tipo::after {
+  display: none;
+}
+.obras-v2 .cliente-ficha .obra-tipo--falta {
+  border-radius: 0 0 0 10px;
+}
+.obras-v2 .cliente-ficha .skeleton--tipo {
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-radius: 0 0 0 10px;
+}
+.obras-v2 .cliente-ficha .status-indicators {
+  padding-top: 30px;
+}
+
+/* Títulos de las tres etapas (Seleccionar Obra · Cargar OP Hetmo / Cargar OP / Seleccionar OP A
+   Enviar · Emitir y Enviar OP / Enviar OP): el mismo aire arriba en todas. */
+.header-section--obra,
+.header-section--carga,
+.header-section--envio {
+  padding-top: 16px;
+}
+
+/* ===== Pie de cada etapa: el mismo que el de "Seleccionar Obra" =====
+   Los dos botones miden igual (46px de alto, 24px a los lados, sin padding vertical: el alto lo da
+   la caja) y el pie queda a la MISMA distancia de lo que tiene arriba en todas las etapas: 36px
+   —el `margin-bottom` de 12px del bloque de arriba más 24px del pie—, como en la etapa 1. */
+.obras-v2 .footer-acts {
+  align-items: center;
+  margin-top: 24px;
+  margin-bottom: 64px;
+  padding-bottom: 0;
+}
+.obras-v2 .carga-grid,
+.obras-v2 .emision-grid {
+  margin-bottom: 12px;
+}
+.obras-v2 .footer-acts .btn-volver,
+.obras-v2 .footer-acts .btn,
+.obras-v2 .actions-footer .btn {
+  height: 46px;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+/* Desplegable ABIERTO: el cuerpo no recorta. El recorte hace falta sólo para la animación de
+   abrir y cerrar; abierto, una lista que se despliega adentro (el "Medido por") quedaba cortada y,
+   al tomar el foco su buscador, el navegador DESPLAZABA el contenido recortado para mostrarlo: los
+   campos se corrían hacia arriba y se desarmaba el formulario. Cerrarlo vuelve a recortar en el
+   acto, así la animación de cierre sigue igual. */
+.obras-v2 .comp-card {
+  overflow: visible;
+}
+.obras-v2 .comp-body-wrap.open .comp-body-inner {
+  overflow: visible;
+}
+/* La lista abierta va por encima del desplegable de abajo ("Cargar Observaciones"). */
+.obras-v2 .comp-card:has(.comp-body-wrap.open) {
+  position: relative;
+  z-index: 2;
+}
+.obras-v2 .comp-card:has([aria-expanded='true']:not(.comp-toggle)) {
+  z-index: 5;
+}
+
+/* ════════════════════ Tabla de Anticipos (registrar-cobro-recibos · anticipos.css) ════════════════════
+   La tabla de "Seleccionar OP A Enviar" es la de los Anticipos de la "Aplicación de Anticipo contra
+   Facturas" de La Batea, con su card (cobro-static / cobro-card) y su renglón de avisos. Mismas
+   medidas y colores; va bajo `.anticipos-v2`, como allá. */
+.anticipos-v2 {
+  --c-bg-card: #ffffff;
+  --c-border: #e4e7ec;
+  --c-radius-md: 8px;
+  --c-shadow-soft: 0 2px 4px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+.anticipos-v2 .cobro-static {
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg-card);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius-lg);
+  box-shadow: var(--c-shadow-soft);
+  overflow: hidden;
+}
+.anticipos-v2 .cobro-card {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--c-bg-card);
+  padding: 24px;
+}
+.anticipos-v2 .cobro-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text-main);
+  margin: 0 0 20px;
+}
+.anticipos-v2 .cobro-card-desc {
+  margin: -16px 0 14px;
+  font-size: 13px;
+  color: var(--c-text-secondary);
+}
+.anticipos-v2 .cobro-vacio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 0;
+  margin: 0;
+  font-size: 14px;
+  color: var(--c-text-secondary);
+}
+.anticipos-v2 .cobro-reintentar {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--c-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.anticipos-v2 .cobro-reintentar:hover {
+  color: var(--c-primary-hover);
+}
+.anticipos-v2 .cobro-card-acts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 25px;
+  min-height: 20px;
+  box-sizing: content-box;
+}
+.anticipos-v2 .cobro-bloqueo-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-danger);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.anticipos-v2 .cobro-bloqueo-inline--ok {
+  color: var(--c-success);
+}
+.anticipos-v2 .cobro-bloqueo-inline--info {
+  color: var(--c-text-secondary);
+}
+.anticipos-v2 .cobro-bloqueo-inline--info i {
+  color: var(--c-primary);
+}
+/* ===== Tabla de anticipos ===== */
+.anticipos-v2 .ant-tabla-wrap {
+  overflow-x: auto;
+}
+.anticipos-v2 .ant-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  /* Medidas de la caja de la columna de importe. Son VARIABLES porque las necesitan DOS elementos:
+     el input de la fila marcada y el hueco que lo reemplaza en las que no lo están. De ellas dependen
+     el alto de la fila y el ancho de la columna, así que con números sueltos en cada lugar las filas
+     se desparejaban —y las columnas se corrían— al tocar uno solo. */
+  --ant-alto-in: 36px;
+  --ant-ancho-in: 150px;
+}
+.anticipos-v2 .ant-tabla thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--c-border);
+  white-space: nowrap;
+}
+.anticipos-v2 .ant-tabla td {
+  padding: 12px;
+  border-bottom: 1px solid #f1f3f8;
+  vertical-align: middle;
+}
+.anticipos-v2 .ant-col-check {
+  width: 44px;
+}
+/* Los datos van centrados bajo su encabezado. El `th` lleva la MISMA clase y se nombra explícito:
+   la regla general del `thead` alinea a la izquierda y le gana por especificidad, así que sin esto
+   el rótulo quedaba a la izquierda y su valor centrado. */
+.anticipos-v2 .ant-col-cen,
+.anticipos-v2 .ant-tabla thead th.ant-col-cen {
+  text-align: center;
+}
+.anticipos-v2 .ant-num {
+  white-space: nowrap;
+  font-weight: 700;
+}
+/* El saldo a favor es el número que decide cuánto se puede aplicar: se destaca. */
+.anticipos-v2 .ant-pend {
+  color: var(--c-success);
+}
+.anticipos-v2 .ant-sd {
+  color: #98a2b3;
+}
+.anticipos-v2 .ant-check {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--c-primary);
+}
+.anticipos-v2 .ant-nro {
+  display: block;
+  font-weight: 700;
+  color: var(--c-text-main);
+}
+.anticipos-v2 .ant-detalle {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--c-text-secondary);
+}
+/* Fila elegida: el mismo azul claro del sistema que usa la selección de facturas. */
+.anticipos-v2 .ant-row--on td {
+  background: var(--tint-input);
+}
+.anticipos-v2 .ant-row--on td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-primary);
+}
+.anticipos-v2 .ant-row:hover td {
+  background: #e2ecfc;
+}
+/* Anticipo que ya no hace falta: el total quedó cubierto con los elegidos. Se sigue VIENDO —el
+   usuario tiene que poder mirar todo su saldo a favor— pero apagado y sin casilla, con el motivo
+   en el tooltip de la fila. Vuelve solo en cuanto se baja o se quita un importe aplicado. */
+.anticipos-v2 .ant-row--off td {
+  color: #98a2b3;
+  background: #fcfcfd;
+}
+.anticipos-v2 .ant-row--off:hover td {
+  background: #fcfcfd;
+}
+.anticipos-v2 .ant-row--off .ant-nro,
+.anticipos-v2 .ant-row--off .ant-pend,
+.anticipos-v2 .ant-row--off .ant-restante {
+  color: inherit;
+}
+.anticipos-v2 .ant-check:disabled {
+  cursor: not-allowed;
+}
+
+/* La columna del documento: el botón de ver la OP final, sin estirar la fila. */
+.anticipos-v2 .ant-ver {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius-md);
+  background: #fff;
+  color: var(--c-primary);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.anticipos-v2 .ant-ver:hover {
+  background: #f3f8ff;
+}
+
+/* ===== Datos de la medición + observaciones: una sola card fija =====
+   Dos secciones separadas por un filete, sin desplegable ni tilde de completo. Las piezas de
+   adentro (el formulario de la medición) no llevan marco propio: el marco es la card. */
+.obras-v2 .carga-datos {
+  padding: 20px 24px 24px;
+  margin-bottom: 0;
+}
+.obras-v2 .carga-sec-t {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--o-text-title, #0f172a);
+}
+.obras-v2 .carga-sec-t > i {
+  color: var(--primary-blue);
+}
+.obras-v2 .carga-sec-dato {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--o-text-muted, #64748b);
+}
+.obras-v2 .carga-sep {
+  height: 1px;
+  border: none;
+  background: var(--o-border, #e2e8f0);
+  margin: 22px 0 20px;
+}
+.obras-v2 .carga-datos .med {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.obras-v2 .carga-datos .med-t {
+  display: none;
+}
+
+/* El recuadro de arrastrar y soltar mide lo MISMO que la card de al lado (datos de la medición y
+   observaciones): la fila del grid se estira y el recuadro la acompaña, sin bajar de su alto de
+   La Batea (300px) cuando la card es más baja. */
+.obras-v2 .carga-grid {
+  align-items: stretch;
+}
+.obras-v2 .carga-grid > .cobro-lector {
+  height: auto;
+  min-height: var(--lector-alto);
+}
+.obras-v2 .carga-grid > .carga-datos {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* La tabla de órdenes con las columnas FIJAS: el ancho de cada una no depende de lo que tenga
+   adentro, así no se mueven al pasar de "buscando" a "sin resultados" o a las filas. */
+.anticipos-v2 .ant-tabla--fija {
+  table-layout: fixed;
+}
+.anticipos-v2 .ant-w-check {
+  width: 44px;
+}
+.anticipos-v2 .ant-w-orden {
+  width: 22%;
+}
+.anticipos-v2 .ant-w-fecha {
+  width: 14%;
+}
+.anticipos-v2 .ant-w-medido {
+  width: 18%;
+}
+.anticipos-v2 .ant-w-estado {
+  width: 18%;
+}
+.anticipos-v2 .ant-w-op {
+  width: 11%;
+}
+.anticipos-v2 .ant-tabla--fija td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* El aviso de "buscando" o "sin resultados": una sola celda a todo el ancho, centrada. */
+.anticipos-v2 .ant-tabla td.ant-aviso {
+  padding: 36px 12px;
+  text-align: center;
+  white-space: normal;
+  font-size: 14px;
+  color: var(--c-text-secondary);
+}
+.anticipos-v2 .ant-aviso > i {
+  margin-right: 6px;
+  color: var(--c-primary);
+}
+
+/* "Enviar OP" y "Documento que se envía": mitad y mitad del ancho disponible. */
+.obras-v2 .emision-grid--mitades {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 1000px) {
+  .obras-v2 .emision-grid--mitades {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* El área, todavía sin elegir (pantalla de inicio): el recuadro reserva su lugar, vacío. */
+.topsel-seccion--vacia {
+  min-width: 132px;
+  border-style: dashed;
+  background: #fff;
+  cursor: default;
+}
+.topsel-seccion--vacia:hover {
+  border-color: var(--border-suave, #e4e7ec);
+}
+
+/* ════════════════════ Color de la marca: el bordó del logo de Polifroni ════════════════════
+   #89263C, medido sobre los cuadrados del logo. Va en variables para que un ajuste de tono se haga
+   en un solo lugar. Se usa en las acciones que hacen avanzar el trabajo (buscar, continuar,
+   finalizar), en la pregunta de a quién se envía, en el número de la etapa y en el área elegida. */
+:root {
+  --marca: #89263c;
+  --marca-hover: #6f1e31;
+  --marca-suave: #f7eef0;
+  --marca-borde: #d9b3bc;
+  --marca-apagada: #c7a1aa;
+}
+
+/* Las tarjetas de área del inicio: ícono y pie ("2 operaciones") en bordó. Las que todavía no
+   están siguen en gris. */
+.proceso-card:not(.proceso-card--soon) .proceso-card-ic {
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+.proceso-card:not(.proceso-card--soon) .proceso-card-pasos {
+  color: var(--marca);
+}
+
+/* El área elegida en el encabezado: el nombre en negro y el ícono en bordó. */
+.topsel-seccion {
+  color: #0f172a;
+}
+.topsel-seccion i {
+  color: var(--marca);
+}
+
+/* "¿A quién vas a enviarle la orden?" */
+.obras-v2 .destino-cfg .cfgbox {
+  border-color: var(--marca);
+  background: var(--marca-suave);
+  box-shadow: 0 1px 3px rgba(137, 38, 60, 0.08);
+}
+.obras-v2 .destino-cfg .cfg-ic {
+  background: var(--marca);
+}
+
+/* El número de la etapa, a la izquierda del título. */
+.step-badge-main {
+  background: var(--marca);
+}
+
+/* Buscar. */
+.obras-v2 .btn-buscar {
+  background: var(--marca);
+}
+.obras-v2 .btn-buscar:hover:not(:disabled) {
+  background: var(--marca-hover);
+}
+.obras-v2 .btn-buscar:disabled {
+  background: var(--marca-apagada);
+}
+
+/* Continuar a la etapa siguiente y Finalizar Operación: los botones de la derecha del pie. */
+.obras-v2 .footer-acts .btn-primary,
+.obras-v2 .actions-footer .btn-primary {
+  background: var(--marca);
+  border-color: var(--marca);
+  color: #fff;
+}
+.obras-v2 .footer-acts .btn-primary:hover:not(:disabled),
+.obras-v2 .actions-footer .btn-primary:hover:not(:disabled) {
+  background: var(--marca-hover);
+  border-color: var(--marca-hover);
+}
+.obras-v2 .footer-acts .btn-primary:disabled,
+.obras-v2 .actions-footer .btn-primary:disabled {
+  background: var(--marca-apagada);
+  border-color: var(--marca-apagada);
+}
+
+/* Operación y usuario ya elegidos: el valor en NEGRO, igual que en la lista abierta (antes azul). El
+   "Seleccionar..." sin elegir sigue en gris. */
+.topsel .selbox {
+  color: #0f172a;
+}
+.topsel .selbox-ph {
+  color: var(--text-gray);
+}
+
+/* Operación y usuario: el borde y la flecha en el bordó de la marca (el valor sigue en negro). */
+.topsel .selbox {
+  border-color: var(--marca);
+}
+.topsel .selbox > .fa-chevron-down {
+  color: var(--marca);
+}
+.topsel .ddmenu {
+  border-color: var(--marca);
+}
+/* "Próximamente" de las tarjetas del inicio, también en bordó (la tarjeta sigue apagada). */
+.proceso-card--soon .proceso-card-pasos {
+  color: var(--marca);
+}
+
+/* "¿A quién vas a enviarle la orden?" sin contestar, después de intentar continuar: borde rojo
+   (como el `cfgbox--falta` de La Batea). Se va solo al elegir una opción. */
+.obras-v2 .destino-cfg .cfgbox--falta {
+  border-color: var(--red);
+  background: #fff5f6;
+  /* El anillo rojo suma grosor sin cambiar el tamaño de la caja: nada de abajo se mueve. */
+  box-shadow:
+    0 0 0 1.5px var(--red),
+    0 0 0 5px rgba(226, 68, 92, 0.16);
+}
+/* El "Entendido" de las ventanas de aviso, en el bordó de la marca. */
+.modal-actions .btn-entendido {
+  background: var(--marca);
+  border-color: var(--marca);
+  color: #fff;
+}
+.modal-actions .btn-entendido:hover {
+  background: var(--marca-hover);
+  border-color: var(--marca-hover);
+}
+
+/* Hover en bordó: el recuadro del área del encabezado (vacío o con el área elegida) y las tres
+   tarjetas del inicio. Las que todavía no están también marcan el borde —se ve que se pasó por
+   encima—, pero sin levantarse: no se pueden elegir. */
+.topsel-seccion:hover:not(:disabled),
+.topsel-seccion--vacia:hover {
+  border-color: var(--marca);
+}
+.proceso-card:hover:not(:disabled) {
+  border-color: var(--marca);
+}
+.proceso-card:disabled:hover {
+  border-color: var(--marca);
+}
+
+/* Botones de acción en el bordó de la marca (p. ej. "Cargar una nueva" / "Enviar una ya cargada"). */
+.btn.btn-marca {
+  background: var(--marca);
+  border-color: var(--marca);
+  color: #fff;
+}
+.btn.btn-marca:hover:not(:disabled) {
+  background: var(--marca-hover);
+  border-color: var(--marca-hover);
+}
+
+/* El ícono del aviso "Buscá y cargá una obra para continuar" (el mismo del pie del paso). */
+.obras-v2 .search-helper-ic {
+  margin-right: 6px;
+}
+
+/* ═══════════ Etapa de carga de la OP (Aluminio y HETMO): todo en bordó ═══════════
+   El recuadro de arrastrar y soltar, los íconos de las secciones, los campos de la medición
+   ("Medido por", fecha, aclaración) y las observaciones. El N° de orden sigue gris: es un dato
+   fijo, no un campo. Los estados del recuadro (cargado, error) mantienen su verde y su rojo. */
+.obras-v2 .carga-grid {
+  /* El fondo de los campos es el gris del N° de orden: el bordó queda en bordes e íconos. */
+  --tint-input: #f4f6f9;
+  --tint-input-bd: var(--marca-borde);
+}
+.obras-v2 .carga-grid > .cobro-lector--vacio {
+  border-color: var(--marca);
+  background: #f4f6f9;
+  color: var(--marca);
+}
+.obras-v2 .carga-grid > .cobro-lector--vacio.is-over {
+  background: #eceff4;
+}
+.obras-v2 .carga-grid > .cobro-lector--procesando .cobro-lector-spin {
+  border-color: var(--marca-borde);
+  border-top-color: var(--marca);
+}
+.obras-v2 .carga-grid .cobro-lector-hit:hover:not(:disabled) {
+  background: rgba(137, 38, 60, 0.04);
+}
+.obras-v2 .carga-grid .cobro-lector-hit:focus-visible {
+  outline-color: var(--marca);
+}
+.obras-v2 .carga-grid .carga-sec-t > i {
+  color: var(--marca);
+}
+.obras-v2 .carga-grid .med-input:hover:not(:disabled),
+.obras-v2 .carga-grid .abs-sel-btn:hover {
+  border-color: var(--marca-apagada);
+}
+.obras-v2 .carga-grid .med-input:focus,
+.obras-v2 .carga-grid .med-input:focus-visible,
+.obras-v2 .carga-grid .med-sel-btn[aria-expanded='true'],
+.obras-v2 .carga-grid .obs-area:focus {
+  border-color: var(--marca);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(137, 38, 60, 0.12);
+}
+.obras-v2 .carga-grid .med-conic > i,
+.obras-v2 .carga-grid .med-sel-btn > i {
+  color: var(--marca);
+}
+.obras-v2 .carga-grid .med-nro--fijo > i {
+  color: #94a3b8;
+}
+.obras-v2 .carga-grid .med-op--activo,
+.obras-v2 .carga-grid .abs-op--act {
+  background: var(--marca-suave);
+}
+.obras-v2 .carga-grid .med-op--elegido {
+  color: var(--marca);
+}
+.obras-v2 .carga-grid .abs-sel-btn,
+.obras-v2 .carga-grid .abs-flecha {
+  border-color: var(--marca-borde);
+}
+.obras-v2 .carga-grid .abs-sel-btn > i,
+.obras-v2 .carga-grid .abs-flecha {
+  color: var(--marca);
+}
+.obras-v2 .carga-grid .abs-flecha:hover:not(:disabled) {
+  background: var(--marca-suave);
+}
+.obras-v2 .carga-grid .abs-punto--act {
+  outline-color: var(--marca);
+}
+.obras-v2 .carga-grid .obs-vacio {
+  border-color: var(--marca-borde);
+  background: #f4f6f9;
+}
+.obras-v2 .carga-grid .obs-vacio i {
+  color: var(--marca-apagada);
+}
+.obras-v2 .carga-grid .obs-vacio .btn-out {
+  border-color: var(--marca);
+  color: var(--marca);
+}
+.obras-v2 .carga-grid .obs-vacio .btn-out:hover:not(:disabled) {
+  background: #fff;
+}
+.obras-v2 .carga-grid .obs-vacio .btn-out i {
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Observaciones: los puntos y, a la derecha, el atajo de teclado para cambiar de abertura. */
+.abs-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.abs-pie > .abs-puntos {
+  margin-top: 0;
+}
+.abs-atajo {
+  font-size: 11.5px;
+  color: var(--o-text-muted, #64748b);
+}
+.abs-atajo kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--o-border, #e2e8f0);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--o-text-main, #334155);
+}
+
+/* El "Revisá la OP generada…" de la ventana de advertencias va debajo de la lista, separado. */
+.modal-clave--pie {
+  margin-top: 16px;
+}
+
+/* El cierre de la operación: los dos botones en un renglón, sin cortar el texto. */
+.modal-box.modal-cierre {
+  width: min(520px, calc(100vw - 32px));
+  max-width: none;
+}
+.modal-cierre .modal-actions .btn {
+  white-space: nowrap;
+}
+
+/* "Confirmador": quién confirma la orden, a la izquierda del tipo de destinatario. */
+.obras-v2 .cbadge.cbadge--confirmador {
+  background: #e6f0ff;
+  color: #0073ea;
+}
+/* El selector de quién confirma, en rojo cuando se intentó enviar sin elegirlo. */
+.obras-v2 select.is-falta {
+  border-color: var(--red, #e2445c);
+}

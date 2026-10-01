@@ -58,3 +58,10 @@ export function fechaHora(iso: string): string {
  * Monday los devuelve ya con el código de país (549…).
  */
 export const soloDigitos = (telefono: string): string => telefono.replace(/\D/g, '')
+
+/** Para comparar sin mayúsculas ni tildes: "Pérez" y "perez" son la misma búsqueda. */
+export const normalizar = (s: string): string =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')

@@ -1,4 +1,5 @@
-/** Tipos del dominio. Todo sale del tablero 🪟 Obras (9617181553). */
+/** Tipos del dominio. Salen de los tableros 🪟 Obras (9617181553) y 🏭 Orden de Produccion. */
+import type { EstadoOrden } from '@/lib/estadosOp'
 
 /** Un archivo adjunto en una columna `file`. */
 export interface ArchivoObra {
@@ -60,6 +61,15 @@ export interface Obra {
   opFinal: ArchivoObra[]
   /** Ids de las órdenes de producción de la obra, en el tablero de órdenes. */
   ordenesIds: string[]
+  /** Las mismas órdenes con su estado, de la más nueva a la más vieja. */
+  ordenes: {
+    id: string
+    estado: EstadoOrden
+    /** `🤖Estado de Envio OP al Taller`, tal cual. */
+    envioTaller?: string
+    /** El nombre del ítem de la OP ("Obra - IDOP-059 - Aluminio A1"). */
+    nombre?: string
+  }[]
   planoAberturas: ArchivoObra[]
   planoPlanta: ArchivoObra[]
   presupuestoAceptado: ArchivoObra[]
@@ -101,8 +111,17 @@ export interface Actividad {
   autor: string
 }
 
-/** Pasos del proceso de Orden de Producción. El orden es el del stepper. */
-export type Paso = 'obra' | 'etmo' | 'envio' | 'confirmacion'
+/**
+ * Las tres etapas de "Enviar Orden de Producción". El nombre de cada una en pantalla depende de a
+ * quién se envía y del tipo de obra (ver `lib/pasos`), pero el lugar en el recorrido es el mismo.
+ */
+export type Paso = 'obra' | 'carga' | 'envio'
+
+/** Las operaciones de la sección Producción, las que lista el selector del encabezado. */
+export type Operacion = 'enviar' | 'consultar'
+
+/** A quién se le envía la orden: al cliente o constructor (para que la confirme) o al taller. */
+export type Destino = 'cliente' | 'taller'
 
 /** Operaciones que ofrece la pantalla principal. */
 export type Proceso = 'obras'

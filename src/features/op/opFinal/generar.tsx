@@ -1,25 +1,25 @@
 /**
- * Arma la Orden de Producción final en el navegador y la adjunta a la OP.
+ * Arma la Orden de Producción final en el navegador. NO la sube a Monday: queda en la app, se
+ * envía desde ahí y se adjunta a la OP recién al finalizar la operación (ver `registrarPvc`).
  *
- * Reemplaza a los módulos 39 (hojas a PNG), 59 (armado de datos), 54 (HTML a PDF) y 55 (subir a
- * Monday) del escenario de generación. Del escenario sólo se usa la lectura de Claude, que llega
- * como `datos` en su respuesta.
+ * Reemplaza a los módulos 39 (hojas a PNG), 59 (armado de datos) y 54 (HTML a PDF) del escenario
+ * de generación. Del escenario sólo se usa la lectura de Claude, que llega como `datos` en su
+ * respuesta.
  *
  * Todo lo que el documento necesita se valida ANTES de dibujar: si falta algo que la orden no
  * puede llevar vacía (la obra, la dirección, el número, la lectura), no se genera y se dice qué
  * falta. Lo que la IA no pudo leer de un modelo sale con una raya y se avisa.
  */
-import { subirOpFinal } from '@/services/monday'
 import type { ArchivoObra } from '@/types'
 import { armarDatosOp, type EntradaOp, type ModeloOp } from './datos'
-import { cargarHojas, recortar } from './hojas'
+import { cargarHojas, recortar, type Dibujo } from './hojas'
 
-/** Límite de la función de Vercel que sube el archivo a Monday (4,5 MB), con margen. */
+/** Límite de la función de Vercel que sube el archivo a Monday (4,5 MB), con margen: se valida
+    acá para no generar una orden que después no se pueda adjuntar al finalizar. */
 const TOPE_BYTES = 4.3 * 1024 * 1024
 const LOGO = '/logo-op.jpg'
 
 export interface EntradaGenerar extends EntradaOp {
-  ordenId: string
   /** La Orden HETMO de la OP: de ahí salen los dibujos. */
   etmo: ArchivoObra | null
 }
@@ -28,7 +28,7 @@ export interface ResultadoGenerar {
   ok: boolean
   errores: string[]
   avisos: string[]
-  /** El PDF subido, por si hace falta mostrarlo o volver a subirlo. */
+  /** El PDF armado. */
   archivo?: File
 }
 
@@ -50,7 +50,7 @@ const nombreArchivo = (obra: string, nro: string) =>
 
 export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenerar> {
   const { datos, errores, avisos } = armarDatosOp(e)
-  if (!e.etmo) errores.push('La OP no tiene la Orden HETMO adjunta: de ahí salen los dibujos.')
+  if (!e.etmo) errores.push('La OP no tiene el PDF original adjunto: de ahí salen los dibujos.')
   if (!datos || errores.length) return { ok: false, errores, avisos }
 
   /* ── Los dibujos ──────────────────────────────────────────────────────── */
@@ -60,24 +60,24 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
   } catch (err) {
     return {
       ok: false,
-      errores: [`No se pudo leer la Orden HETMO: ${err instanceof Error ? err.message : String(err)}`],
+      errores: [`No se pudo leer el PDF original: ${err instanceof Error ? err.message : String(err)}`],
       avisos,
     }
   }
   if (datos.hojasNecesarias > hojas.length) {
     avisos.push(
-      `La lectura ubica dibujos hasta la hoja ${datos.hojasNecesarias}, pero la Orden HETMO tiene ${hojas.length}: esos modelos van sin dibujo.`,
+      `Faltan los dibujos de algunos modelos porque la IA los ubicó hasta la hoja ${datos.hojasNecesarias}, pero el documento de HETMO tiene ${hojas.length} ${hojas.length === 1 ? 'hoja' : 'hojas'}, por eso esos modelos van sin dibujo. Verificá que el documento cargado en el paso anterior esté completo y volvé a generar una OP Final.`,
     )
   }
   /* Una foto no se recorta por mitades: se muestra entera. */
   const esFoto = !/\.pdf$/i.test((e.etmo as ArchivoObra).nombre)
-  const cache = new Map<string, string>()
-  const dibujo = (m: ModeloOp): string | null => {
+  const cache = new Map<string, Dibujo | null>()
+  const dibujo = (m: ModeloOp): Dibujo | null => {
     if (m.hojaIdx == null || !hojas[m.hojaIdx]) return null
     const slot = esFoto ? 'full' : m.slot
     const clave = `${m.hojaIdx}:${slot}`
     if (!cache.has(clave)) cache.set(clave, recortar(hojas[m.hojaIdx], slot))
-    return cache.get(clave) || null
+    return cache.get(clave) ?? null
   }
   const dibujos = datos.paginas.flatMap((p) => p.filas.flat()).map(dibujo)
 
@@ -115,17 +115,6 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
     }
   }
 
-  /* ── A la OP ──────────────────────────────────────────────────────────── */
   const archivo = new File([blob], nombreArchivo(datos.obra, datos.nroOrden), { type: 'application/pdf' })
-  try {
-    await subirOpFinal(e.ordenId, archivo)
-  } catch (err) {
-    return {
-      ok: false,
-      errores: [`No se pudo adjuntar la orden en Monday: ${err instanceof Error ? err.message : String(err)}`],
-      avisos,
-      archivo,
-    }
-  }
   return { ok: true, errores: [], avisos, archivo }
 }

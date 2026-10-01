@@ -67,6 +67,8 @@ export interface DatosOp {
   fecha: string
   vista: string
   medidoPor: string
+  /** DD/MM/AAAA, o vacía. */
+  fechaMedicion: string
   numeroListado: string | null
   version: string | null
   paginas: PaginaOp[]
@@ -90,6 +92,8 @@ export interface EntradaOp {
   /** DD/MM/AAAA. */
   fecha: string
   medidoPor: string
+  /** La fecha de la medición, DD/MM/AAAA (paso 2, "Fecha de medición"). */
+  fechaMedicion?: string
   /** La observación de la OP: la que se escribe junto a "Medido por" en el paso 2. */
   observacionOp?: string
   vista?: string
@@ -128,16 +132,32 @@ const DISPONIBLE_MM = 263.5
 /** Lo fijo de un renglón: código, descripción, color, medidas, cantidad, márgenes y el dibujo en su
     alto mínimo (12 mm). El dibujo crece con lo que sobra de la hoja, hasta 44 mm. */
 const ALTO_FILA_FIJO_MM = 42
-/** El pie: los cuatro totales y la observación de la OP con todos sus renglones. */
+/** El pie enmarcado: totales, medido por + fecha, y la observación de la OP con sus tres renglones.
+    Medido en react-pdf: ~31 mm con la observación completa. */
 const ALTO_PIE_MM = 32.5
 
-const altoFilas = (filas: ModeloOp[][]): number => {
-  const modelos = filas.flat()
-  const maxVidrios = Math.max(1, ...modelos.map((m) => m.vidrios.length))
-  const hayObs = modelos.some((m) => m.observacion)
-  const fila = ALTO_FILA_FIJO_MM + ALTO_DATOS_MM + (maxVidrios - 1) * ALTO_VIDRIO_MM + (hayObs ? ALTO_OBS_MM + 0.6 : 0)
-  return fila * filas.length
+/**
+ * Las medidas de UN renglón: lo que alinea sus tres tarjetas.
+ *
+ * Se calculan por renglón y no por hoja: el bloque de vidrios + tapajuntas y el de la observación
+ * existen para que las columnas de un MISMO renglón queden parejas. Un renglón de mosquiteros (sin
+ * "Vid:" ni "Tap:") no reserva ese bloque —quedaría un hueco entre el dibujo y la observación—, y
+ * uno sin observaciones no reserva la suya.
+ */
+export function metricasFila(fila: ModeloOp[]): { altoDatosMm: number; hayObs: boolean } {
+  const sinDatos = fila.every((m) => m.vidrios.length === 0 && m.taps.length === 0)
+  const maxVidrios = Math.max(1, ...fila.map((m) => m.vidrios.length))
+  return {
+    altoDatosMm: sinDatos ? 0 : ALTO_DATOS_MM + (maxVidrios - 1) * ALTO_VIDRIO_MM,
+    hayObs: fila.some((m) => m.observacion),
+  }
 }
+
+const altoFilas = (filas: ModeloOp[][]): number =>
+  filas.reduce((total, fila) => {
+    const { altoDatosMm, hayObs } = metricasFila(fila)
+    return total + ALTO_FILA_FIJO_MM + altoDatosMm + (hayObs ? ALTO_OBS_MM + 0.6 : 0)
+  }, 0)
 
 const altoSueltas = (sueltas: string | null): number =>
   sueltas ? 5 + (sueltas.split('\n').length + 1) * 4.4 : 0
@@ -222,8 +242,7 @@ export function cantidadesPorModelo(lectura: unknown): Map<string, number> {
 export const cantidadDe = (cantidades: Map<string, number>, modelo: string): number | null =>
   cantidades.get(normalizarNombre(modelo)) ?? cantidades.get(claveModelo(modelo)) ?? null
 
-const nombreModelo = (m: ModeloOp, i: number): string =>
-  m.codigo ? `Modelo ${m.codigo}` : `El modelo n° ${i + 1}`
+const REGEN = 'volvé a generar una OP Final.'
 
 /**
  * Las hojas: A4 vertical, de a 3 modelos por renglón y hasta 3 renglones, en el orden en que los
@@ -299,17 +318,21 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
   })
   const modelos = crudos.map(aModelo).filter((m): m is ModeloOp => m != null)
   if (modelos.length === 0) {
-    errores.push('La lectura del listado HETMO no trae ningún modelo.')
+    errores.push('La lectura del PDF original no trae ningún modelo.')
   }
   if (crudos.length !== modelos.length) {
-    avisos.push(`${crudos.length - modelos.length} entrada(s) de la lectura no son modelos y se descartaron.`)
+    avisos.push(
+      `La IA devolvió ${crudos.length - modelos.length} dato(s) que no corresponden a ningún modelo del documento de HETMO, por eso no se incluyeron en la OP. Revisá en la OP generada que estén todos los modelos; si falta alguno, ${REGEN}`,
+    )
   }
 
   const numeroListado = texto(lectura.numeroListado)
   /* En el listado figura "Versión:. 1": si la IA arrastra el punto o los dos puntos, se sacan. */
   const version = texto(lectura.version)?.replace(/^[.:\s]+/, '') || null
-  if (!numeroListado) avisos.push('No se pudo leer el N° de listado HETMO: el encabezado va con una raya.')
-  if (!version) avisos.push('No se pudo leer la versión del listado HETMO: el encabezado va con una raya.')
+  const datoIlegible = (dato: string) =>
+    `Falta el dato "${dato}" porque la IA no pudo leerlo del documento de HETMO, por eso el encabezado de la OP lo muestra con una raya (—). Si deseas que aparezca, verificá que el documento cargado en el paso anterior se lea bien y ${REGEN}`
+  if (!numeroListado) avisos.push(datoIlegible('N° de listado'))
+  if (!version) avisos.push(datoIlegible('Versión del listado'))
 
   /* ── Los datos de la obra y de la medición ────────────────────────────── */
   const obligatorio = (valor: string, que: string) => {
@@ -323,12 +346,16 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
   const nroOrden = obligatorio(e.nroOrden, 'el número de la orden')
   const fecha = obligatorio(e.fecha, 'la fecha')
   const medidoPor = e.medidoPor.trim()
-  if (!medidoPor) avisos.push('Falta "Medido por": el pie va sin ese dato.')
+  if (!medidoPor) {
+    avisos.push(
+      `Falta el dato "Medido por:" porque en el paso anterior no lo indicaste. Si deseas cargar por quién fue medida la orden, volvé al paso anterior, en la sección Datos de la medición seleccioná al medidor, y ${REGEN}`,
+    )
+  }
 
   /* ── Cada modelo ───────────────────────────────────────────────────────── */
   const vistos = new Map<string, number>()
   modelos.forEach((m, i) => {
-    const quien = nombreModelo(m, i)
+    const delModelo = m.codigo ? `del modelo ${m.codigo}` : `del modelo n° ${i + 1}`
     const faltan = (
       [
         ['código', m.codigo],
@@ -341,21 +368,38 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
     )
       .filter(([, v]) => v == null)
       .map(([k]) => k)
-    if (faltan.length) avisos.push(`${quien}: no se leyó ${faltan.join(', ')}.`)
+    if (faltan.length) {
+      const lista = faltan.map((f) => `"${f}"`).join(', ')
+      avisos.push(
+        `${faltan.length > 1 ? `Faltan los datos ${lista}` : `Falta el dato ${lista}`} ${delModelo} porque la IA no pudo ${faltan.length > 1 ? 'leerlos' : 'leerlo'} del documento de HETMO, por eso en la OP ${faltan.length > 1 ? 'aparecen' : 'aparece'} con una raya (—). Si deseas completarlo, verificá que ese modelo se lea bien en el documento cargado en el paso anterior y ${REGEN}`,
+      )
+    }
     if (m.taps.length !== 0 && m.taps.length !== 4) {
-      avisos.push(`${quien}: tiene ${m.taps.length} tapajuntas (lo normal es 0 o 4).`)
+      avisos.push(
+        `La IA leyó ${m.taps.length} tapajuntas ${delModelo}, cuando lo habitual es 0 o 4, por eso ese dato puede estar mal leído. Revisá ese modelo en la OP generada; si no coincide con el documento de HETMO, ${REGEN}`,
+      )
     }
     if (m.vidrios.some((v) => v.tipo == null || v.ancho == null || v.alto == null || v.ud == null)) {
-      avisos.push(`${quien}: hay una línea de vidrio con datos que no se leyeron.`)
+      avisos.push(
+        `Faltan datos en una línea de vidrio ${delModelo} porque la IA no pudo leerlos del documento de HETMO, por eso en la OP aparecen con una raya (—). Revisá ese modelo en la OP generada; si deseas completarlos, ${REGEN}`,
+      )
     }
-    if (m.hojaIdx == null) avisos.push(`${quien}: la IA no dijo en qué hoja está el dibujo; va sin dibujo.`)
+    if (m.hojaIdx == null) {
+      avisos.push(
+        `Falta el dibujo ${delModelo} porque la IA no pudo ubicar en qué hoja del documento de HETMO está, por eso la OP lo muestra sin dibujo. Si deseas que aparezca, ${REGEN}`,
+      )
+    }
     if (m.codigo) {
       const clave = m.codigo.toUpperCase()
       vistos.set(clave, (vistos.get(clave) ?? 0) + 1)
     }
   })
   for (const [codigo, veces] of vistos) {
-    if (veces > 1) avisos.push(`Modelo ${codigo} aparece ${veces} veces en la lectura.`)
+    if (veces > 1) {
+      avisos.push(
+        `El modelo ${codigo} aparece ${veces} veces en la lectura de la IA, por eso puede estar repetido en la OP. Revisalo en la OP generada; si está duplicado, ${REGEN}`,
+      )
+    }
   }
 
   /* ── Las observaciones, cada una a su modelo ─────────────────────────── */
@@ -376,7 +420,9 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
   }
   const sueltas = [...porNombre].filter(([k]) => !usadas.has(k)).map(([k, t]) => `Modelo ${k}: ${t}`)
   if (sueltas.length) {
-    avisos.push(`${sueltas.length} observación(es) no encontraron su modelo en el listado y van al pie.`)
+    avisos.push(
+      `${sueltas.length === 1 ? 'Una observación no coincide' : `${sueltas.length} observaciones no coinciden`} con ningún modelo del documento de HETMO, por eso ${sueltas.length === 1 ? 'se incluyó' : 'se incluyeron'} al pie de la OP en lugar de en su modelo. Revisá el pie de la OP generada; si deseas que vayan en su modelo, ${REGEN}`,
+    )
   }
 
   /* ── Totales del pie ──────────────────────────────────────────────────── */
@@ -406,8 +452,9 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
       celular,
       nroOrden,
       fecha,
-      vista: e.vista?.trim() || 'VISTA EXTERIOR',
+      vista: e.vista?.trim() || 'VISTA INTERIOR',
       medidoPor,
+      fechaMedicion: e.fechaMedicion?.trim() ?? '',
       numeroListado,
       version,
       paginas,

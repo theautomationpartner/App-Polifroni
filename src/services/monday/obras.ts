@@ -10,6 +10,7 @@ import { memoGlobal } from './cache'
 import { BOARD_OBRAS, BOARD_ORDENES, COL, COL_OP_ARCHIVOS } from './columns'
 import { byId, num, sumaMirror, valor, type CV, type MondayItem } from './parse'
 import { mondayApi, mondaySubirArchivo, urlArchivo } from './sdk'
+import { estadoDeOrden } from '@/lib/estadosOp'
 import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types'
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -210,6 +211,7 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     ordenEtmo: [],
     opFinal: [],
     ordenesIds: (c[COL.ordenes]?.linked_item_ids ?? []).map(String),
+    ordenes: [],
     planoAberturas: archivos(c[COL.planoAberturas]),
     planoPlanta: archivos(c[COL.planoPlanta]),
     presupuestoAceptado: archivos(c[COL.presupuestoAceptado]),
@@ -249,14 +251,19 @@ export async function getObra(itemId: string): Promise<Obra | null> {
  * ids de OP que ya no existen, y el paso de envío terminaba mostrando una orden vieja en lugar de
  * la recién generada. `ordenesIds` queda con TODAS, sin repetir y sin las archivadas o borradas.
  */
+/** `🤖Tipo` de la OP (Aluminio | PVC). */
+const COL_OP_TIPO = 'color_mm7gbz9q'
+/** `🤖Estado de Envio OP al Taller` de la OP. */
+const COL_OP_ENVIO_TALLER = 'color_mm7qjqgr'
+
 async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
-  const cols = JSON.stringify([COL_OP_ARCHIVOS.etmo, COL_OP_ARCHIVOS.opFinal])
+  const cols = JSON.stringify([COL_OP_ARCHIVOS.etmo, COL_OP_ARCHIVOS.opFinal, COL_OP_ARCHIVOS.estado, COL_OP_TIPO, COL_OP_ENVIO_TALLER])
   type ItemOp = MondayItem & { state?: string }
   const [porRelacion, porObra] = await Promise.all([
     mondayApi<{ boards: { items_page: { items: ItemOp[] } }[] }>(
       `query ($q: ItemsQuery) {
         boards(ids: [${BOARD_ORDENES}]) {
-          items_page(limit: 200, query_params: $q) { items { id state column_values(ids: ${cols}) { id text value } } }
+          items_page(limit: 200, query_params: $q) { items { id name state column_values(ids: ${cols}) { id text value } } }
         }
       }`,
       { q: { rules: [{ column_id: COL_OP_ARCHIVOS.obra, compare_value: [Number(obra.id)], operator: 'any_of' }] } },
@@ -265,7 +272,7 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
       .catch(() => [] as ItemOp[]),
     obra.ordenesIds.length
       ? mondayApi<{ items: ItemOp[] }>(
-          `query ($ids: [ID!]) { items(ids: $ids) { id state column_values(ids: ${cols}) { id text value } } }`,
+          `query ($ids: [ID!]) { items(ids: $ids) { id name state column_values(ids: ${cols}) { id text value } } }`,
           { ids: obra.ordenesIds },
         )
           .then((d) => d.items ?? [])
@@ -278,12 +285,23 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
     unicas.set(String(i.id), i)
   }
   const ordenes = [...unicas.values()]
-    .map((i) => ({ id: String(i.id), c: byId(i) }))
+    .map((i) => ({ id: String(i.id), nombre: i.name ?? '', c: byId(i) }))
     .sort((a, b) => Number(b.id) - Number(a.id))
-  if (ordenes.length === 0) return { ...obra, ordenesIds: [] }
+  if (ordenes.length === 0) return { ...obra, ordenesIds: [], ordenes: [] }
   const opFinal = ordenes.flatMap((o) => archivos(o.c[COL_OP_ARCHIVOS.opFinal]))
   const etmo = archivos(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
-  return { ...obra, ordenesIds: ordenes.map((o) => o.id), opFinal, ordenEtmo: etmo }
+  /* El estado de CADA orden: es lo que decide qué acciones tiene la obra (ver `lib/pasos`). */
+  /* En Aluminio el original es la orden (no tiene OP final aparte): cuenta como documento. */
+  const tieneDocumento = (o: (typeof ordenes)[number]) =>
+    archivos(o.c[COL_OP_ARCHIVOS.opFinal]).length > 0 ||
+    (/alum/i.test(o.c[COL_OP_TIPO]?.text ?? '') && archivos(o.c[COL_OP_ARCHIVOS.etmo]).length > 0)
+  const estados = ordenes.map((o) => ({
+    id: o.id,
+    estado: estadoDeOrden((o.c[COL_OP_ARCHIVOS.estado]?.text ?? '').trim(), tieneDocumento(o)),
+    envioTaller: (o.c[COL_OP_ENVIO_TALLER]?.text ?? '').trim(),
+    nombre: o.nombre,
+  }))
+  return { ...obra, ordenesIds: ordenes.map((o) => o.id), ordenes: estados, opFinal, ordenEtmo: etmo }
 }
 
 /** Fila de la lista: sólo lo que se ve en el listado. */

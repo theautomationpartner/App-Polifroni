@@ -43,21 +43,27 @@ export class EscenarioNoConfigurado extends Error {
  * manda `{ event: { pulseId, boardId, ... } }`; si el escenario lee esa forma, la encuentra igual.
  * Y arriba van los mismos datos en plano (`itemId`, `boardId`), que es como los espera un webhook
  * escrito a mano. Mandar los dos sobres evita tener que adivinar cuál abre el escenario.
+ *
+ * `boardId` y `pulseId` son los de la obra, salvo que `extra` traiga otros: los envíos de la OP
+ * mandan el tablero de Orden de Produccion y el ítem de la OP. Van en los dos sobres, con el tipo
+ * de cada uno (arriba el tablero en texto, en `event` en número, como lo manda Monday).
  */
 function cuerpo(itemId: string, extra: Record<string, unknown>) {
+  const boardId = Number(extra.boardId ?? BOARD_OBRAS)
+  const pulseId = Number(extra.pulseId ?? itemId)
   return {
     itemId,
-    boardId: String(BOARD_OBRAS),
-    pulseId: Number(itemId),
     origen: 'app-obras-polifroni',
     disparadoEn: new Date().toISOString(),
     ...extra,
+    boardId: String(boardId),
+    pulseId,
     event: {
-      pulseId: Number(itemId),
-      boardId: BOARD_OBRAS,
       type: 'app_trigger',
       app: 'obras-polifroni',
       ...extra,
+      pulseId,
+      boardId,
     },
   }
 }

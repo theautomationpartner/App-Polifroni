@@ -1,64 +1,114 @@
-import type { Obra, Paso } from '@/types'
+import { cuantasEn, ordenesVivas, situacionOrdenes, tipoDe } from '@/lib/pasos'
+import { aptaParaTaller, enElTaller } from '@/lib/estadosOp'
+import type { Destino, Obra } from '@/types'
 
 /**
- * Lo que hay que preguntar ANTES de entrar a una obra.
+ * Lo que hay que preguntar (o avisar) ANTES de entrar a una obra.
  *
- * Todas las validaciones del circuito viven acá y se resuelven en la PRIMERA pantalla, en el
- * momento de elegir la obra. El motivo es que una validación es una decisión —"¿genero una nueva?",
- * "¿voy a emitirla primero?"— y una decisión tomada al entrar no agrega un paso: reemplaza el
- * momento en que la persona se iba a dar cuenta sola, tres pantallas después.
- *
- * Lo que NO se hace acá es frenar: las dos opciones siempre llevan a algún lado. Un cartel que
- * sólo dice "no se puede" deja a alguien mirando una lista sin saber qué hacer con ella.
+ * Una validación es una decisión —"¿cargo una nueva?"— y tomada al elegir la obra reemplaza el
+ * momento en que la persona se iba a dar cuenta sola, una etapa después.
  */
 export interface ValidacionEntrada {
   titulo: string
   /** Lo que va a pasar, en una línea. Es lo que se lee primero. */
   clave: string
-  /** El detalle, para quien lo necesite. */
   nota?: string
   /** Botón que NO entra: se vuelve a la lista. */
   cancelar: string
-  /** Botón que entra. */
-  aceptar: string
-  /** A qué etapa se entra al aceptar. Puede no ser la que se había elegido. */
-  destino: Paso
+  /** Botón que entra. Sin él, el aviso sólo informa (no hay con qué seguir). */
+  aceptar?: string
+  /**
+   * Un segundo camino para entrar: "Enviar una ya cargada". Entra a la misma obra pero manda una
+   * OP que ya existe en vez de cargar otra (ver `AppState.existente`).
+   */
+  alternativa?: string
+  /** A quién se envía al aceptar. Puede no ser el que se había elegido. */
+  destino: Destino
   tono: 'warn' | 'info'
 }
 
-export function validarEntrada(destino: Paso, obra: Obra): ValidacionEntrada | null {
-  const tieneOp = obra.opFinal.length > 0
-  /** La obra ya tiene órdenes de producción en su columna "Orden de Produccion". */
-  const tieneOrdenes = obra.ordenesIds.length > 0 || tieneOp
-
-  /* Emitir sobre una obra que YA tiene su orden: no es "generar", es rehacer. */
-  if (destino === 'etmo' && tieneOrdenes) {
+export function validarEntrada(destino: Destino, obra: Obra): ValidacionEntrada | null {
+  /* Sin el tipo no hay recorrido: PVC y Aluminio cargan documentos distintos. */
+  if (destino === 'cliente' && !tipoDe(obra)) {
     return {
-      titulo: 'Esta obra ya tiene una Orden de Producción asociada',
-      clave: '¿Querés generar otra Orden de Producción nueva?',
-      /* Cada orden es un ÍTEM NUEVO del tablero de órdenes, asociado a la obra: no se reemplaza
-         nada, y la OP nueva arranca sin documento ni observaciones —son de cada OP—. */
-      nota: 'Se crea aparte y queda asociada a la obra, junto a las que ya tiene.',
-      cancelar: 'No generar',
-      aceptar: 'Generar otra orden',
-      destino: 'etmo',
+      titulo: 'La obra no tiene el tipo cargado',
+      clave: 'No se sabe si es de PVC o de Aluminio.',
+      nota: 'Cargá el tipo en la columna «Tipo» de la obra en Monday y volvé a elegirla: de eso depende qué orden se carga.',
+      cancelar: 'Elegir otra obra',
+      destino,
       tono: 'warn',
     }
   }
 
-  /* Mandar —al cliente o al taller— algo que todavía no existe. En vez de negarlo, se ofrece el
-     camino: emitirla, que es lo que hay que hacer de todos modos. */
-  if ((destino === 'envio' || destino === 'confirmacion') && !tieneOp) {
+  /* Al cliente o constructor, según en qué está la obra con sus órdenes (ver `situacionOrdenes`):
+     sin órdenes se sigue sin preguntar; con órdenes asignadas se pregunta si se carga una nueva; con
+     una CONFIRMADA no se carga otra —la ventana no deja seguir—. */
+  if (destino === 'cliente') {
+    const s = situacionOrdenes(obra)
+    if (s.tipo === 'confirmada') {
+      return {
+        titulo: 'Esta obra ya tiene una orden confirmada',
+        clave: 'No se puede cargar otra orden de producción.',
+        nota: 'El cliente ya confirmó una orden de esta obra: lo que sigue es enviarla al taller.',
+        cancelar: 'Entendido',
+        destino: 'cliente',
+        tono: 'warn',
+      }
+    }
+    if (s.tipo === 'asignadas') {
+      return {
+        titulo: 'Esta obra ya tiene órdenes de producción',
+        clave: '¿Cargás una orden nueva o enviás una de las que ya tiene?',
+        nota: `Tiene ${s.n === 1 ? '1 orden asignada' : `${s.n} órdenes asignadas`}. La nueva se crea aparte y queda asociada a la obra, junto a las que ya tiene.`,
+        cancelar: 'Cancelar',
+        aceptar: 'Cargar una nueva',
+        alternativa: 'Enviar una ya cargada',
+        destino: 'cliente',
+        tono: 'warn',
+      }
+    }
+    return null
+  }
+
+  if (destino === 'taller' && ordenesVivas(obra).length === 0) {
     return {
-      titulo: 'Esta obra todavía no tiene la OP Final',
-      clave:
-        destino === 'envio'
-          ? 'No hay documento para mandarle al cliente.'
-          : 'No hay documento que confirmar ni que mandar al taller.',
-      nota: 'Se emite en la etapa de Orden ETMO, a partir del documento que genera ETMO.',
+      titulo: 'Esta obra no tiene órdenes de producción',
+      clave: 'No hay ninguna orden para mandar al taller.',
+      nota: 'Primero se carga la OP y se envía al cliente o al constructor para que la confirme.',
       cancelar: 'Elegir otra obra',
-      aceptar: 'Ir a emitir la OP',
-      destino: 'etmo',
+      aceptar: 'Cargar una OP',
+      destino: 'cliente',
+      tono: 'info',
+    }
+  }
+
+  /* Al taller sólo va una confirmada que todavía no se envió (ver `aptaParaTaller`). Sin ninguna,
+     la ventana no deja seguir, y dice por qué: si la que había ya está en el taller, eso. */
+  if (destino === 'taller' && !obra.ordenes.some((o) => aptaParaTaller(o.estado, o.envioTaller))) {
+    const enTaller = obra.ordenes.filter((o) => enElTaller(o.estado, o.envioTaller))
+    if (enTaller.length) {
+      const nombres = enTaller.map((o) => `«${o.nombre || o.id}»`).join(', ')
+      return {
+        titulo: 'Esta obra ya envió su orden al taller',
+        clave:
+          enTaller.length === 1
+            ? `Ya existe una orden confirmada y enviada al taller: ${nombres}.`
+            : `Ya existen órdenes confirmadas y enviadas al taller: ${nombres}.`,
+        nota: 'Una orden que ya está en el taller no se vuelve a enviar.',
+        cancelar: 'Elegir otra obra',
+        destino: 'taller',
+        tono: 'info',
+      }
+    }
+    const pendientes = cuantasEn(obra, 'pendiente')
+    return {
+      titulo: 'Esta obra no tiene órdenes confirmadas',
+      clave: 'Sin la confirmación del cliente o del constructor no se manda nada al taller.',
+      nota: pendientes
+        ? `Tiene ${pendientes} ${pendientes === 1 ? 'orden pendiente' : 'órdenes pendientes'} de confirmar.`
+        : undefined,
+      cancelar: 'Elegir otra obra',
+      destino: 'taller',
       tono: 'info',
     }
   }

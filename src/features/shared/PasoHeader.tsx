@@ -4,15 +4,12 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
 import { Modal } from '@/components/ui/Modal'
 import { Stepper } from '@/components/ui/Stepper'
-import { PROCESOS, procesoDe, type ProcesoDef } from '@/lib/procesos'
-import { topePermitido } from '@/lib/pasos'
+import { procesoDe } from '@/lib/procesos'
+import { etiquetasPasos, tipoDe } from '@/lib/pasos'
 import { comoUsuario } from '@/services/monday'
-import { ETIQUETAS_PASO, PASOS, indiceDe } from '@/state/appState'
+import { OPERACIONES, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
-import { AccionSelect } from './AccionSelect'
-
-/** Etiquetas de las etapas, en el orden del proceso. */
-const ETAPAS = PASOS.map((p) => ETIQUETAS_PASO[p])
+import type { Operacion } from '@/types'
 
 /** Item de la barra: rótulo arriba, control abajo (mismo patrón que La Batea). */
 /**
@@ -76,60 +73,45 @@ export function TopSel({ label, children }: { label: string; children: ReactNode
 }
 
 /**
- * Selector de PROCESO, el mismo control con el que La Batea elige la operación.
+ * Selector de OPERACIÓN, el mismo control con el que La Batea elige el tipo de operación.
  *
- * Lo que se elige acá es el proceso ENTERO —"Orden de Producción", cinco etapas—, no una de
- * sus etapas: el encabezado dice en qué trabajo estás, y adentro del trabajo se elige la acción
- * (`AccionSelect`). Mezclar las dos cosas en un solo control hacía que el proceso no tuviera nombre.
- *
- * Un proceso que todavía no está construido se lista igual pero no se puede elegir: verlo apagado
- * dice que existe y que no está listo, que es más de lo que diría su ausencia.
+ * Lista sólo las operaciones de la sección en la que se está (hoy, Producción). Con trabajo
+ * cargado —una obra elegida— el cambio se intercepta con la misma advertencia de La Batea: cambiar
+ * de operación descarta lo cargado.
  */
-function SelectorProceso() {
-  const { proceso, obra } = useApp()
+function OperacionSelector() {
+  const { operacion, obra, accionEnCurso } = useApp()
   const dispatch = useDispatch()
-  const [pendiente, setPendiente] = useState<ProcesoDef | null>(null)
-  const actual = procesoDe(proceso)
+  const [pendiente, setPendiente] = useState<Operacion | null>(null)
+  const actual = OPERACIONES.find((o) => o.id === operacion)
 
-  const elegir = (p: ProcesoDef) => {
-    if (!p.id || p.id === proceso) return
-    // Sin obra abierta no hay nada que perder: el cambio va derecho.
+  const elegir = (op: Operacion) => {
+    if (op === operacion || accionEnCurso) return
     if (!obra) {
-      dispatch({ type: 'setProceso', proceso: p.id })
+      dispatch({ type: 'setOperacion', operacion: op })
       return
     }
-    setPendiente(p)
+    setPendiente(op)
   }
 
   return (
     <>
-      <Dropdown<ProcesoDef>
-        label={
-          actual ? (
-            <span className="selbox-val">
-              <i className={`fas ${actual.icono}`} />
-              <span className="selbox-val-txt">{actual.titulo}</span>
-            </span>
-          ) : (
-            <span className="selbox-ph">Seleccionar...</span>
-          )
-        }
-        items={PROCESOS}
-        itemKey={(p) => p.titulo}
-        renderItem={(p) => (
-          <span className={`ddproc ${p.id ? '' : 'ddproc--soon'}`}>
-            <i className={`fas ${p.icono}`} />
-            <span className="ddproc-t">{p.titulo}</span>
-            {/* Sin rótulo "Próximamente": no entraba en el menú y le metía scroll. Deshabilitado ya
-                alcanza para saber que todavía no se puede elegir. */}
-          </span>
-        )}
-        onSelect={elegir}
-      />
+      <span className="topsel-op" title={accionEnCurso ?? undefined}>
+        <Dropdown<Operacion>
+          label={<span className={actual ? '' : 'selbox-ph'}>{actual?.titulo ?? 'Seleccionar...'}</span>}
+          items={OPERACIONES.map((o) => o.id)}
+          itemKey={(op) => op}
+          esElegido={(op) => op === operacion}
+          renderItem={(op) => OPERACIONES.find((o) => o.id === op)?.titulo ?? op}
+          itemClassName="dditem--strong"
+          disabled={!!accionEnCurso}
+          onSelect={elegir}
+        />
+      </span>
 
       {pendiente && (
         <Modal
-          title="¿Cambiar de proceso?"
+          title="¿Cambiar de operación?"
           icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
           onClose={() => setPendiente(null)}
           actions={
@@ -141,9 +123,9 @@ function SelectorProceso() {
                 type="button"
                 className="btn btn-primary"
                 onClick={() => {
-                  const p = pendiente
+                  const op = pendiente
                   setPendiente(null)
-                  if (p.id) dispatch({ type: 'setProceso', proceso: p.id })
+                  dispatch({ type: 'setOperacion', operacion: op })
                 }}
               >
                 Aceptar
@@ -151,8 +133,8 @@ function SelectorProceso() {
             </>
           }
         >
-          Vas a salir de <strong>{obra?.nombre}</strong> y empezar de nuevo en otro proceso. Lo que
-          ya se guardó en el tablero queda como está.
+          Al cambiar de operación, todos los datos ingresados actualmente se perderán. Lo que ya se
+          guardó en el tablero queda como está. ¿Deseas continuar?
         </Modal>
       )}
     </>
@@ -160,60 +142,130 @@ function SelectorProceso() {
 }
 
 /**
- * Barra de contexto: a la izquierda la marca y las dos cajas —qué proceso y sobre qué obra—; a la
+ * Operación y usuario: misma ubicación y diseño en todas las pantallas (el `SelectoresOperacion`
+ * de La Batea). Antes del selector va la SECCIÓN en la que se está —"Producción →"—: es la
+ * tarjeta que se eligió en la pantalla inicial, y tocarla vuelve ahí.
+ */
+export function SelectoresOperacion({ children }: { children?: ReactNode }) {
+  const { proceso, obra, accionEnCurso } = useApp()
+  const dispatch = useDispatch()
+  const seccion = procesoDe(proceso)
+  /** Se tocó el área con una operación en curso: se pregunta antes de volver al inicio. */
+  const [salir, setSalir] = useState(false)
+
+  /* Cambiar de área es volver al inicio. Con trabajo cargado —una obra elegida— se pregunta, igual
+     que al cambiar de operación: lo que no se guardó se pierde. */
+  const cambiarArea = () => {
+    if (accionEnCurso) return
+    if (obra) setSalir(true)
+    else dispatch({ type: 'reset' })
+  }
+
+  return (
+    <div className="topsel">
+      {/* La marca abre la barra y es el camino de vuelta al inicio. */}
+      <button
+        type="button"
+        className="marca-btn"
+        title={accionEnCurso ?? 'Volver al inicio'}
+        disabled={!!accionEnCurso}
+        onClick={() => dispatch({ type: 'reset' })}
+      >
+        <LogoEmpresa />
+      </button>
+      {/* El ÁREA va aparte, afuera del rótulo: "Seleccionar tipo de operación" es del selector, no
+          del área. En el inicio todavía no hay área: el recuadro queda vacío y no hay flecha ni
+          selector —la operación depende del área—. Elegida una tarjeta, aparece su nombre, la
+          flecha y el selector de sus operaciones. */}
+      <TopSel label="Área:">
+      <div className="topsel-ruta">
+        {seccion ? (
+          <button
+            type="button"
+            className="topsel-seccion"
+            title={accionEnCurso ?? 'Volver a elegir el área'}
+            disabled={!!accionEnCurso}
+            onClick={cambiarArea}
+          >
+            <i className={`fas ${seccion.icono}`} /> {seccion.titulo}
+          </button>
+        ) : (
+          <span className="topsel-seccion topsel-seccion--vacia" aria-label="Todavía no se eligió un área" />
+        )}
+        {seccion && <i className="fas fa-chevron-right topsel-flecha" aria-hidden="true" />}
+      </div>
+      </TopSel>
+      {seccion && (
+        <TopSel label="Operación:">
+          <OperacionSelector />
+        </TopSel>
+      )}
+      <TopSel label="Usuario:">
+        <SelectorUsuario />
+      </TopSel>
+      {children}
+
+      {salir && (
+        <Modal
+          title="¿Estás seguro que deseas volver al inicio?"
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setSalir(false)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setSalir(false)}>
+                Volver
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-marca"
+                onClick={() => {
+                  setSalir(false)
+                  dispatch({ type: 'reset' })
+                }}
+              >
+                Aceptar
+              </button>
+            </>
+          }
+        >
+          Al cambiar de área, todos los datos ingresados en la operación en curso se perderán.
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Barra de contexto (la de La Batea): a la izquierda la sección, la operación y el usuario; a la
  * derecha, el avance por etapas.
+ *
+ * La barra de etapas ocupa su lugar SIEMPRE, aunque la operación no tenga etapas (o todavía no se
+ * haya elegido): va en fantasma, invisible y fuera del árbol de accesibilidad. Así la banda mide
+ * lo mismo en todas las pantallas y nada salta al elegir la operación.
+ *
+ * Los círculos navegan entre etapas YA alcanzadas: se puede volver a revisar y saltar de nuevo
+ * hacia adelante sin perder lo cargado. Las futuras quedan bloqueadas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { paso, obra, entrada } = useApp()
+  const { operacion, destino, existente, obra, paso, pasoMax, accionEnCurso } = useApp()
   const dispatch = useDispatch()
-  /* La barra muestra SIEMPRE las cuatro etapas, con número fijo. Las que quedaron atrás —se hayan
-     hecho acá o antes— van con el tilde verde: acortar la barra según por dónde se entró hacía que
-     "Envío al Cliente" fuera la 1 en una pantalla y la 3 en otra. */
-  void entrada
+  const conPasos = operacion === 'enviar'
+  const etapas = etiquetasPasos(destino, tipoDe(obra), existente)
 
   return (
     <header className="paso-header">
       <div className="paso-header-in">
         <div className="paso-header-sel">
-          <div className="topsel">
-            {/* La marca es el camino de vuelta al inicio: sin ella no habría ninguno. */}
-            <button
-              type="button"
-              className="marca-btn"
-              title="Volver al inicio"
-              onClick={() => dispatch({ type: 'reset' })}
-            >
-              <LogoEmpresa />
-            </button>
-
-            <TopSel label="Operación">
-              <SelectorProceso />
-            </TopSel>
-
-            {/* Quién está usando la app: el usuario de Monday que abrió la app, ya verificado por el
-                backend (firma de la sesión + lista blanca). No se elige: es la sesión, y es quien
-                queda como responsable de la OP que emita.
-
-                Acá estaba la caja de la obra, que al tocarla volvía a la lista. Se fue: parecía un
-                selector y era un "empezar de nuevo", y eso se descubría perdiendo lo que estabas
-                haciendo. Para cambiar de obra se vuelve por el pie del paso o por la marca. */}
-            <TopSel label="Usuario">
-              <SelectorUsuario />
-            </TopSel>
-
-            {children}
-          </div>
+          <SelectoresOperacion>{children}</SelectoresOperacion>
         </div>
 
-        {/* La barra de etapas INFORMA, no navega: dice en qué etapa estás y cuánto falta. Moverse
-            es tarea del selector de acción, que además puede explicar por qué una etapa no está
-            disponible —cosa que un círculo apagado no sabe hacer—. */}
-        <div className="paso-header-steps">
+        <div className="paso-header-steps" aria-hidden={!conPasos || undefined}>
           <Stepper
-            steps={ETAPAS}
-            current={indiceDe(paso)}
-            className="stepper--tight"
-            maxReached={topePermitido(obra)}
+            steps={etapas}
+            current={conPasos ? indiceDe(paso) : 0}
+            className={`stepper--tight ${conPasos ? '' : 'stepper--fantasma'}`}
+            maxReached={conPasos ? pasoMax : 0}
+            onStep={conPasos && !accionEnCurso ? (i) => PASOS[i] && dispatch({ type: 'goto', paso: PASOS[i] }) : undefined}
           />
         </div>
       </div>
@@ -228,43 +280,20 @@ interface PasoTituloProps {
 }
 
 /**
- * Encabezado del paso: número, título y —si hace falta— una línea de bajada, con el selector de
- * acción debajo.
- *
- * El selector viene incluido acá y no lo pone cada vista: es la única forma de moverse por el
- * proceso, así que tiene que estar en las cinco etapas sin excepción y en el mismo lugar.
+ * Encabezado de la etapa: número, título y —si hace falta— una línea de bajada. El número sale del
+ * paso, el mismo que marca el círculo del stepper.
  */
 export function PasoTitulo({ titulo, descripcion }: PasoTituloProps) {
-  const { paso, obra, entrada } = useApp()
-  /* El selector se ve mientras no haya obra elegida, esté la acción elegida o no. Antes
-     desaparecía apenas se elegía una: la decisión quedaba tomada y sin forma de cambiarla, cuando
-     todavía no había pasado nada. Elegida la obra sí se va: ahí ya se está trabajando. */
-  const esPrimero = paso === 'obra' || !obra
-  /* El número SALE del paso, no se lo pasa cada vista.
-     Antes era un `numero={4}` escrito a mano en cada pantalla, y esa copia se volvió mentira sola:
-     al fusionar dos etapas, el 5 escrito en la última se restaba contra una barra que ahora tiene
-     cuatro, y el título mostraba "-2". Calculado acá no puede desincronizarse del stepper. */
-  /* El mismo número que el círculo de la barra: la etapa se llama igual en las dos. */
-  const propio = indiceDe(paso) + 1
-  void entrada
-  /* El selector de acción va SÓLO en el paso 1: ahí es donde se decide qué se viene a hacer. En
-     las etapas siguientes esa decisión ya está tomada, y repetir la pregunta en cada pantalla la
-     convertía en un control de navegación disfrazado de pregunta.
-
-     Va ARRIBA y el título numerado abajo, en ese orden, porque ese número no titula la pantalla:
-     titula el trabajo que viene justo debajo de él. */
+  const { paso } = useApp()
   return (
-    <>
-      {esPrimero && <AccionSelect />}
-      <header className="header-section">
-        <div className="step-indicator-main">
-          <div className="step-badge-main">{propio}</div>
-          <div className="step-details-main">
-            <h1 className="step-title-main">{titulo}</h1>
-            {descripcion && <p className="step-desc-main">{descripcion}</p>}
-          </div>
+    <header className={`header-section header-section--${paso}`}>
+      <div className="step-indicator-main">
+        <div className="step-badge-main">{indiceDe(paso) + 1}</div>
+        <div className="step-details-main">
+          <h1 className="step-title-main">{titulo}</h1>
+          {descripcion && <p className="step-desc-main">{descripcion}</p>}
         </div>
-      </header>
-    </>
+      </div>
+    </header>
   )
 }

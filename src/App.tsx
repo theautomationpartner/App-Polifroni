@@ -3,30 +3,46 @@ import { CargandoAcceso, MuroAcceso } from '@/components/ui/PantallaAcceso'
 import { MfaGuard } from '@/components/ui/MfaGuard'
 import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ModalErrorSeguridad } from '@/components/ui/ModalErrorSeguridad'
-import { ConfirmacionView } from '@/features/envio/ConfirmacionView'
-import { EnvioClienteView } from '@/features/envio/EnvioClienteView'
-import { InicioView } from '@/features/inicio/InicioView'
+import { CierreOperacion } from '@/components/ui/CierreOperacion'
+import { EnviarOpView } from '@/features/envio/EnviarOpView'
+import { SeleccionarOpView } from '@/features/envio/SeleccionarOpView'
+import { InicioView, ProduccionInicioView } from '@/features/inicio/InicioView'
 import { ListadoView } from '@/features/listado/ListadoView'
 import { ObrasView } from '@/features/obras/ObrasView'
-import { EtmoView } from '@/features/op/EtmoView'
+import { CargarHetmoView } from '@/features/op/CargarHetmoView'
+import { CargarOpView } from '@/features/op/CargarOpView'
+import { EmitirEnviarView } from '@/features/op/EmitirEnviarView'
+import { tipoDe } from '@/lib/pasos'
 import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
 import { bloqueaLaApp, notificarErrorSeguridad } from '@/lib/errorSeguridad'
 import { enMonday, getSessionToken, resumenSessionToken } from '@/lib/mondayAuth'
 import { estadoSegundoFactor } from '@/services/mfa'
 import { getUsuarioActual, getUsuarios } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
-import type { Paso } from '@/types'
+import type { AppState } from '@/state/appState'
 
-/** Una vista por etapa. El orden de las etapas vive en `appState`, no acá. */
-const VISTAS: Record<Paso, () => JSX.Element> = {
-  obra: ObrasView,
-  etmo: EtmoView,
-  envio: EnvioClienteView,
-  confirmacion: ConfirmacionView,
+/**
+ * Qué pantalla corresponde. La tercera etapa y la segunda cambian según a quién se envía y el tipo
+ * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
+ * taller se elige una OP confirmada y se envía.
+ */
+function vistaDe({ proceso, operacion, destino, existente, paso, obra }: AppState): () => JSX.Element {
+  if (proceso === null) return InicioView
+  if (operacion === null) return ProduccionInicioView
+  if (operacion === 'consultar') return ListadoView
+  /* Sin obra (o sin a quién enviar) no hay etapa 2 ni 3 que dibujar: cualquier paso cae en la obra. */
+  if (!obra || !destino || paso === 'obra') return ObrasView
+  const pvc = tipoDe(obra) === 'PVC'
+  /* "Enviar una ya cargada" pisa el tipo: se elige de la tabla y se envía, sin emitir. */
+  if (paso === 'carga') {
+    return destino === 'taller' || existente ? SeleccionarOpView : pvc ? CargarHetmoView : CargarOpView
+  }
+  return destino === 'cliente' && pvc && !existente ? EmitirEnviarView : EnviarOpView
 }
 
 export function App() {
-  const { proceso, paso, obra, listado, usuario } = useApp()
+  const estado = useApp()
+  const { proceso, paso, usuario, exito } = estado
   const dispatch = useDispatch()
   const scrollRef = useRef<HTMLDivElement>(null)
   const { error: errorSeguridad, visible: avisoVisible } = useErrorSeguridad()
@@ -129,18 +145,7 @@ export function App() {
     scrollRef.current?.scrollTo({ top: 0 })
   }, [paso, proceso])
 
-  /* Sin obra elegida no hay ninguna etapa que dibujar: cualquier paso cae en la lista. Es una
-     salvaguarda, no un camino: el estado ya vuelve solo a `obra` cuando se sale de una. */
-  /* El listado es una consulta dentro del proceso: se abre desde el selector de acción y se sale
-     con cualquier otra acción. Por eso gana sobre `paso`, que describe el circuito. */
-  const Vista =
-    proceso === null
-      ? InicioView
-      : listado
-        ? ListadoView
-        : !obra && paso !== 'obra'
-          ? ObrasView
-          : VISTAS[paso]
+  const Vista = vistaDe(estado)
 
   return (
     <div className="scroll" ref={scrollRef}>
@@ -157,6 +162,16 @@ export function App() {
         </MuroAcceso>
       )}
       {acceso === 'mfa' && <MfaGuard onListo={() => setAcceso('permitido')} />}
+      {/* Cada operación termina acá: qué se hizo, y a dónde seguir. Lo cargado se descarta en los dos
+          casos; "otra operación" se queda en el área. */}
+      {exito && (
+        <CierreOperacion
+          texto={exito.texto}
+          detalle={exito.detalle}
+          onInicio={() => dispatch({ type: 'reset' })}
+          onOtraOperacion={() => dispatch({ type: 'setProceso', proceso: proceso ?? 'obras' })}
+        />
+      )}
       {/* Un solo aviso a la vez, y el de seguridad manda: el otro invita a reintentar, y un rechazo
           del borde no se arregla reintentando. */}
       {errorSeguridad && avisoVisible ? <ModalErrorSeguridad error={errorSeguridad} /> : <ModalErrorMonday />}

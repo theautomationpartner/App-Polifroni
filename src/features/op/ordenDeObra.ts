@@ -1,18 +1,21 @@
 import { getNumeracion, siguiente, tipoDeObra } from '@/services/make'
-import { iniciarOrden, ordenDeLaVisita, type OrdenAbierta } from '@/services/monday'
+import { abrirOrden, type OrdenAbierta } from '@/services/monday'
 import type { Obra } from '@/types'
 
-/** El número que le toca a la OP: el siguiente al último emitido del tipo de la obra. */
-const proximoNumero = (obra: Obra) => async () =>
+/**
+ * El número que le toca a la próxima OP de la obra: el siguiente al último emitido de su tipo.
+ * Leerlo NO reserva nada ni crea la OP: sólo sirve para mostrarlo en el campo.
+ */
+export const proximoNumero = async (obra: Obra): Promise<string> =>
   siguiente(await getNumeracion(), tipoDeObra(obra.tipo.texto))
 
 /**
- * Crea la OP nueva de la obra (al elegirla para emitir). `responsableId` es el usuario de la
- * sesión: la OP nace sabiendo quién la emite.
+ * La OP de esta visita a la obra, creándola si todavía no existe. Se llama al cargar el PDF
+ * original: es el primer dato que la OP tiene que guardar.
  */
-export const iniciarOrdenDeObra = (obra: Obra, responsableId: string | null): Promise<OrdenAbierta> =>
-  iniciarOrden(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra), responsableId)
-
-/** La OP de esta visita; la crea sólo si no se inició ninguna. */
-export const ordenDeObra = (obra: Obra, responsableId: string | null): Promise<OrdenAbierta> =>
-  ordenDeLaVisita(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), proximoNumero(obra), responsableId)
+export const abrirOrdenDeObra = (
+  obra: Obra,
+  numero: string,
+  responsableId: string | null,
+): Promise<OrdenAbierta> =>
+  abrirOrden(obra.id, obra.nombre, tipoDeObra(obra.tipo.texto), numero, responsableId)

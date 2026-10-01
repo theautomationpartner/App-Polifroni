@@ -3,19 +3,18 @@ import { Modal } from '@/components/ui/Modal'
 /**
  * Cómo le llega el mensaje de WhatsApp a quien recibe la orden, con datos de EJEMPLO.
  *
- * El texto real lo arma el escenario de Make con el nombre del destinatario y, si es el cliente, el
- * enlace para confirmar. Acá se muestra lo mismo sin variables: sirve para saber qué va a leer la
+ * El texto real lo arma el escenario de Make con el nombre del destinatario y el enlace para
+ * confirmar, que va siempre. Acá se muestra lo mismo sin variables: sirve para saber qué va a leer la
  * otra persona antes de apretar "Enviar", no para editarlo.
  */
 export function MensajeEjemplo({
   destinatario,
   onClose,
 }: {
-  /** "Cliente", "Constructor" o "Ambos": cambia el cierre del mensaje. */
+  /** "Cliente" o "Constructor": quien recibe el enlace y confirma. */
   destinatario: string
   onClose: () => void
 }) {
-  const alCliente = destinatario !== 'Constructor'
   return (
     <Modal
       title="Mensaje que se envía"
@@ -48,15 +47,13 @@ export function MensajeEjemplo({
             <li>Si la compra incluye mosquiteros, que figuren en la orden.</li>
           </ul>
           <p>Si necesitás realizar algún cambio o detectás un error, avisanos.</p>
-          {alCliente ? (
-            <p>
-              Una vez aprobada, la orden pasa directamente a producción.{' '}
-              <strong>La cual va a tener que confirmar por acá:</strong>{' '}
-              <span className="msj-link">enlace para confirmar la orden</span>
-            </p>
-          ) : (
-            <p>Una vez aprobada, la orden pasa directamente a producción.</p>
-          )}
+          {/* El enlace va SIEMPRE, sea el cliente o el constructor quien confirme: sin él, la
+              orden se podía fabricar sin que nadie la validara. */}
+          <p>
+            Una vez aprobada, la orden pasa directamente a producción.{' '}
+            <strong>La tenés que confirmar por acá:</strong>{' '}
+            <span className="msj-link">enlace para confirmar la orden</span>
+          </p>
           <p>¡Gracias por tu confianza!</p>
           <p>🏠 Polifroni Aberturas</p>
           <span className="msj-adj">
@@ -64,12 +61,15 @@ export function MensajeEjemplo({
           </span>
         </div>
       </div>
-      {destinatario === 'Ambos' && (
-        <p className="msj-nota">
-          Con «Ambos», al constructor le llega el mismo mensaje sin el enlace para confirmar: la
-          confirmación es del cliente.
-        </p>
-      )}
+      <p className="msj-nota">
+        Le llega a{' '}
+        {destinatario === 'Ambos'
+          ? 'el cliente y al constructor, a cada uno con su enlace para confirmar'
+          : destinatario === 'Constructor'
+            ? 'el constructor'
+            : 'el cliente'}
+        .
+      </p>
     </Modal>
   )
 }

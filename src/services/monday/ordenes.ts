@@ -1,23 +1,20 @@
 /**
  * 🏭 Orden de Produccion (18432207111): un ítem por cada OP emitida.
  *
- * La obra guarda sólo la ÚLTIMA OP en sus columnas; este tablero guarda TODAS, cada una con su
- * número, quién midió, cuándo, los dos documentos (el ETMO original y la OP final) y sus
- * observaciones como subelementos. Es el historial que la obra sola no puede tener.
+ * La obra no guarda sus órdenes: este tablero guarda TODAS, cada una con su número, quién midió,
+ * cuándo, los dos documentos (el PDF original y la OP final) y sus observaciones como subelementos.
  *
- * Una obra puede tener VARIAS órdenes. Cada vez que se elige una obra para emitir ("Generar una
- * nueva", o una obra que todavía no tiene OP) se crea SIEMPRE una OP nueva —nunca se reusa otra—
- * y se suma a la columna "Orden de Produccion" de la obra, junto a las que ya tenía.
+ * Una obra puede tener VARIAS órdenes. La OP nace recién cuando tiene algo que guardar —al cargar
+ * el PDF original—, no al elegir la obra: navegar por la app no deja ítems vacíos en el tablero.
  *
- * Al crearla se le carga lo que ya se sabe: el tipo y el número automático. La Orden HETMO se le
- * adjunta cuando se sube en la app; al apretar "Generar la OP final", los datos de la medición y
- * las observaciones; cuando la OP sale, el PDF final y el estado "Generada". Después lo mueven el
- * envío ("Enviada Pend Confirmar") y la respuesta del cliente ("Confirmada" / "NO Confirmado").
+ * El estado de cada OP es UNO y vive en `🤖Estado OP` (ver `lib/estadosOp`). Una OP no se borra ni
+ * se modifica: se cancela, y el motivo queda escrito en ella.
  */
 import { BOARD_OBRAS, BOARD_ORDENES, COL_OP_ARCHIVOS } from './columns'
 import { getUrlArchivo, subirArchivo } from './obras'
 import { byId, type MondayItem } from './parse'
 import { mondayApi } from './sdk'
+import { ETIQUETA_OP, estadoDeOrden, type EstadoOrden } from '@/lib/estadosOp'
 import type { ArchivoObra } from '@/types'
 
 export { BOARD_ORDENES }
@@ -37,10 +34,15 @@ export const COL_OP = {
   tipo: 'color_mm7gbz9q',
   /** 🤖N OP HETMO (text): "número-versión" del listado HETMO, lo devuelve la generación. */
   nOpHetmo: 'text_mm7g5hbe',
-  /** 🤖Estado De Envio OP (status): Enviando... | Enviada | Error De Envio. */
+  /** 🤖Estado De Envio OP a Cliente (status): Enviando... | Enviada | Error De Envio | NO enviada. */
   estadoEnvio: 'color_mm7hdg10',
+  /** 🤖Estado de Envio OP al Taller (status): Enviando... | Enviado | Error de Envio. Lo escribe el
+      escenario del taller (la app le pasa la columna en `columnId`). */
+  estadoEnvioTaller: 'color_mm7qjqgr',
   /** Link al PDF enviado (link): la URL compartida que devuelve el envío. */
   linkPdf: 'link_mm7hmk9d',
+  /** 🤖Motivo (long_text): por qué se canceló la OP. */
+  motivo: 'long_text_mm7hqq9q',
 } as const
 
 /** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
@@ -80,21 +82,15 @@ export interface VidrioLeido {
   cant: number | null
 }
 
-/** Etiquetas de `Estado OP`, tal cual están en el tablero. */
+/** Etiquetas de `Estado OP`. La lista completa y sus reglas viven en `lib/estadosOp`. */
 export const ESTADO_OP = {
-  generada: 'Generada',
-  enviada: 'Enviada Pend Confirmar',
-  confirmada: 'Confirmada',
-  noConfirmada: 'NO Confirmado',
+  generada: ETIQUETA_OP.generada,
+  enviada: ETIQUETA_OP.pendiente,
+  confirmada: ETIQUETA_OP.confirmada,
+  noConfirmada: ETIQUETA_OP.rechazada,
+  taller: ETIQUETA_OP.taller,
+  cancelada: ETIQUETA_OP.cancelada,
 } as const
-
-/** Colores de esas etiquetas en el tablero, para pintarlas igual en la app. */
-export const COLOR_ESTADO_OP: Record<string, string> = {
-  Generada: '#fdab3d',
-  'Enviada Pend Confirmar': '#ff6d3b',
-  Confirmada: '#00c875',
-  'NO Confirmado': '#df2f4a',
-}
 
 export interface DatosOrden {
   tipo: 'PVC' | 'Aluminio'
@@ -216,21 +212,28 @@ export async function vincularOrdenEnObra(obraId: string, ordenId: string): Prom
 /**
  * La OP de esta visita a la obra.
  *
- * `iniciarOrden` la crea SIEMPRE (es lo que pasa al elegir la obra para emitir). `ordenDeLaVisita`
- * devuelve la que se inició y sólo crea una si no hay ninguna —p. ej. si se recargó la página—.
- * Guardar la promesa por obra es lo que evita crear dos si la pantalla se monta dos veces seguidas.
+ * NO se crea al elegir la obra ni al abrir la pantalla: se crea recién con el PDF original en la
+ * mano (`abrirOrden`), que es lo primero que la OP tiene que guardar. Antes nacía en el click de
+ * la obra, y cada vez que alguien entraba a mirar y se iba quedaba un ítem vacío en el tablero.
+ *
+ * Guardar la promesa por obra es lo que evita crear dos si se sube el archivo dos veces seguidas.
  */
 const visitas = new Map<string, Promise<OrdenAbierta>>()
 
-export function iniciarOrden(
+/** La OP que ya se abrió en esta visita, si hay una. No crea nada. */
+export const ordenEnCurso = (obraId: string): Promise<OrdenAbierta> | null => visitas.get(obraId) ?? null
+
+/** La OP de esta visita: la que ya se abrió o, si no hay, una nueva. */
+export function abrirOrden(
   obraId: string,
   obraNombre: string,
   tipo: 'PVC' | 'Aluminio',
-  proximoNumero: () => Promise<string>,
+  numero: string,
   responsableId: string | null = null,
 ): Promise<OrdenAbierta> {
+  const previa = visitas.get(obraId)
+  if (previa) return previa
   const p = (async () => {
-    const numero = await proximoNumero().catch(() => '')
     const id = await crearOrdenVacia(obraId, obraNombre, tipo, numero, responsableId)
     await vincularOrdenEnObra(obraId, id).catch((e) =>
       console.warn('[ordenes] no se pudo sumar la OP a la obra', e),
@@ -240,16 +243,6 @@ export function iniciarOrden(
   p.catch(() => visitas.delete(obraId))
   visitas.set(obraId, p)
   return p
-}
-
-export function ordenDeLaVisita(
-  obraId: string,
-  obraNombre: string,
-  tipo: 'PVC' | 'Aluminio',
-  proximoNumero: () => Promise<string>,
-  responsableId: string | null = null,
-): Promise<OrdenAbierta> {
-  return visitas.get(obraId) ?? iniciarOrden(obraId, obraNombre, tipo, proximoNumero, responsableId)
 }
 
 /** La OP ya se generó: la visita terminó, y la próxima vez que se elija la obra se crea otra. */
@@ -446,7 +439,7 @@ export async function setEstadoEnvioOrden(ordenId: string, etiqueta: string): Pr
   await cambiarColumnas(ordenId, { [COL_OP.estadoEnvio]: { label: etiqueta } })
 }
 
-/** Lo que el paso de envío muestra de la OP emitida. */
+/** Una OP tal como la muestran el envío, el taller y la consulta. */
 export interface ResumenOrden {
   id: string
   nombre: string
@@ -458,150 +451,246 @@ export interface ResumenOrden {
   fechaMedicion: string
   /** Observación de la medición (long_text_mm7g7k7n). */
   observacion: string
+  /** Estado técnico del último WhatsApp. No decide nada: el estado de la OP es `estadoOrden`. */
   estadoEnvio: string
-  /** Estado OP (color_mm7g3ta4): Generada | Enviada Pend Confirmar | Confirmada | NO Confirmado. */
+  /** `🤖Estado de Envio OP al Taller`: decide si la OP todavía se puede mandar al taller. */
+  envioTaller: string
+  /** La etiqueta de `🤖Estado OP` tal cual está en el tablero. */
   estado: string
+  /** El estado de la OP ya interpretado (ver `lib/estadosOp`). Es el que manda. */
+  estadoOrden: EstadoOrden
+  /** Por qué se canceló, si se canceló. */
+  motivo: string
+  linkPdf: string
+  obraId: string
+  obraNombre: string
+  /** Fecha de creación del ítem (ISO). */
+  creada: string
+  etmo: ArchivoObra[]
   opFinal: ArchivoObra[]
 }
 
-/**
- * Las OP EMITIDAS de la obra —las que ya tienen su OP final—, de la más nueva a la más vieja. Una
- * OP recién abierta (sin documento todavía) no cuenta.
- */
-export async function ordenesEmitidas(ordenesIds: string[]): Promise<ResumenOrden[]> {
+const COLS_RESUMEN = [
+  COL_OP.idOp,
+  COL_OP.nroPvc,
+  COL_OP.nroAluminio,
+  COL_OP.tipo,
+  COL_OP.nOpHetmo,
+  COL_OP.medidoPor,
+  COL_OP.fechaMedicion,
+  COL_OP.observacion,
+  COL_OP.estadoEnvio,
+  COL_OP.estadoEnvioTaller,
+  COL_OP.estado,
+  COL_OP.motivo,
+  COL_OP.linkPdf,
+  COL_OP.etmo,
+  COL_OP.opFinal,
+  COL_OP.obra,
+]
+
+/** Los campos que se piden de cada OP. La obra viene con su nombre (`display_value`). */
+const CAMPOS_RESUMEN = `
+  id name state created_at
+  column_values(ids: ${JSON.stringify(COLS_RESUMEN)}) {
+    id text value
+    ... on BoardRelationValue { display_value linked_item_ids }
+  }
+`
+
+type ItemOrden = MondayItem & { state?: string; created_at?: string }
+interface ValorOrden {
+  text?: string | null
+  value?: string | null
+  display_value?: string
+  linked_item_ids?: string[]
+}
+
+function urlDeLink(valorJson: string | null | undefined): string {
+  try {
+    return String((JSON.parse(valorJson ?? 'null') as { url?: string } | null)?.url ?? '')
+  } catch {
+    return ''
+  }
+}
+
+function aResumen(i: ItemOrden): ResumenOrden {
+  const c = byId(i) as Record<string, ValorOrden | undefined>
+  const t = (id: string) => (c[id]?.text ?? '').trim()
+  const tipo = t(COL_OP.tipo)
+  const etmo = archivosDe(c[COL_OP.etmo]?.value)
+  /* En Aluminio el PDF original ES la orden: no se sube aparte a la OP final. Para todo lo que
+     pregunta por "el documento de la orden" —verlo, mandarlo, saber si está generada— vale ése. */
+  const opFinalPropia = archivosDe(c[COL_OP.opFinal]?.value)
+  const opFinal = opFinalPropia.length ? opFinalPropia : /alum/i.test(tipo) ? etmo : []
+  const estado = t(COL_OP.estado)
+  return {
+    id: String(i.id),
+    nombre: i.name,
+    idOp: t(COL_OP.idOp),
+    numero: t(COL_OP.nroAluminio) || t(COL_OP.nroPvc),
+    tipo,
+    nOpHetmo: t(COL_OP.nOpHetmo),
+    medidoPor: t(COL_OP.medidoPor),
+    fechaMedicion: t(COL_OP.fechaMedicion),
+    observacion: t(COL_OP.observacion),
+    estadoEnvio: t(COL_OP.estadoEnvio),
+    envioTaller: t(COL_OP.estadoEnvioTaller),
+    estado,
+    estadoOrden: estadoDeOrden(estado, opFinal.length > 0),
+    motivo: t(COL_OP.motivo),
+    linkPdf: urlDeLink(c[COL_OP.linkPdf]?.value),
+    obraId: String(c[COL_OP.obra]?.linked_item_ids?.[0] ?? ''),
+    obraNombre: (c[COL_OP.obra]?.display_value ?? '').trim(),
+    creada: i.created_at ?? '',
+    etmo,
+    opFinal,
+  }
+}
+
+const vigente = (i: ItemOrden) => i.state !== 'archived' && i.state !== 'deleted'
+
+/** Las OP de una obra (TODAS, en cualquier estado), de la más nueva a la más vieja. */
+export async function ordenesDeObra(ordenesIds: string[]): Promise<ResumenOrden[]> {
   if (ordenesIds.length === 0) return []
-  const cols = [
-    COL_OP.idOp,
-    COL_OP.nroPvc,
-    COL_OP.nroAluminio,
-    COL_OP.tipo,
-    COL_OP.nOpHetmo,
-    COL_OP.medidoPor,
-    COL_OP.fechaMedicion,
-    COL_OP.observacion,
-    COL_OP.estadoEnvio,
-    COL_OP.estado,
-    COL_OP.opFinal,
-  ]
-  const d = await mondayApi<{ items: (MondayItem & { state?: string })[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { id name state column_values(ids: ${JSON.stringify(cols)}) { id text value } } }`,
+  const d = await mondayApi<{ items: ItemOrden[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { ${CAMPOS_RESUMEN} } }`,
     { ids: ordenesIds },
   )
   return (d.items ?? [])
-    .filter((i) => i.state !== 'archived' && i.state !== 'deleted')
-    .map((i) => ({ i, c: byId(i) }))
-    .map(({ i, c }) => ({ i, c, opFinal: archivosDe(c[COL_OP.opFinal]?.value) }))
-    .filter((x) => x.opFinal.length > 0)
-    .sort((a, b) => Number(b.i.id) - Number(a.i.id))
-    .map((u) => {
-      const t = (id: string) => (u.c[id]?.text ?? '').trim()
-      return {
-        id: u.i.id,
-        nombre: u.i.name,
-        idOp: t(COL_OP.idOp),
-        numero: t(COL_OP.nroAluminio) || t(COL_OP.nroPvc),
-        tipo: t(COL_OP.tipo),
-        nOpHetmo: t(COL_OP.nOpHetmo),
-        medidoPor: t(COL_OP.medidoPor),
-        fechaMedicion: t(COL_OP.fechaMedicion),
-        observacion: t(COL_OP.observacion),
-        estadoEnvio: t(COL_OP.estadoEnvio),
-        estado: t(COL_OP.estado),
-        opFinal: u.opFinal,
+    .filter(vigente)
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .map(aResumen)
+}
+
+/**
+ * UNA OP, leída del tablero en el momento.
+ *
+ * Antes de cada acción se relee: lo que la pantalla muestra puede ser de hace un rato, y otra
+ * persona pudo haberla cancelado o mandado mientras tanto. Actuar sobre el estado de la pantalla
+ * es la forma de mandar dos veces la misma orden.
+ */
+export async function leerOrden(ordenId: string): Promise<ResumenOrden | null> {
+  const d = await mondayApi<{ items: ItemOrden[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { ${CAMPOS_RESUMEN} } }`,
+    { ids: [ordenId] },
+  )
+  const i = d.items?.[0]
+  return i && vigente(i) ? aResumen(i) : null
+}
+
+/**
+ * TODAS las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
+ * El tope de 20 páginas (4000 órdenes) es sólo para que un cursor roto no quede girando.
+ */
+export async function listarOrdenes(): Promise<ResumenOrden[]> {
+  type Pagina = { cursor: string | null; items: ItemOrden[] }
+  const todas: ItemOrden[] = []
+  const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
+    `query { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
+  )
+  let pagina: Pagina | undefined = d.boards[0]?.items_page
+  todas.push(...(pagina?.items ?? []))
+  for (let n = 0; pagina?.cursor && n < 20; n++) {
+    const sig: { next_items_page: Pagina } = await mondayApi(
+      `query ($c: String!) { next_items_page(limit: 200, cursor: $c) { cursor items { ${CAMPOS_RESUMEN} } } }`,
+      { c: pagina.cursor },
+    )
+    pagina = sig.next_items_page
+    todas.push(...(pagina?.items ?? []))
+  }
+  return todas
+    .filter(vigente)
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .map(aResumen)
+}
+
+/** Tablero de las cuentas corrientes dadas de baja: una cuenta que vive acá está INACTIVA. */
+export const BOARD_CTAS_ARCHIVADAS = 18425935891
+
+/** `✋Cta Cte Cliente` de la obra (el mismo id que `COL.ctaCteCliente`). */
+const COL_CTA_CTE_OBRA = 'board_relation_mkthtd70'
+
+/** La cuenta corriente del cliente de una obra, y si está activa. */
+export interface CuentaDeObra {
+  cliente: string
+  /** `null` si la obra no tiene cuenta vinculada: no se sabe, y no se inventa. */
+  activa: boolean | null
+}
+
+/**
+ * La cuenta corriente de cada obra, con su estado activo / inactivo.
+ *
+ * La obra puede vincular una cuenta de dos tableros: el de cuentas vigentes y el de ARCHIVADOS.
+ * Ese tablero es lo único que hoy dice que una cuenta está dada de baja —la cuenta no tiene una
+ * columna de estado—, así que la app lo lee de ahí.
+ */
+export async function cuentasDeObras(obraIds: string[]): Promise<Record<string, CuentaDeObra>> {
+  const ids = [...new Set(obraIds.filter(Boolean))]
+  const salida: Record<string, CuentaDeObra> = {}
+  for (let desde = 0; desde < ids.length; desde += 100) {
+    const d = await mondayApi<{
+      items: {
+        id: string
+        column_values: { display_value?: string; linked_items?: { board?: { id: string } | null }[] }[]
+      }[]
+    }>(
+      `query ($ids: [ID!]) {
+        items(ids: $ids) {
+          id
+          column_values(ids: ["${COL_CTA_CTE_OBRA}"]) {
+            ... on BoardRelationValue { display_value linked_items { board { id } } }
+          }
+        }
+      }`,
+      { ids: ids.slice(desde, desde + 100) },
+    )
+    for (const i of d.items ?? []) {
+      const cv = i.column_values[0]
+      const tableros = (cv?.linked_items ?? []).map((l) => String(l.board?.id ?? ''))
+      salida[String(i.id)] = {
+        cliente: (cv?.display_value ?? '').trim(),
+        activa: tableros.length === 0 ? null : !tableros.includes(String(BOARD_CTAS_ARCHIVADAS)),
       }
-    })
+    }
+  }
+  return salida
 }
 
 /**
- * La OP que se acaba de emitir en el paso 2, por obra. El paso de envío abre ESA, no "la última que
- * encuentre": es la que la persona acaba de generar y la que espera ver.
+ * Cambia el estado de la OP. Las etiquetas nuevas ("Enviada a Taller", "Cancelada") se crean la
+ * primera vez que se usan: así el tablero no necesita un cambio manual previo.
  */
-const recienEmitidas = new Map<string, string>()
-
-export function marcarRecienEmitida(obraId: string, ordenId: string): void {
-  recienEmitidas.set(obraId, ordenId)
-}
-
-export const ordenRecienEmitida = (obraId: string): string | null => recienEmitidas.get(obraId) ?? null
-
-/**
- * La OP que se le manda al cliente: la recién emitida si hay una (`preferida`), y si no, la ÚLTIMA
- * EMITIDA de la obra —la más nueva que ya tiene su OP final—.
- */
-export async function ultimaOrdenEmitida(
-  ordenesIds: string[],
-  preferida: string | null = null,
-): Promise<ResumenOrden | null> {
-  const ids = preferida && !ordenesIds.includes(preferida) ? [preferida, ...ordenesIds] : ordenesIds
-  const emitidas = await ordenesEmitidas(ids)
-  return emitidas.find((o) => o.id === preferida) ?? emitidas[0] ?? null
-}
-
 export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise<void> {
   await mondayApi(
     `mutation ($id: ID!, $valor: String!) {
-      change_simple_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_OP.estado}", value: $valor) { id }
+      change_simple_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_OP.estado}", value: $valor, create_labels_if_missing: true) { id }
     }`,
     { id: ordenId, valor: etiqueta },
   )
 }
 
 /**
- * La OP más nueva de una obra, con su estado. `null` si la obra todavía no tiene ninguna.
+ * Cancela una OP: la deja en "Cancelada" con el motivo escrito. NO se borra ni se archiva —una OP
+ * cancelada sigue siendo la constancia de lo que se mandó y por qué dejó de valer—.
  *
- * Los ids de Monday crecen con el tiempo: el más alto es el último creado. Se prefiere la última
- * que ya tiene su OP final: elegir la obra para emitir crea una OP vacía en el acto, y ésa todavía
- * no es la que se mandó al cliente.
+ * El motivo lleva quién y cuándo, porque la columna es un texto y no guarda autor.
  */
-export async function ultimaOrdenDeObra(
-  obraId: string,
-): Promise<{ id: string; estado: string; numero: string } | null> {
-  const d = await mondayApi<{
-    boards: {
-      items_page: {
-        items: { id: string; column_values: { id: string; text: string | null; value: string | null }[] }[]
-      }
-    }[]
-  }>(
-    `query ($q: ItemsQuery) {
-      boards(ids: [${BOARD_ORDENES}]) {
-        items_page(limit: 100, query_params: $q) {
-          items { id column_values(ids: ["${COL_OP.estado}", "${COL_OP.nroPvc}", "${COL_OP.nroAluminio}", "${COL_OP.opFinal}"]) { id text value } }
-        }
-      }
+export async function cancelarOrden(ordenId: string, motivo: string, autor: string): Promise<void> {
+  const cuando = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+  const texto = `${motivo.trim()}\n— Cancelada por ${autor || 'la app'} el ${cuando}`
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_ORDENES}, item_id: $id, column_values: $valores, create_labels_if_missing: true) { id }
     }`,
-    { q: { rules: [{ column_id: COL_OP.obra, compare_value: [Number(obraId)], operator: 'any_of' }] } },
+    {
+      id: ordenId,
+      valores: JSON.stringify({
+        [COL_OP.estado]: { label: ETIQUETA_OP.cancelada },
+        [COL_OP.motivo]: { text: texto },
+      }),
+    },
   )
-  const items = d.boards[0]?.items_page.items ?? []
-  if (!items.length) return null
-  const emitidas = items.filter(
-    (i) => archivosDe(i.column_values.find((c) => c.id === COL_OP.opFinal)?.value).length > 0,
-  )
-  const ultimo = (emitidas.length ? emitidas : items).reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))
-  const col = (id: string) => ultimo.column_values.find((c) => c.id === id)?.text?.trim() ?? ''
-  return {
-    id: ultimo.id,
-    estado: col(COL_OP.estado),
-    numero: col(COL_OP.nroAluminio) || col(COL_OP.nroPvc),
-  }
-}
-
-/**
- * Archiva una OP que no llegó a generarse (la automatización falló). Se ARCHIVA y no se borra: si
- * alguien la quiere mirar, sigue en el archivo del tablero.
- */
-export async function archivarOrden(ordenId: string): Promise<void> {
-  await mondayApi(`mutation ($id: ID!) { archive_item(item_id: $id) { id } }`, { id: ordenId })
-}
-
-/** Mueve el estado de la última OP de la obra, si hace falta. Nunca rompe el flujo si falla. */
-export async function sincronizarEstadoOrden(obraId: string, etiqueta: string): Promise<void> {
-  try {
-    const op = await ultimaOrdenDeObra(obraId)
-    if (op && op.estado !== etiqueta) await setEstadoOrden(op.id, etiqueta)
-  } catch (e) {
-    console.warn('[ordenes] no se pudo actualizar el estado de la OP', e)
-  }
 }
 
 /**

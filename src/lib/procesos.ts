@@ -1,43 +1,26 @@
 import type { Proceso } from '@/types'
 
-/** Un proceso del sistema, tal como se ve en la pantalla inicial y en el encabezado. */
+/** Una sección del sistema, tal como se ve en la pantalla inicial y en el encabezado. */
 export interface ProcesoDef {
-  /** `null` mientras el proceso no está construido: se muestra, pero no se puede entrar. */
+  /** `null` mientras la sección no está construida: se muestra, pero no se puede entrar. */
   id: Proceso | null
   icono: string
   titulo: string
-  /** Pie de la tarjeta: cuántas etapas tiene, o que todavía no está. Nada más. */
+  /** Pie de la tarjeta: cuántas operaciones tiene, o que todavía no está. Nada más. */
   detalle: string
 }
 
 /**
- * Catálogo de procesos, fuera de la vista que los dibuja: agregar uno es agregar una entrada acá.
- *
- * Cada proceso es una VISTA propia con sus propias etapas. Hoy sólo está construido el de la Orden
- * de Producción; los otros dos se listan apagados a propósito, porque verlos dice que existen y que
- * todavía no están, que es más de lo que diría su ausencia.
+ * Catálogo de secciones, fuera de la vista que las dibuja: agregar una es agregar una entrada acá.
+ * Hoy sólo está construida Producción; las otras dos se listan apagadas a propósito, porque verlas
+ * dice que existen y que todavía no están.
  */
 export const PROCESOS: ProcesoDef[] = [
-  {
-    id: 'obras',
-    icono: 'fa-file-circle-plus',
-    titulo: 'Producción',
-    detalle: '4 etapas',
-  },
-  {
-    id: null,
-    icono: 'fa-file-invoice-dollar',
-    titulo: 'Presupuestar',
-    detalle: 'Próximamente',
-  },
-  {
-    id: null,
-    icono: 'fa-helmet-safety',
-    titulo: 'Obra',
-    detalle: 'Próximamente',
-  },
+  { id: null, icono: 'fa-file-invoice-dollar', titulo: 'Presupuesto', detalle: 'Próximamente' },
+  { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
+  { id: 'obras', icono: 'fa-industry', titulo: 'Producción', detalle: '2 operaciones' },
 ]
 
-/** El proceso en curso, para nombrarlo en el encabezado. */
+/** La sección en curso, para nombrarla en el encabezado. */
 export const procesoDe = (id: Proceso | null): ProcesoDef | undefined =>
   PROCESOS.find((p) => p.id !== null && p.id === id)

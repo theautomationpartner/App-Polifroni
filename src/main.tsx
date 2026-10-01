@@ -7,6 +7,7 @@ import '@/styles/base.css'
 import '@/styles/layout.css'
 import '@/styles/components.css'
 import '@/styles/obras.css'
+import '@/styles/labatea.css'
 import '@/styles/seguridad.css'
 
 const container = document.getElementById('root')

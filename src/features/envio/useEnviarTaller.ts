@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
+import { TOPE_ENVIO } from './topeEnvio'
 import { ESCENARIO, respondioEnviado } from '@/services/make'
-import { COL, ETIQUETA, getActividadDesde, getEstadoTaller } from '@/services/monday'
+import { COL_OP, ETIQUETA, getActividadDesde, getEstadoTaller } from '@/services/monday'
 import type { Obra } from '@/types'
 
 const RESPUESTA_OK = respondioEnviado('msj_taller')
@@ -48,10 +49,13 @@ export function useEnviarTaller(obra: Obra) {
       /* El escenario reenvía `event.columnId` al hook que después marca el resultado. Disparado
          desde el tablero ese dato viene solo; disparado desde acá hay que mandarlo, o el estado
          se queda en "Enviando" para siempre porque nadie sabe qué columna cerrar. */
-      columnId: COL.estadoEnvioTaller,
+      /* La columna de la OP «🤖Estado de Envio OP al Taller». */
+      columnId: COL_OP.estadoEnvioTaller,
     },
     mirar,
     /* El escenario cierra con un Webhook response `{ "msj_taller": "enviado" }`. */
     exito: RESPUESTA_OK,
+    /* Envío: si al minuto y medio no hubo respuesta exitosa, es un error de envío (ver `TOPE_ENVIO`). */
+    tope: TOPE_ENVIO,
   })
 }

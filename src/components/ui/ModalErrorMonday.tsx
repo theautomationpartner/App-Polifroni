@@ -21,15 +21,15 @@ export function ModalErrorMonday() {
       actions={
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-primary btn-entendido"
           onClick={() => dispatch({ type: 'cerrarError' })}
         >
           Entendido
         </button>
       }
     >
-      Monday no respondió al intentar <strong>{errorMonday}</strong>. Probá de nuevo en unos
-      segundos; si sigue igual, revisá el token de la app.
+      Monday no respondió al intentar <strong>{errorMonday}</strong>. Reintentá en unos segundos;
+      si la falla persiste, contactate con el soporte de TAP.
     </Modal>
   )
 }

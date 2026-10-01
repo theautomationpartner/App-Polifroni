@@ -21,14 +21,13 @@
  */
 import { Document, Font, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import {
-  ALTO_DATOS_MM,
   ALTO_OBS_MM,
-  ALTO_VIDRIO_MM,
   LINEAS_OBS_OP,
+  metricasFila,
   type DatosOp,
   type ModeloOp,
-  type PaginaOp,
 } from './datos'
+import type { Dibujo } from './hojas'
 
 /* Sin guiones de corte: un código o una medida partidos al final del renglón se leen mal. */
 Font.registerHyphenationCallback((palabra) => [palabra])
@@ -130,6 +129,8 @@ const s = StyleSheet.create({
     position: 'relative',
   },
   dibRecorte: { width: '31mm' },
+  /* Un renglón sin ningún dibujo no reserva lugar para dibujos. */
+  dibNinguno: { flex: 0, height: '6mm', minHeight: '6mm' },
   dibEntero: { width: '100%' },
   /* El dibujo va FUERA del flujo (absoluto, ocupando su caja): así no empuja el renglón con su
      tamaño natural. La caja la mide el espacio que queda en la hoja, entre 12 y 44 mm, y el dibujo
@@ -164,22 +165,40 @@ const s = StyleSheet.create({
   obsEt: { fontFamily: 'Helvetica-Bold', color: NARANJA, fontSize: 6.4, letterSpacing: 0.2, marginBottom: '0.3mm' },
   obsTexto: { fontSize: 6.8, lineHeight: 1.18 },
 
-  /* ── Pie ── */
-  pie: { paddingTop: '1.5mm', paddingHorizontal: '5mm', paddingBottom: '2.5mm', alignItems: 'flex-end' },
-  pieFila: { flexDirection: 'row', fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25 },
-  pieVal: { minWidth: '18mm', marginLeft: '1.5mm' },
-  /* La observación de la OP: texto libre, puede ser largo. Va debajo de "Medido por", alineada con
-     el resto del pie, y con un tope de renglones para que la hoja no se pase de la A4. */
-  pieObs: { flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'flex-end', marginTop: '0.8mm' },
-  pieObsL: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25, flexShrink: 0 },
+  /* ── Pie ──
+     Con el marco del encabezado (naranja, de borde a borde) y en tres renglones separados por un
+     filete: los totales; quién midió y cuándo; la observación de la OP. Las celdas de un renglón se
+     separan como las del encabezado. Su alto está reservado en `ALTO_PIE_MM` (datos.ts): la última
+     hoja reparte los modelos contando con él, así que el pie nunca se monta sobre el último renglón
+     ni salta solo a una hoja nueva. */
+  pie: {
+    borderWidth: 2.2,
+    borderColor: NARANJA,
+    borderStyle: 'solid',
+  },
+  pieRenglon: { flexDirection: 'row' },
+  pieRenglonSig: { borderTopWidth: 1, borderTopColor: NARANJA },
+  pieCelda: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: '1mm',
+    paddingHorizontal: '2mm',
+  },
+  pieCeldaSig: { borderLeftWidth: 1, borderLeftColor: NARANJA },
+  pieL: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25 },
+  pieV: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25, marginLeft: '1.5mm' },
+  /* La observación: texto libre, a lo ancho, con un tope de renglones para que la hoja no se pase
+     de la A4. Un punto menos que los totales: es lo que más largo puede venir. */
+  pieObs: { flexDirection: 'row', paddingVertical: '1mm', paddingHorizontal: '2mm' },
+  pieObsL: { fontFamily: 'Helvetica-Bold', fontSize: 10, lineHeight: 1.3, flexShrink: 0 },
   pieObsV: {
     fontFamily: 'Helvetica',
     fontSize: 10,
     lineHeight: 1.3,
     marginLeft: '1.5mm',
-    marginTop: '0.4mm',
-    maxWidth: '125mm',
-    flexShrink: 1,
+    flex: 1,
     maxLines: LINEAS_OBS_OP,
     textOverflow: 'ellipsis',
   },
@@ -198,16 +217,22 @@ const o = (v: string | number | null | undefined): string =>
 
 function Tarjeta({
   m,
-  pagina,
+  metricas,
   dibujo,
   primera,
+  renglonSinDibujos,
+  topeDibujoMm,
 }: {
   m: ModeloOp
-  pagina: PaginaOp
-  dibujo: string | null
+  /** Las del renglón: alinean las tres tarjetas (ver `metricasFila`). */
+  metricas: ReturnType<typeof metricasFila>
+  dibujo: Dibujo | null
   primera: boolean
+  renglonSinDibujos: boolean
+  /** Lo más alto que necesita un dibujo del renglón: la caja no crece más (ver `topeDibujo`). */
+  topeDibujoMm: number
 }) {
-  const altoDatos = `${ALTO_DATOS_MM + (pagina.maxVidrios - 1) * ALTO_VIDRIO_MM}mm`
+  const { altoDatosMm, hayObs } = metricas
   const recortado = m.slot === 'a' || m.slot === 'b'
   return (
     <View style={[s.card, primera ? {} : s.cardSiguiente]}>
@@ -227,32 +252,42 @@ function Tarjeta({
       </Text>
       <Text style={s.cant}>CANTIDAD: {o(m.cantidad)}</Text>
 
-      <View style={[s.dib, recortado ? s.dibRecorte : s.dibEntero]}>
-        {dibujo ? <Image src={dibujo} style={s.dibImg} /> : null}
+      <View
+        style={[
+          s.dib,
+          recortado ? s.dibRecorte : s.dibEntero,
+          renglonSinDibujos ? s.dibNinguno : { maxHeight: `${topeDibujoMm}mm` },
+        ]}
+      >
+        {dibujo ? <Image src={dibujo.src} style={s.dibImg} /> : null}
       </View>
 
-      {/* Va SIEMPRE, aunque venga vacío: su alto fijo mantiene las tres columnas alineadas. */}
-      <View style={[s.datos, { height: altoDatos }]}>
-        {m.vidrios.map((v, i) => (
-          <View key={`v${i}`} style={s.vid}>
-            <Text style={s.negrita}>Vid:</Text>
-            <Text style={s.vidSep}>{o(v.tipo)}</Text>
-            <Text style={s.vidSep}>
-              {o(v.ancho)} x {o(v.alto)}
-            </Text>
-            <Text style={s.vidSep}>ud:{o(v.ud)}</Text>
-          </View>
-        ))}
-        {m.taps.map((t, i) => (
-          <View key={`t${i}`} style={s.tap}>
-            <Text style={s.tapL}>Tap:</Text>
-            <Text style={s.tapC}>{o(t.cod)}</Text>
-            <Text>{o(t.medida)} mm</Text>
-          </View>
-        ))}
-      </View>
+      {/* El bloque de vidrios y tapajuntas tiene el alto del renglón, aunque este modelo venga sin
+          alguno: así "Tap:" y la observación caen a la misma altura en las tres columnas. Si ningún
+          modelo del renglón tiene, el bloque no existe. */}
+      {altoDatosMm > 0 && (
+        <View style={[s.datos, { height: `${altoDatosMm}mm` }]}>
+          {m.vidrios.map((v, i) => (
+            <View key={`v${i}`} style={s.vid}>
+              <Text style={s.negrita}>Vid:</Text>
+              <Text style={s.vidSep}>{o(v.tipo)}</Text>
+              <Text style={s.vidSep}>
+                {o(v.ancho)} x {o(v.alto)}
+              </Text>
+              <Text style={s.vidSep}>ud:{o(v.ud)}</Text>
+            </View>
+          ))}
+          {m.taps.map((t, i) => (
+            <View key={`t${i}`} style={s.tap}>
+              <Text style={s.tapL}>Tap:</Text>
+              <Text style={s.tapC}>{o(t.cod)}</Text>
+              <Text>{o(t.medida)} mm</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
-      {pagina.hayObs &&
+      {hayObs &&
         (m.observacion ? (
           <View style={s.obs}>
             <Text style={s.obsEt}>OBSERVACIÓN</Text>
@@ -265,12 +300,43 @@ function Tarjeta({
   )
 }
 
+/** Los límites de la caja del dibujo, en mm (ver `s.dib`). */
+const DIBUJO_MIN_MM = 12
+const DIBUJO_MAX_MM = 44
+/** El ancho de la caja: media columna para el recorte de media hoja, la columna entera para una foto. */
+const ANCHO_DIBUJO_MM = { recorte: 31, entero: 62.6 }
+
+/**
+ * Hasta dónde puede crecer la caja del dibujo en un renglón: lo que mide, a su ancho, el dibujo
+ * más alto del renglón. Más que eso sería papel en blanco debajo del dibujo. Es uno solo para las
+ * tres tarjetas, así lo que va debajo del dibujo queda a la misma altura en las tres.
+ */
+function topeDibujo(fila: ModeloOp[], dibujos: (Dibujo | null)[]): number {
+  const altos = fila.map((m, j) => {
+    const d = dibujos[j]
+    if (!d) return 0
+    const ancho = m.slot === 'a' || m.slot === 'b' ? ANCHO_DIBUJO_MM.recorte : ANCHO_DIBUJO_MM.entero
+    return ancho * d.proporcion
+  })
+  return Math.min(DIBUJO_MAX_MM, Math.max(DIBUJO_MIN_MM, ...altos))
+}
+
+/** Una celda del pie: el rótulo en negrita y el valor al lado. */
+function Celda({ etiqueta, valor, primera = false }: { etiqueta: string; valor: string | number; primera?: boolean }) {
+  return (
+    <View style={[s.pieCelda, primera ? {} : s.pieCeldaSig]}>
+      <Text style={s.pieL}>{etiqueta}</Text>
+      <Text style={s.pieV}>{valor}</Text>
+    </View>
+  )
+}
+
 export interface PropsDocumentoOp {
   datos: DatosOp
   /** El logo, como URL o data URL. */
   logo: string
   /** El dibujo de cada modelo, en el mismo orden que `datos.paginas → filas → modelos`. */
-  dibujos: (string | null)[]
+  dibujos: (Dibujo | null)[]
 }
 
 export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
@@ -314,40 +380,31 @@ export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
           </View>
 
           <View style={s.cuerpo}>
-            {pagina.filas.map((fila, i) => (
-              <View key={i} style={[s.fila, i > 0 ? s.filaSiguiente : {}]}>
-                {fila.map((m, j) => (
-                  <Tarjeta key={j} m={m} pagina={pagina} dibujo={dibujos[n++] ?? null} primera={j === 0} />
-                ))}
-              </View>
-            ))}
+            {pagina.filas.map((fila, i) => {
+              const metricas = metricasFila(fila)
+              const delRenglon = fila.map(() => dibujos[n++] ?? null)
+              const sinDibujos = delRenglon.every((d) => !d)
+              const tope = topeDibujo(fila, delRenglon)
+              return (
+                <View key={i} style={[s.fila, i > 0 ? s.filaSiguiente : {}]}>
+                  {fila.map((m, j) => (
+                    <Tarjeta
+                      key={j}
+                      m={m}
+                      metricas={metricas}
+                      dibujo={delRenglon[j]}
+                      primera={j === 0}
+                      renglonSinDibujos={sinDibujos}
+                      topeDibujoMm={tope}
+                    />
+                  ))}
+                </View>
+              )
+            })}
           </View>
 
           {pagina.esUltima && (
             <>
-              <View style={s.pie}>
-                <View style={s.pieFila}>
-                  <Text>CANT. DE ABERTURAS:</Text>
-                  <Text style={s.pieVal}>{datos.totales.aberturas}</Text>
-                </View>
-                <View style={s.pieFila}>
-                  <Text>CANT. DVH :</Text>
-                  <Text style={s.pieVal}>{datos.totales.dvh}</Text>
-                </View>
-                <View style={s.pieFila}>
-                  <Text>CANT. MOSQUITEROS:</Text>
-                  <Text style={s.pieVal}>{datos.totales.mosquiteros}</Text>
-                </View>
-                <View style={s.pieFila}>
-                  <Text>MEDIDO POR:</Text>
-                  <Text style={s.pieVal}>{o(datos.medidoPor)}</Text>
-                </View>
-                {/* Va siempre: sin observación, con una raya. */}
-                <View style={s.pieObs}>
-                  <Text style={s.pieObsL}>OBSERVACIÓN OP:</Text>
-                  <Text style={s.pieObsV}>{o(datos.observacionOp)}</Text>
-                </View>
-              </View>
               {/* Sólo lo que NO se pudo asignar a ningún modelo. */}
               {datos.observacionesSueltas && (
                 <Text style={s.sueltas}>
@@ -355,6 +412,22 @@ export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
                   {datos.observacionesSueltas}
                 </Text>
               )}
+              <View style={s.pie} wrap={false}>
+                <View style={s.pieRenglon}>
+                  <Celda primera etiqueta="CANT. DE ABERTURAS:" valor={datos.totales.aberturas} />
+                  <Celda etiqueta="CANT. DVH:" valor={datos.totales.dvh} />
+                  <Celda etiqueta="CANT. MOSQUITEROS:" valor={datos.totales.mosquiteros} />
+                </View>
+                <View style={[s.pieRenglon, s.pieRenglonSig]}>
+                  <Celda primera etiqueta="MEDIDO POR:" valor={o(datos.medidoPor)} />
+                  <Celda etiqueta="FECHA DE MEDICIÓN:" valor={o(datos.fechaMedicion)} />
+                </View>
+                {/* Va siempre: sin observación, con una raya. */}
+                <View style={[s.pieObs, s.pieRenglonSig]}>
+                  <Text style={s.pieObsL}>OBSERVACIÓN OP:</Text>
+                  <Text style={s.pieObsV}>{o(datos.observacionOp)}</Text>
+                </View>
+              </View>
             </>
           )}
         </Page>

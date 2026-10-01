@@ -27,7 +27,7 @@ export function requisitosLectura(obra: Obra, tieneEtmo = obra.ordenEtmo.length 
   return [
     {
       ok: tieneEtmo,
-      titulo: 'Orden ETMO adjunta',
+      titulo: 'PDF original adjunto',
       detalle: 'Es el documento que se lee.',
       columna: 'etmo',
     },

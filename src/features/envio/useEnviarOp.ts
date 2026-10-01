@@ -1,7 +1,8 @@
 import { useCallback } from 'react'
 import { useCorrida, type Veredicto } from '@/features/shared/useCorrida'
+import { TOPE_ENVIO } from './topeEnvio'
 import { ESCENARIO, respondioEnviado } from '@/services/make'
-import { COL, ETIQUETA, getActividadDesde, getEstadoEnvio } from '@/services/monday'
+import { COL_OP, ETIQUETA, getActividadDesde, getEstadoEnvio } from '@/services/monday'
 import type { Obra } from '@/types'
 
 const RESPUESTA_OK = respondioEnviado('msj_cliente_arquitecto')
@@ -9,48 +10,15 @@ const RESPUESTA_OK = respondioEnviado('msj_cliente_arquitecto')
 /**
  * Envío de la OP al cliente: dispara el escenario de WhatsApp y espera la confirmación.
  *
- * Lo propio de este paso es que el final se reconoce por un CAMBIO DE ESTADO, no por un archivo
- * nuevo. Y ahí está el detalle que importa: no alcanza con que la columna diga "Enviado", porque
- * una obra puede arrastrar ese estado de un envío de hace meses —pasó, y la app daba el envío por
- * hecho sin que se disparara nada—. Vale sólo si cambió DESPUÉS de apretar el botón, que es lo que
- * responde el `changed_at` de la columna.
+ * El final se reconoce por un CAMBIO DE ESTADO, no por lo que la columna diga: una obra puede
+ * arrastrar un "Enviado" de hace meses —pasó, y la app daba el envío por hecho sin que se
+ * disparara nada—. Vale sólo si cambió DESPUÉS de apretar el botón (`changed_at`).
  *
  * Además el escenario cierra con un *Webhook response*: cuando llega, avisa antes que el tablero.
- */
-/** "1111 - CLIENTE TEST" → "CLIENTE TEST": el código de la cuenta no va en un saludo. */
-const sinCodigo = (nombre: string) => nombre.replace(/^\s*\d+\s*-\s*/, '').trim()
-/** Un espejo de Monday puede traer varios valores separados por coma: se usa el primero. */
-const primero = (valor: string) => valor.split(',')[0]?.trim() ?? ''
-
-/**
- * A quién le llega el mensaje, ya resuelto: una entrada por persona, con su nombre, su WhatsApp y
- * su mail. "Cliente" o "Constructor" → una; "Ambos" → las dos.
  *
- * Se arma ACÁ porque la app ya tiene esos datos a la vista. El escenario los recibe listos y no
- * tiene que salir a buscar nombres a Monday (ni gastar operaciones en eso).
+ * Qué OP, a quién y con qué número NO sale de la obra de este render: lo pasa la pantalla a
+ * `correr()` en el momento de mandar, ya verificado.
  */
-export function destinosDe(obra: Obra) {
-  const a = obra.opDestinatario.texto || 'Cliente'
-  const destinos: { tipo: string; nombre: string; whatsapp: string; email: string }[] = []
-  if (a !== 'Constructor') {
-    destinos.push({
-      tipo: 'Cliente',
-      nombre: sinCodigo(obra.ctaCteCliente),
-      whatsapp: primero(obra.celCliente).replace(/\D/g, ''),
-      email: primero(obra.emailCliente),
-    })
-  }
-  if (a !== 'Cliente') {
-    destinos.push({
-      tipo: 'Constructor',
-      nombre: sinCodigo(obra.arquitecto),
-      whatsapp: primero(obra.celArquitecto).replace(/\D/g, ''),
-      email: '',
-    })
-  }
-  return destinos
-}
-
 export function useEnviarOp(obra: Obra) {
   const mirar = useCallback(
     async (desdeMs: number): Promise<Veredicto> => {
@@ -82,18 +50,15 @@ export function useEnviarOp(obra: Obra) {
     itemId: obra.id,
     extra: {
       obra: obra.nombre,
-      destinatario: obra.opDestinatario.texto,
-      via: obra.opVia.texto,
-      celCliente: obra.celCliente,
-      celArquitecto: obra.celArquitecto,
-      /* Las personas a las que se les manda, ya con nombre: el escenario las recorre tal cual. */
-      destinos: destinosDe(obra),
       accion: 'enviar-op-cliente',
-      /* Ver la nota en `useEnviarTaller`: el escenario lo reenvía al hook que cierra el estado. */
-      columnId: COL.estadoEnvioOp,
+      /* Ver la nota en `useEnviarTaller`: el escenario lo reenvía al hook que cierra el estado. Es
+         la columna de la OP «🤖Estado De Envio OP a Cliente». */
+      columnId: COL_OP.estadoEnvio,
     },
     mirar,
     /* El escenario cierra con un Webhook response `{ "msj_cliente_arquitecto": "enviado" }`. */
     exito: RESPUESTA_OK,
+    /* Envío: si al minuto y medio no hubo respuesta exitosa, es un error de envío (ver `TOPE_ENVIO`). */
+    tope: TOPE_ENVIO,
   })
 }

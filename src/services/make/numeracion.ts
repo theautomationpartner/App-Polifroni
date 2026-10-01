@@ -5,8 +5,10 @@
  * "A3000" → la próxima es "A3001".
  */
 import { cabecerasPropias, verificarRespuesta } from '@/services/monday/sdk'
+import { tipoDeObra, type TipoOrden } from '@/lib/tipoObra'
 
-export type TipoOrden = 'PVC' | 'Aluminio'
+export { tipoDeObra, type TipoOrden }
+
 
 export interface Numeracion {
   nroOrdenPVC: string
@@ -14,7 +16,6 @@ export interface Numeracion {
 }
 
 /** El tipo de la obra tal como viene del tablero. Cualquier cosa que no sea PVC se numera como Aluminio. */
-export const tipoDeObra = (tipo: string): TipoOrden => (/pvc/i.test(tipo) ? 'PVC' : 'Aluminio')
 
 /** El número que sigue al último usado, con la "A" si es Aluminio. */
 export function siguiente(n: Numeracion, tipo: TipoOrden): string {

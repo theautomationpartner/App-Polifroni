@@ -37,6 +37,14 @@ const CAMBIO_DE_RITMO_MS = 30_000
 /** Si a los 25 s el tablero no confirma que arrancó, el disparo no prendió. Se avisa, no se corta. */
 const SIN_ARRANCAR_MS = 25_000
 
+/** La variable de `.env.local` de cada escenario, para decir cuál falta en local. */
+const VARIABLE_DE: Record<string, string> = {
+  'leer-documento': 'MAKE_WEBHOOK_LEER_DOC',
+  'leer-observaciones': 'MAKE_WEBHOOK_LEER_OBSERVACIONES',
+  'enviar-op-cliente': 'MAKE_WEBHOOK_ENVIAR_OP',
+  'enviar-op-taller': 'MAKE_WEBHOOK_ENVIAR_OP_TALLER',
+}
+
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** Lo que el tablero contesta en cada vistazo. */
@@ -62,6 +70,8 @@ export interface Corrida {
   problema: string | null
   /** Quién trajo la noticia. Sirve para saber si la respuesta del escenario llega o no a tiempo. */
   origen: 'respuesta' | 'tablero' | null
+  /** Se cerró en error porque se cumplió `tope` sin una respuesta exitosa. */
+  vencida: boolean
 }
 
 const INICIAL: Corrida = {
@@ -71,6 +81,7 @@ const INICIAL: Corrida = {
   updateError: null,
   problema: null,
   origen: null,
+  vencida: false,
 }
 
 interface Opciones {
@@ -87,6 +98,12 @@ interface Opciones {
    * contesta la generación de la OP; los envíos contestan cada uno con su propia clave.
    */
   exito?: (r: RespuestaEscenario) => boolean
+  /**
+   * Tope de espera: cumplido sin una respuesta exitosa, la corrida se cierra EN ERROR (no en
+   * `demorado`) con `problema` y `vencida`. Lo usan los envíos, que no se dejan esperando. Lo que
+   * conteste el escenario después ya no cambia el resultado.
+   */
+  tope?: { ms: number; problema: string }
 }
 
 /**
@@ -105,7 +122,7 @@ interface Opciones {
  * Mirar el tablero es, además, lo que hace que cerrar la pestaña no pierda nada: al volver a
  * entrar, la obra ya trae el resultado.
  */
-export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = terminoBien }: Opciones) {
+export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = terminoBien, tope }: Opciones) {
   const dispatch = useDispatch()
   const [estado, setEstado] = useState<Corrida>(INICIAL)
   /** Se apaga al desmontar: un `setState` sobre una vista que ya no está sólo trae ruido. */
@@ -125,12 +142,15 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
   const respuesta = useRef<Record<string, unknown> | null>(null)
   /** El pedido en vuelo, para poder esperar su respuesta después de que la corrida se cerró. */
   const pedidoEnVuelo = useRef<Promise<unknown> | null>(null)
+  /** El reloj del `tope`. */
+  const vencimiento = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     vivo.current = true
     return () => {
       vivo.current = false
       cerrado.current = true
+      if (vencimiento.current) clearTimeout(vencimiento.current)
     }
   }, [])
 
@@ -155,6 +175,7 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
     async (parcial: Partial<Corrida>) => {
       if (cerrado.current) return
       cerrado.current = true
+      if (vencimiento.current) clearTimeout(vencimiento.current)
       if (vivo.current) setEstado((e) => ({ ...e, ...parcial }))
       await refrescarObra()
     },
@@ -268,7 +289,9 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
         if (e instanceof EscenarioNoConfigurado) {
           await cerrar({
             fase: 'error',
-            problema: `El escenario "${escenario}" no tiene URL configurada en el entorno.`,
+            problema: import.meta.env.DEV
+              ? `El escenario "${escenario}" no tiene su URL en .env.local (${VARIABLE_DE[escenario] ?? 'MAKE_WEBHOOK_…'}). Cargala y reiniciá npm run dev.`
+              : `El escenario "${escenario}" no tiene URL configurada en el entorno.`,
           })
           return
         }
@@ -284,9 +307,15 @@ export function useCorrida({ escenario, itemId, extra, antes, mirar, exito = ter
       })
 
     pedidoEnVuelo.current = pedido
+    if (tope) {
+      if (vencimiento.current) clearTimeout(vencimiento.current)
+      vencimiento.current = setTimeout(() => {
+        void cerrar({ fase: 'error', problema: tope.problema, vencida: true })
+      }, tope.ms)
+    }
     if (vivo.current) setEstado((s) => ({ ...s, fase: 'esperando' }))
     await Promise.all([sondear(), pedido])
-  }, [antes, cerrar, escenario, extra, itemId, leerRespuesta, sondear])
+  }, [antes, cerrar, escenario, extra, itemId, leerRespuesta, sondear, tope])
 
   /** Después del tope: volver a mirar, sin disparar el escenario otra vez. */
   const seguirEsperando = useCallback(async () => {

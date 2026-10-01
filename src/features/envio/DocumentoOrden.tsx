@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { EstadoBadge } from '@/components/ui/Aviso'
-import { COLOR_ENVIO_OP, COLOR_ESTADO_OP, getUrlArchivo, type ResumenOrden } from '@/services/monday'
+import { EstadoOrdenBadge } from '@/components/ui/EstadoOrdenBadge'
+import { getUrlArchivo, type ResumenOrden } from '@/services/monday'
 
 /** Los rótulos de los datos: los mismos en la tarjeta llena y en la vacía. */
-const ROTULOS = ['N° Orden', 'N° OP Hetmo', 'Tipo', 'Medido por', 'Fecha de medición'] as const
+const ROTULOS = ['N° Orden', 'N° OP original', 'Tipo', 'Medido por', 'Fecha de medición'] as const
 
 /**
  * La tarjeta TODAVÍA SIN orden: la misma forma que la llena, con rayas en lugar de datos.
@@ -46,17 +46,18 @@ const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-')
  * bien (zoom, páginas, descarga). Acá se muestra QUÉ orden es —su número, el de HETMO, quién midió y
  * cuándo— para confirmar de un vistazo que se está por mandar la correcta.
  *
- * `insignia` elige qué estado va en la cabecera: el del envío al cliente (paso de envío) o el
- * Estado OP, que es el que decide el despacho al taller.
+ * La cabecera lleva UN estado, el de la OP. Antes convivían el del WhatsApp y el de la orden, y una
+ * OP podía leerse "Enviada" y "Generada" a la vez: dos respuestas a una sola pregunta.
  */
 export function DocumentoOrden({
   orden,
   cargando,
-  insignia = 'envio',
+  vacio = 'Elegí la orden para ver su documento.',
 }: {
   orden: ResumenOrden | null
   cargando: boolean
-  insignia?: 'envio' | 'estadoOp'
+  /** Qué decir cuando todavía no hay orden. */
+  vacio?: string
 }) {
   const [abriendo, setAbriendo] = useState(false)
   const pdf = orden ? (orden.opFinal.find((a) => !a.esImagen) ?? orden.opFinal[0]) : null
@@ -91,7 +92,7 @@ export function DocumentoOrden({
     return (
       <div className="docop docop--vacio">
         <i className="fas fa-file-circle-exclamation" />
-        <p>Todavía no hay una OP final emitida para esta obra.</p>
+        <p>{orden && !pdf ? 'Esta orden no tiene la OP final adjunta.' : vacio}</p>
       </div>
     )
   }
@@ -111,21 +112,7 @@ export function DocumentoOrden({
             {pdf.nombre}
           </span>
         </div>
-        {insignia === 'envio' ? (
-          <EstadoBadge
-            label="Envío"
-            estado={{ texto: orden.estadoEnvio, color: COLOR_ENVIO_OP[orden.estadoEnvio] ?? '' }}
-            vacio="Sin enviar"
-            pendiente
-          />
-        ) : (
-          <EstadoBadge
-            label="Estado OP"
-            estado={{ texto: orden.estado, color: COLOR_ESTADO_OP[orden.estado] ?? '' }}
-            vacio="Sin estado"
-            pendiente
-          />
-        )}
+        <EstadoOrdenBadge estado={orden.estadoOrden} />
       </div>
 
       <dl className="docop-datos">
@@ -147,6 +134,70 @@ export function DocumentoOrden({
             <i className="fas fa-arrow-up-right-from-square" /> Abrir documento
           </>
         )}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * El documento que TODAVÍA NO está en Monday (Aluminio): el PDF cargado en la app, con los datos de
+ * la medición. Es el que se envía y el que se registra al finalizar. Se abre desde la memoria del
+ * navegador, sin pedirle nada al tablero.
+ */
+export function DocumentoLocal({
+  archivo,
+  numero,
+  tipo,
+  medidoPor,
+  fecha: fechaMed,
+}: {
+  archivo: File
+  numero: string
+  tipo: string
+  medidoPor: string
+  fecha: string
+}) {
+  const abrir = () => {
+    const url = URL.createObjectURL(archivo)
+    window.open(url, '_blank')
+    /* La dirección vive lo que tarda en abrirse la pestaña: después se libera la memoria. */
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
+  const datos = [
+    { l: 'N° Orden', v: numero },
+    { l: 'Tipo', v: tipo },
+    { l: 'Medido por', v: medidoPor },
+    { l: 'Fecha de medición', v: fecha(fechaMed) },
+  ]
+
+  return (
+    <div className="docop docop--aparece">
+      <div className="docop-cab">
+        <span className="docop-ic" aria-hidden="true">
+          <i className="fas fa-file-pdf" />
+        </span>
+        <div className="docop-tit">
+          <span className="docop-id">{numero ? `N° ${numero}` : 'Orden de Producción'}</span>
+          <span className="docop-arch" title={archivo.name}>
+            {archivo.name}
+          </span>
+        </div>
+        <span className="op-estado op-estado--sm" style={{ ['--op-c' as string]: '#579bfc' }}>
+          <i className="fas fa-paperclip" aria-hidden="true" /> Adjunta en la OP
+        </span>
+      </div>
+
+      <dl className="docop-datos">
+        {datos.map((d) => (
+          <div key={d.l}>
+            <dt>{d.l}</dt>
+            <dd className={d.v ? '' : 'docop-falta'}>{d.v || '—'}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <button type="button" className="btn btn-primary docop-abrir" onClick={abrir}>
+        <i className="fas fa-arrow-up-right-from-square" /> Abrir documento
       </button>
     </div>
   )

@@ -2056,14 +2056,17 @@
 }
 .results {
   position: absolute;
-  top: calc(100% - 18px);
+  /* PEGADA al campo (46px de alto): antes colgaba debajo del renglón de ayuda, y entre la caja y
+     la lista quedaba un hueco de 12px. El -1px solapa los dos bordes para no dibujar una línea
+     doble. Rectangular, como el resto de los desplegables. */
+  top: 45px;
   left: 0;
   right: 0;
   z-index: 100;
   background: #fff;
   border: 1px solid var(--o-border);
-  border-radius: 10px;
-  margin-top: 4px;
+  border-radius: 0;
+  margin-top: 0;
   max-height: 340px;
   overflow-y: auto;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
@@ -3531,5 +3534,390 @@
   }
   .obras-v2 > .topsel .selbox--fix {
     width: 100%;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════
+   Producción · estados de la OP, consulta y cierre de cada operación
+   ════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* ===== Estado de UNA orden =====
+   El color sale de `VISTA_ESTADO` (lib/estadosOp) por la variable --op-c: un solo lugar decide cómo
+   se ve cada estado. El fondo es un tinte del mismo color, así el texto se lee en todos. */
+.op-estado {
+  --op-c: #c4c4c4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--op-c) 62%, #0f172a);
+  background: color-mix(in srgb, var(--op-c) 16%, #fff);
+  border: 1px solid color-mix(in srgb, var(--op-c) 35%, #fff);
+}
+.op-estado i {
+  color: var(--op-c);
+  font-size: 11px;
+}
+.op-estado--sm {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* Cuenta corriente activa / dada de baja (mismo punto de estado que La Batea). */
+.cuenta-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cuenta-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cuenta-estado--ok {
+  color: var(--green-dark);
+}
+.cuenta-estado--baja {
+  color: #b42318;
+}
+
+/* ===== Consulta de órdenes ===== */
+.filtro-n {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #475569;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.filtro-busca {
+  /* Renglón propio debajo de los estados: al lado, se estiraba a la altura de los chips. */
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #e4eaf2;
+  border-radius: 12px;
+  background: #fff;
+  height: 44px;
+}
+.filtro-busca > i {
+  color: var(--o-text-muted);
+}
+.filtro-busca-in {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: var(--o-text-main);
+}
+.filtro-busca:focus-within {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(0, 115, 234, 0.12);
+}
+
+.op-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) auto minmax(0, auto);
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  min-height: 74px;
+  border: 1px solid var(--o-border);
+  border-radius: 12px;
+  background: #fff;
+}
+.op-row + .op-row {
+  margin-top: 8px;
+}
+/* La última página se completa con huecos: la altura no cambia y el paginador no salta. */
+.op-row--hueco {
+  visibility: hidden;
+}
+.op-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.op-row-nro,
+.op-row-tipo {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--o-badge-blue-text);
+  background: var(--o-badge-blue-bg);
+  padding: 1px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.op-row-tipo {
+  color: var(--o-badge-gray-text);
+  background: var(--o-badge-gray-bg);
+}
+.op-row-motivo {
+  font-size: 12px;
+  color: #7a4b00;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.op-row-estado {
+  display: flex;
+  justify-content: flex-end;
+}
+.op-row-acc {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.op-acc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--o-border);
+  background: #fff;
+  color: var(--o-text-main);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.op-acc:hover {
+  background: #f5f7fa;
+}
+.op-acc--pri {
+  border-color: #bcd6f5;
+  color: var(--primary-blue);
+  background: #f3f8ff;
+}
+.op-acc--pri:hover {
+  background: #e6f0ff;
+}
+.op-acc--peligro {
+  color: #b42318;
+  border-color: #f5c2bd;
+}
+.op-acc--peligro:hover {
+  background: #fff4f3;
+}
+.obras-pager-info {
+  margin-right: auto;
+}
+@media (max-width: 1000px) {
+  .op-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .op-row .obra-row-cliente,
+  .op-row-acc {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+/* Opción del selector de orden: nombre a la izquierda, estado a la derecha. */
+.op-opcion {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ===== Envío: a quién le llega ===== */
+.destino-item {
+  gap: 10px;
+}
+.destino-tel {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--o-text-title);
+  white-space: nowrap;
+}
+.resumen-envio {
+  margin: 12px 0 0;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.resumen-envio > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--tint-neutral);
+}
+.resumen-envio dt {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--o-text-muted);
+}
+.resumen-envio dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.motivo-in {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.motivo-in:focus {
+  outline: 0;
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(0, 115, 234, 0.12);
+}
+.modal-faltantes {
+  list-style: none;
+  margin: 16px auto 0;
+  padding: 14px 16px;
+  text-align: left;
+  background: #fff7f8;
+  border: 1px solid #ffd7dd;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.modal-faltantes i {
+  color: var(--red);
+  margin-right: 6px;
+}
+.marca-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ===== Cierre de la operación: el tilde (el mismo de La Batea) =====
+   Tapa la pantalla mientras se dibuja el tilde y la app vuelve sola al inicio. Sin botón: no hay
+   ninguna decisión pendiente (ver `PantallaExito`). */
+.exito {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+  animation: exito-fondo 0.25s ease;
+}
+@keyframes exito-fondo {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.exito-caja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 40px 48px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  text-align: center;
+}
+.exito-svg {
+  width: 84px;
+  height: 84px;
+  margin-bottom: 6px;
+}
+/* El aro y la marca se dibujan con el mismo truco: el trazo entero como hueco, que se va cerrando. */
+.exito-aro {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 3;
+  stroke-dasharray: 145;
+  stroke-dashoffset: 145;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  animation: exito-trazar 0.75s ease-out forwards;
+}
+.exito-tilde {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: exito-trazar 0.45s 0.6s ease-out forwards;
+}
+@keyframes exito-trazar {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.exito-txt,
+.exito-det,
+.exito-vuelta {
+  opacity: 0;
+  animation: exito-texto 0.4s 0.95s ease forwards;
+}
+.exito-txt {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--o-text-title);
+}
+.exito-det {
+  font-size: 13.5px;
+  color: var(--o-text-main);
+}
+.exito-vuelta {
+  font-size: 12px;
+  color: var(--o-text-muted);
+}
+@keyframes exito-texto {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .exito,
+  .exito-aro,
+  .exito-tilde,
+  .exito-txt,
+  .exito-det,
+  .exito-vuelta {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
   }
 }

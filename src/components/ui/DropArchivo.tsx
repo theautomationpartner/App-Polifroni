@@ -23,7 +23,7 @@ export function DropArchivo({
   onArchivo,
   accept = 'application/pdf',
   disabled = false,
-  hint = 'Arrastrá y soltá el PDF de la Orden ETMO, o hacé click para elegirlo',
+  hint = 'Arrastrá y soltá el PDF original de la orden, o hacé click para elegirlo',
 }: DropArchivoProps) {
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)

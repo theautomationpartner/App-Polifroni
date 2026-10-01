@@ -81,7 +81,33 @@ export async function cargarHojas(archivo: ArchivoObra): Promise<HTMLCanvasEleme
  * `a` y `b` recortan la mitad de arriba o la de abajo de la hoja, con el encuadre de `RECORTE`.
  * `full` y `none` (la orden vino como foto y no se puede recortar) mandan la hoja entera.
  */
-export function recortar(hoja: HTMLCanvasElement, slot: Slot): string {
+/** Un dibujo listo para la tarjeta: la imagen y cuánto mide de alto por cada unidad de ancho. */
+export interface Dibujo {
+  src: string
+  proporcion: number
+}
+
+/** Un píxel cuenta como dibujo si es más oscuro que esto (el papel escaneado no es blanco puro). */
+const UMBRAL_TINTA = 235
+/** Lo que se deja de blanco debajo de lo último dibujado. */
+const MARGEN_ABAJO_PX = 10
+
+/**
+ * Hasta qué fila hay dibujo: la última con algún píxel oscuro. Recorre de abajo hacia arriba y
+ * corta en la primera que encuentra.
+ */
+function ultimaFilaConTinta(ctx: CanvasRenderingContext2D, ancho: number, alto: number): number {
+  const { data } = ctx.getImageData(0, 0, ancho, alto)
+  for (let y = alto - 1; y >= 0; y--) {
+    for (let x = 0; x < ancho; x++) {
+      const i = (y * ancho + x) * 4
+      if (data[i] < UMBRAL_TINTA || data[i + 1] < UMBRAL_TINTA || data[i + 2] < UMBRAL_TINTA) return y
+    }
+  }
+  return alto - 1
+}
+
+export function recortar(hoja: HTMLCanvasElement, slot: Slot): Dibujo | null {
   const W = hoja.width
   const H = hoja.height
   const [sx, sy, sw, sh] =
@@ -97,10 +123,22 @@ export function recortar(hoja: HTMLCanvasElement, slot: Slot): string {
   const salida = document.createElement('canvas')
   salida.width = Math.max(1, Math.round(sw * escala))
   salida.height = Math.max(1, Math.round(sh * escala))
-  const ctx = salida.getContext('2d')
-  if (!ctx) return ''
+  const ctx = salida.getContext('2d', { willReadFrequently: true })
+  if (!ctx) return null
   ctx.fillStyle = '#fff'
   ctx.fillRect(0, 0, salida.width, salida.height)
   ctx.drawImage(hoja, sx, sy, sw, sh, 0, 0, salida.width, salida.height)
-  return salida.toDataURL('image/jpeg', 0.85)
+
+  /* El recorte es media hoja de HETMO, y un dibujo chico (un mosquitero) ocupa sólo la parte de
+     arriba: lo de abajo es papel en blanco. Se corta ese blanco —sólo abajo, así el dibujo conserva
+     su escala y su lugar— para que la tarjeta no lo muestre como un hueco antes de la observación. */
+  const alto = Math.min(salida.height, ultimaFilaConTinta(ctx, salida.width, salida.height) + 1 + MARGEN_ABAJO_PX)
+  let final = salida
+  if (alto < salida.height) {
+    final = document.createElement('canvas')
+    final.width = salida.width
+    final.height = alto
+    final.getContext('2d')?.drawImage(salida, 0, 0)
+  }
+  return { src: final.toDataURL('image/jpeg', 0.85), proporcion: final.height / final.width }
 }

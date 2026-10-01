@@ -208,11 +208,8 @@ export function DatosMedicion({
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(false)
   const otroRef = useRef<HTMLTextAreaElement>(null)
-  const nroRef = useRef<HTMLInputElement>(null)
-  /* El número es automático y no se toca. El lápiz lo habilita "por ahora": es la salida para
-     cuando hay que corregirlo a mano. Sin número automático (no se pudo leer) arranca abierto. */
-  const [editandoNro, setEditandoNro] = useState(false)
-  const nroAbierto = editandoNro || numeroError
+  /* El número es INFORMATIVO: lo calcula la numeración (el siguiente al último emitido de su tipo)
+     y no se edita. Sin número —no se pudo leer— el campo lo dice, en vez de abrirse a mano. */
 
   useEffect(() => {
     let vivo = true
@@ -234,10 +231,6 @@ export function DatosMedicion({
     if (esOtro) otroRef.current?.focus()
   }, [esOtro])
 
-  useEffect(() => {
-    if (editandoNro) nroRef.current?.focus()
-  }, [editandoNro])
-
   return (
     <fieldset className="med" disabled={disabled}>
       <legend className="med-t">
@@ -249,32 +242,19 @@ export function DatosMedicion({
           <label className="med-l" htmlFor={`${uid}-nro`}>
             Nro Orden Producción
           </label>
-          <div className={`med-conic med-nro ${nroAbierto ? '' : 'med-nro--fijo'}`}>
+          <div className="med-conic med-nro med-nro--fijo">
             <i className="fas fa-hashtag" aria-hidden="true" />
             <input
-              ref={nroRef}
               id={`${uid}-nro`}
               className="med-input"
               type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder={numeroCargando ? 'Calculando…' : 'Ej: 3001'}
-              readOnly={!nroAbierto}
+              readOnly
+              tabIndex={-1}
+              aria-readonly="true"
+              placeholder={numeroCargando ? 'Calculando…' : numeroError ? 'No se pudo calcular' : ''}
               value={valor.nroOrden}
-              title={nroAbierto ? undefined : 'Número automático: el siguiente al último emitido'}
-              onChange={(e) => set({ nroOrden: e.target.value.toUpperCase(), nroEditado: true })}
+              title="Número automático: el siguiente al último emitido. No se edita."
             />
-            {!nroAbierto && (
-              <button
-                type="button"
-                className="med-lapiz"
-                title="Editar el número a mano"
-                aria-label="Editar el número de orden"
-                onClick={() => setEditandoNro(true)}
-              >
-                <i className="fas fa-pen" />
-              </button>
-            )}
           </div>
         </div>
 
