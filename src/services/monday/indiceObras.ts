@@ -6,6 +6,11 @@ import { cabecerasPropias, mondayApi } from './sdk'
 export interface ObraIndice {
   id: string
   nombre: string
+  /**
+   * Otros textos por los que se encuentra la obra, además del nombre: el cliente y el IDOP y el
+   * N° de cada una de sus órdenes. Sólo lo trae el índice de la consulta (`getIndiceConsulta`).
+   */
+  buscables?: string[]
 }
 
 interface Pagina {

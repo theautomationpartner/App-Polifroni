@@ -20,13 +20,25 @@ export interface EntradaIndice {
   nombre: string
   compacto: string
   palabras: string[]
+  /** Los `buscables` de la obra (cliente, IDOP, N° de orden), ya normalizados. */
+  extras: { compacto: string; palabras: string[] }[]
+}
+
+const partes = (texto: string) => {
+  const t = normalizar(texto)
+  return { compacto: compactar(t), palabras: t.split(/[^a-z0-9]+/).filter(Boolean) }
 }
 
 /** Se arma UNA vez por índice: normalizar en cada tecla sería repetir el mismo trabajo 600 veces. */
 export function indexar(obras: readonly ObraIndice[]): EntradaIndice[] {
   return obras.map((obra) => {
     const nombre = normalizar(obra.nombre)
-    return { obra, nombre, compacto: compactar(nombre), palabras: nombre.split(/[^a-z0-9]+/).filter(Boolean) }
+    return {
+      obra,
+      nombre,
+      ...partes(obra.nombre),
+      extras: (obra.buscables ?? []).filter(Boolean).map(partes),
+    }
   })
 }
 
@@ -39,9 +51,13 @@ export function indexar(obras: readonly ObraIndice[]): EntradaIndice[] {
  */
 function puntuar(e: EntradaIndice, t: string, tCompacto: string): number {
   if (e.obra.id === t) return 1000
+  /* Un IDOP o un N° de orden escrito entero es tan preciso como el id. */
+  if (e.extras.some((x) => x.compacto === tCompacto)) return 900
   if (e.compacto.startsWith(tCompacto)) return 700
   if (e.palabras.some((p) => p.startsWith(t))) return 600
+  if (e.extras.some((x) => x.compacto.startsWith(tCompacto) || x.palabras.some((p) => p.startsWith(t)))) return 550
   if (e.compacto.includes(tCompacto)) return 500
+  if (e.extras.some((x) => x.compacto.includes(tCompacto))) return 400
   return 0
 }
 

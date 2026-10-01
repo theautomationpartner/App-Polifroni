@@ -277,18 +277,20 @@ interface PasoTituloProps {
   titulo: string
   /** Bajada. Opcional: cuando el título ya se explica solo, sobra. */
   descripcion?: ReactNode
+  /** Sin el número de etapa: para las operaciones que no tienen etapas (la consulta). */
+  sinNumero?: boolean
 }
 
 /**
  * Encabezado de la etapa: número, título y —si hace falta— una línea de bajada. El número sale del
  * paso, el mismo que marca el círculo del stepper.
  */
-export function PasoTitulo({ titulo, descripcion }: PasoTituloProps) {
+export function PasoTitulo({ titulo, descripcion, sinNumero = false }: PasoTituloProps) {
   const { paso } = useApp()
   return (
     <header className={`header-section header-section--${paso}`}>
       <div className="step-indicator-main">
-        <div className="step-badge-main">{indiceDe(paso) + 1}</div>
+        {!sinNumero && <div className="step-badge-main">{indiceDe(paso) + 1}</div>}
         <div className="step-details-main">
           <h1 className="step-title-main">{titulo}</h1>
           {descripcion && <p className="step-desc-main">{descripcion}</p>}
