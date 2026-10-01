@@ -17,7 +17,7 @@ import { cargarHojas, recortar, type Dibujo } from './hojas'
 /** Límite de la función de Vercel que sube el archivo a Monday (4,5 MB), con margen: se valida
     acá para no generar una orden que después no se pueda adjuntar al finalizar. */
 const TOPE_BYTES = 4.3 * 1024 * 1024
-const LOGO = '/logo-op.jpg'
+const LOGO = '/logo-polifroni.png'
 
 export interface EntradaGenerar extends EntradaOp {
   /** La Orden HETMO de la OP: de ahí salen los dibujos. */
@@ -86,7 +86,7 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
   try {
     logo = await cargarLogo()
   } catch {
-    return { ok: false, errores: ['No se pudo cargar el logo de la orden (/logo-op.jpg).'], avisos }
+    return { ok: false, errores: ['No se pudo cargar el logo de la orden (/logo-polifroni.png).'], avisos }
   }
 
   /* ── El PDF ───────────────────────────────────────────────────────────── */

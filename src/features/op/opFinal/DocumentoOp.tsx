@@ -32,7 +32,8 @@ import type { Dibujo } from './hojas'
 /* Sin guiones de corte: un código o una medida partidos al final del renglón se leen mal. */
 Font.registerHyphenationCallback((palabra) => [palabra])
 
-const NARANJA = '#F1651C'
+/** El bordó de la marca: el mismo `--marca` de la app (`styles/labatea.css`). */
+const MARCA = '#89263c'
 const LINEA = '#8c8c8c'
 const RAYA = '—'
 
@@ -47,13 +48,14 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     minHeight: '23mm',
     borderWidth: 2.2,
-    borderColor: NARANJA,
+    borderColor: MARCA,
     borderStyle: 'solid',
   },
+  /* El logo es apaisado (2,86 : 1): a 48 mm de caja queda de unos 45 × 16 mm. */
   logo: {
-    width: '30mm',
+    width: '48mm',
     borderRightWidth: 2.2,
-    borderRightColor: NARANJA,
+    borderRightColor: MARCA,
     alignItems: 'center',
     justifyContent: 'center',
     padding: '1.5mm',
@@ -62,27 +64,27 @@ const s = StyleSheet.create({
   centro: { flex: 1, paddingVertical: '1.5mm', paddingHorizontal: '3mm' },
   titulo: {
     textAlign: 'center',
-    color: NARANJA,
+    color: MARCA,
     fontFamily: 'Helvetica-Bold',
     fontSize: 12.5,
     marginBottom: '1mm',
   },
   obra: { fontFamily: 'Helvetica-Bold', fontSize: 10.5, lineHeight: 1.15, marginBottom: '1mm' },
   dato: { fontSize: 8.5, lineHeight: 1.25 },
-  nro: { width: '34mm', borderLeftWidth: 2.2, borderLeftColor: NARANJA },
+  nro: { width: '34mm', borderLeftWidth: 2.2, borderLeftColor: MARCA },
   nroV: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   nroVTexto: { fontFamily: 'Helvetica-Bold', fontSize: 22 },
-  nroEtmo: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: NARANJA },
+  nroEtmo: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: MARCA },
   nroCelda: { flex: 1, paddingTop: '0.7mm', paddingBottom: '0.9mm', paddingHorizontal: '1mm', alignItems: 'center' },
-  nroCeldaDer: { borderLeftWidth: 1, borderLeftColor: NARANJA },
+  nroCeldaDer: { borderLeftWidth: 1, borderLeftColor: MARCA },
   nroL: {
     fontFamily: 'Helvetica-Bold',
     fontSize: 5.6,
-    color: NARANJA,
+    color: MARCA,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
@@ -90,7 +92,7 @@ const s = StyleSheet.create({
   derecha: {
     width: '44mm',
     borderLeftWidth: 2.2,
-    borderLeftColor: NARANJA,
+    borderLeftColor: MARCA,
     paddingVertical: '1.5mm',
     paddingHorizontal: '2mm',
     alignItems: 'center',
@@ -162,22 +164,22 @@ const s = StyleSheet.create({
     borderTopColor: LINEA,
   },
   obsVacia: { borderTopColor: '#ffffff' },
-  obsEt: { fontFamily: 'Helvetica-Bold', color: NARANJA, fontSize: 6.4, letterSpacing: 0.2, marginBottom: '0.3mm' },
+  obsEt: { fontFamily: 'Helvetica-Bold', color: MARCA, fontSize: 6.4, letterSpacing: 0.2, marginBottom: '0.3mm' },
   obsTexto: { fontSize: 6.8, lineHeight: 1.18 },
 
   /* ── Pie ──
-     Con el marco del encabezado (naranja, de borde a borde) y en tres renglones separados por un
+     Con el marco del encabezado (bordó, de borde a borde) y en tres renglones separados por un
      filete: los totales; quién midió y cuándo; la observación de la OP. Las celdas de un renglón se
      separan como las del encabezado. Su alto está reservado en `ALTO_PIE_MM` (datos.ts): la última
      hoja reparte los modelos contando con él, así que el pie nunca se monta sobre el último renglón
      ni salta solo a una hoja nueva. */
   pie: {
     borderWidth: 2.2,
-    borderColor: NARANJA,
+    borderColor: MARCA,
     borderStyle: 'solid',
   },
   pieRenglon: { flexDirection: 'row' },
-  pieRenglonSig: { borderTopWidth: 1, borderTopColor: NARANJA },
+  pieRenglonSig: { borderTopWidth: 1, borderTopColor: MARCA },
   pieCelda: {
     flex: 1,
     flexDirection: 'row',
@@ -186,7 +188,7 @@ const s = StyleSheet.create({
     paddingVertical: '1mm',
     paddingHorizontal: '2mm',
   },
-  pieCeldaSig: { borderLeftWidth: 1, borderLeftColor: NARANJA },
+  pieCeldaSig: { borderLeftWidth: 1, borderLeftColor: MARCA },
   pieL: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25 },
   pieV: { fontFamily: 'Helvetica-Bold', fontSize: 11, lineHeight: 1.25, marginLeft: '1.5mm' },
   /* La observación: texto libre, a lo ancho, con un tope de renglones para que la hoja no se pase
@@ -208,7 +210,7 @@ const s = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
     fontSize: 9.5,
     lineHeight: 1.3,
-    color: NARANJA,
+    color: MARCA,
   },
 })
 
