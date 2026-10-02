@@ -17,11 +17,6 @@ export interface ValidacionEntrada {
   cancelar: string
   /** Botón que entra. Sin él, el aviso sólo informa (no hay con qué seguir). */
   aceptar?: string
-  /**
-   * Un segundo camino para entrar: "Enviar una ya cargada". Entra a la misma obra pero manda una
-   * OP que ya existe en vez de cargar otra (ver `AppState.existente`).
-   */
-  alternativa?: string
   /** A quién se envía al aceptar. Puede no ser el que se había elegido. */
   destino: Destino
   tono: 'warn' | 'info'
@@ -41,16 +36,18 @@ export function validarEntrada(destino: Destino, obra: Obra): ValidacionEntrada 
   }
 
   /* Al cliente o constructor, según en qué está la obra con sus órdenes (ver `situacionOrdenes`):
-     sin órdenes se sigue sin preguntar; con órdenes asignadas se pregunta si se carga una nueva; con
-     una CONFIRMADA no se carga otra —la ventana no deja seguir—. */
+     sin órdenes se sigue sin preguntar; con órdenes asignadas, o con una ya CONFIRMADA, se avisa y se
+     pregunta si se carga una nueva. Tener una confirmada no bloquea: una obra puede necesitar más
+     órdenes (un agregado, una corrección). */
   if (destino === 'cliente') {
     const s = situacionOrdenes(obra)
     if (s.tipo === 'confirmada') {
       return {
         titulo: 'Esta obra ya tiene una orden confirmada',
-        clave: 'No se puede cargar otra orden de producción.',
-        nota: 'El cliente ya confirmó una orden de esta obra: lo que sigue es enviarla al taller.',
-        cancelar: 'Entendido',
+        clave: '¿Querés cargar otra orden de producción?',
+        nota: 'El cliente o el constructor ya confirmó una orden de esta obra. La nueva se crea aparte, queda asociada a la obra junto a las que ya tiene, y se envía para que la confirmen.',
+        cancelar: 'Volver',
+        aceptar: 'Cargar una nueva',
         destino: 'cliente',
         tono: 'warn',
       }
@@ -58,11 +55,10 @@ export function validarEntrada(destino: Destino, obra: Obra): ValidacionEntrada 
     if (s.tipo === 'asignadas') {
       return {
         titulo: 'Esta obra ya tiene órdenes de producción',
-        clave: '¿Cargás una orden nueva o enviás una de las que ya tiene?',
-        nota: `Tiene ${s.n === 1 ? '1 orden asignada' : `${s.n} órdenes asignadas`}. La nueva se crea aparte y queda asociada a la obra, junto a las que ya tiene.`,
-        cancelar: 'Cancelar',
+        clave: '¿Querés cargar una orden de producción nueva?',
+        nota: `Tiene ${s.n === 1 ? '1 orden asignada' : `${s.n} órdenes asignadas`}. La nueva se crea aparte y queda asociada a la obra, junto a las que ya tiene. Para reenviar una de las que ya tiene, usá «Consultar órdenes de producción».`,
+        cancelar: 'Volver',
         aceptar: 'Cargar una nueva',
-        alternativa: 'Enviar una ya cargada',
         destino: 'cliente',
         tono: 'warn',
       }

@@ -5,7 +5,7 @@ import { useApp, useDispatch } from '@/state/hooks'
 import type { Destino } from '@/types'
 
 /**
- * "¿A quién vas a enviarle la orden?" — la pregunta que abre "Enviar Orden de Producción".
+ * "¿A quién vas a enviarle la orden?" — la pregunta que abre "Cargar y Enviar Órdenes de Producción".
  *
  * Es la misma caja de configuración de La Batea (ícono en pastilla, la pregunta arriba y el
  * selector debajo). La respuesta decide el recorrido: al cliente o constructor se le CARGA una OP

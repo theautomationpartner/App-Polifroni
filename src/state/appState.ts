@@ -11,14 +11,14 @@ import type { Abertura } from '@/features/op/observaciones'
 import type { VidrioLeido } from '@/services/monday/ordenes'
 import type { ArchivoObra, Destino, Obra, Operacion, Paso, Proceso, Usuario, UsuarioActual } from '@/types'
 
-/** Orden de las etapas de "Enviar Orden de Producción". Manda el stepper. */
+/** Orden de las etapas de "Cargar y Enviar Órdenes de Producción". Manda el stepper. */
 export const PASOS: readonly Paso[] = ['obra', 'carga', 'envio']
 
 export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))
 
 /** Las operaciones de la sección Producción, en el orden del selector del encabezado. */
 export const OPERACIONES: readonly { id: Operacion; titulo: string }[] = [
-  { id: 'enviar', titulo: 'ENVIAR ORDEN DE PRODUCCION' },
+  { id: 'enviar', titulo: 'CARGAR Y ENVIAR ORDENES DE PRODUCCION' },
   { id: 'consultar', titulo: 'CONSULTAR ORDENES DE PRODUCCION' },
 ]
 
@@ -108,12 +108,6 @@ export interface AppState {
   operacion: Operacion | null
   /** A quién se envía la orden. `null` hasta que se contesta la pregunta de la etapa 1. */
   destino: Destino | null
-  /**
-   * Al cliente o constructor: se ENVÍA UNA YA CARGADA en vez de cargar una nueva. Se elige en la
-   * ventana de la obra con órdenes asignadas, y "pisa" el tipo de la obra: la etapa 2 pasa a ser
-   * la tabla de órdenes y la 3, sólo el envío (sin emitir, aunque sea PVC).
-   */
-  existente: boolean
   paso: Paso
   /** Índice de la etapa más avanzada a la que se llegó: el stepper navega hasta ahí. */
   pasoMax: number
@@ -137,7 +131,6 @@ export const initialState: AppState = {
   proceso: null,
   operacion: null,
   destino: null,
-  existente: false,
   paso: 'obra',
   pasoMax: 0,
   obra: null,
@@ -159,14 +152,11 @@ export type Action =
   /** Contestar "¿A quién vas a enviarle la orden?". Cambiarla empieza la carga de nuevo. */
   | { type: 'setDestino'; destino: Destino }
   | { type: 'goto'; paso: Paso }
-  /** `existente`: se va a enviar una OP ya cargada de la obra (ver `AppState.existente`). */
-  | { type: 'setObra'; obra: Obra; existente?: boolean }
+  | { type: 'setObra'; obra: Obra }
   | { type: 'refrescarObra'; obra: Obra }
   | { type: 'salirDeLaObra' }
   | { type: 'setBorrador'; cambios: Partial<BorradorOp> }
   | { type: 'elegirOrden'; ordenId: string | null }
-  /** Abre una OP puntual desde la consulta, directo en la etapa de envío. */
-  | { type: 'abrirOrden'; obra: Obra; destino: Destino; ordenId: string }
   | { type: 'setEnviado' }
   | { type: 'exito'; exito: Exito }
   | { type: 'setAccionEnCurso'; motivo: string | null }
@@ -183,7 +173,6 @@ const sesionDe = (s: AppState) => ({ usuario: s.usuario, usuarios: s.usuarios, r
 /** El trabajo sobre la obra: se descarta al cambiar de obra, de destino o de operación. */
 const sinTrabajo = {
   obra: null,
-  existente: false,
   ordenId: null,
   borrador: borradorInicial(),
   enviado: false,
@@ -215,14 +204,11 @@ export function reducer(state: AppState, action: Action): AppState {
 
     /* Elegir la obra es terminar la etapa 1. Otra obra que la que había descarta lo cargado. */
     case 'setObra': {
-      /* Otra obra —o la misma con otro camino (cargar una nueva / enviar una ya cargada)— arranca
-         de cero: lo cargado era para el otro recorrido. */
-      const otra = state.obra?.id !== action.obra.id || (action.existente ?? false) !== state.existente
+      const otra = state.obra?.id !== action.obra.id
       return {
         ...state,
         ...(otra ? { ordenId: null, borrador: borradorInicial(), enviado: false, pasoMax: 0 } : {}),
         obra: action.obra,
-        existente: action.existente ?? false,
         paso: 'carga',
         pasoMax: Math.max(otra ? 0 : state.pasoMax, 1),
       }
@@ -240,21 +226,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'elegirOrden':
       return { ...state, ordenId: action.ordenId }
-
-    case 'abrirOrden':
-      return {
-        ...state,
-        operacion: 'enviar',
-        destino: action.destino,
-        /* Desde la consulta la OP ya existe: al cliente se la ENVÍA, no se emite de nuevo. */
-        existente: action.destino === 'cliente',
-        obra: action.obra,
-        ordenId: action.ordenId,
-        borrador: { ...borradorInicial(), ordenId: action.ordenId, generada: true },
-        enviado: false,
-        paso: 'envio',
-        pasoMax: 2,
-      }
 
     case 'setEnviado':
       return { ...state, enviado: true }

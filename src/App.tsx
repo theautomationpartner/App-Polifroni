@@ -26,18 +26,18 @@ import type { AppState } from '@/state/appState'
  * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
  * taller se elige una OP confirmada y se envía.
  */
-function vistaDe({ proceso, operacion, destino, existente, paso, obra }: AppState): () => JSX.Element {
+function vistaDe({ proceso, operacion, destino, paso, obra }: AppState): () => JSX.Element {
   if (proceso === null) return InicioView
   if (operacion === null) return ProduccionInicioView
   if (operacion === 'consultar') return ListadoView
   /* Sin obra (o sin a quién enviar) no hay etapa 2 ni 3 que dibujar: cualquier paso cae en la obra. */
   if (!obra || !destino || paso === 'obra') return ObrasView
   const pvc = tipoDe(obra) === 'PVC'
-  /* "Enviar una ya cargada" pisa el tipo: se elige de la tabla y se envía, sin emitir. */
+  /* Al taller se elige una orden confirmada de la tabla; al cliente se carga una nueva. */
   if (paso === 'carga') {
-    return destino === 'taller' || existente ? SeleccionarOpView : pvc ? CargarHetmoView : CargarOpView
+    return destino === 'taller' ? SeleccionarOpView : pvc ? CargarHetmoView : CargarOpView
   }
-  return destino === 'cliente' && pvc && !existente ? EmitirEnviarView : EnviarOpView
+  return destino === 'cliente' && pvc ? EmitirEnviarView : EnviarOpView
 }
 
 export function App() {

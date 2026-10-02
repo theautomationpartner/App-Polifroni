@@ -26,7 +26,7 @@ import { useNumeroOrden } from './useNumeroOrden'
 export function CargarOpView() {
   const obra = useObra()
   const dispatch = useDispatch()
-  const { borrador, enviado, destino, existente, responsableId } = useApp()
+  const { borrador, enviado, destino, responsableId } = useApp()
   const numero = useNumeroOrden(obra)
   const [error, setError] = useState('')
   const [subiendo, setSubiendo] = useState(false)
@@ -126,7 +126,7 @@ export function CargarOpView() {
 
       <PieEtapa>
         <button type="button" className="btn btn-primary" onClick={continuar}>
-          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra), existente)} <i className="fas fa-arrow-right" />
+          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra))} <i className="fas fa-arrow-right" />
         </button>
       </PieEtapa>
 

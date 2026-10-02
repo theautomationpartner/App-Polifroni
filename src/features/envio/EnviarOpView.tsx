@@ -25,10 +25,10 @@ import { EnviarOp, type OrdenLocal } from './EnviarOp'
 export function EnviarOpView() {
   const obra = useObra()
   const dispatch = useDispatch()
-  const { destino, borrador, ordenId, existente, responsableId } = useApp()
+  const { destino, borrador, ordenId, responsableId } = useApp()
   const modo = destino === 'taller' ? 'taller' : 'cliente'
   /** Aluminio, orden nueva: el registro se completa al finalizar. */
-  const enApp = modo === 'cliente' && !existente && tipoDe(obra) === 'Aluminio'
+  const enApp = modo === 'cliente' && tipoDe(obra) === 'Aluminio'
   const local: OrdenLocal | null =
     enApp && borrador.archivo
       ? {
@@ -41,9 +41,8 @@ export function EnviarOpView() {
           observacion: borrador.medicion.observacion,
         }
       : null
-  /* La OP elegida en la tabla (al taller, o "Enviar una ya cargada"), o la que se cargó en la
-     etapa 2. */
-  const id = enApp ? null : modo === 'taller' || existente ? ordenId : borrador.ordenId
+  /* La OP elegida en la tabla (al taller), o la que se cargó en la etapa 2. */
+  const id = enApp ? null : modo === 'taller' ? ordenId : borrador.ordenId
   const [orden, setOrden] = useState<ResumenOrden | null>(null)
   const [cargando, setCargando] = useState(true)
 

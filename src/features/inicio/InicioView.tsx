@@ -76,7 +76,7 @@ export function InicioView() {
 
 /** Cómo se presenta cada operación en su tarjeta: el ícono y cuántas etapas tiene. */
 const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etapas: number }> = {
-  enviar: { icono: 'fa-paper-plane', titulo: 'Enviar Orden de Producción', etapas: PASOS.length },
+  enviar: { icono: 'fa-paper-plane', titulo: 'Cargar y Enviar Órdenes de Producción', etapas: PASOS.length },
   /* La consulta es una sola pantalla: una etapa. */
   consultar: { icono: 'fa-table-list', titulo: 'Consultar Órdenes de Producción', etapas: 1 },
 }

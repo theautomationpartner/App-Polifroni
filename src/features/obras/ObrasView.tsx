@@ -139,22 +139,18 @@ export function ObrasView() {
    * Abre la obra en la pantalla de una acción. La acción va PRIMERO: `setObra` entra a la pantalla
    * de la acción que esté elegida.
    */
-  const entrar = (obra: Obra, d: Destino, existente = false) => {
+  const entrar = (obra: Obra, d: Destino) => {
     /* Elegir la obra NO crea nada en el tablero: la OP nace recién cuando se carga su documento.
        Entrar a mirar una obra y salir no deja ítems vacíos. */
     if (d !== destino) dispatch({ type: 'setDestino', destino: d })
-    dispatch({ type: 'setObra', obra, existente })
+    dispatch({ type: 'setObra', obra })
   }
 
   /** Aceptar la pregunta: se aplica lo que haya que aplicar y recién ahí se entra. */
-  const confirmar = (existente = false) => {
+  const confirmar = () => {
     if (!pendiente) return
     const { obra, aviso } = pendiente
     setPendiente(null)
-    if (existente) {
-      entrar(obra, aviso.destino, true)
-      return
-    }
     /* La OP nueva arranca vacía por sí sola: el documento y las observaciones son de cada OP, así
        que no hay nada de la orden anterior que limpiar en la obra. */
     entrar(obra, aviso.destino)
@@ -257,12 +253,6 @@ export function ObrasView() {
               {pendiente.aviso.aceptar && (
                 <button type="button" className="btn btn-primary btn-marca" onClick={() => confirmar()}>
                   {pendiente.aviso.aceptar}
-                </button>
-              )}
-              {/* El segundo camino: mandar una de las órdenes que la obra ya tiene cargadas. */}
-              {pendiente.aviso.alternativa && (
-                <button type="button" className="btn btn-primary btn-marca" onClick={() => confirmar(true)}>
-                  {pendiente.aviso.alternativa}
                 </button>
               )}
             </>

@@ -39,7 +39,7 @@ export function CargarHetmoView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-  const { borrador, responsableId, enviado, destino, existente } = useApp()
+  const { borrador, responsableId, enviado, destino } = useApp()
   const lectura = useLeerObservaciones(obra.id)
   const numero = useNumeroOrden(obra)
 
@@ -292,7 +292,7 @@ export function CargarHetmoView() {
 
       <PieEtapa>
         <button type="button" className="btn btn-primary" onClick={continuar}>
-          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra), existente)} <i className="fas fa-arrow-right" />
+          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra))} <i className="fas fa-arrow-right" />
         </button>
       </PieEtapa>
 

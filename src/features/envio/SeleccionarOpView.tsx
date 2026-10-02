@@ -30,23 +30,16 @@ const fecha = (iso: string) =>
  * a la OP que la estaba esperando, la más nueva de las enviadas: así una orden recién confirmada
  * aparece elegible sin tocar nada.
  *
- * La misma tabla sirve para "Enviar una ya cargada" al cliente o constructor (`existente`). Ahí se
- * listan las órdenes del TIPO de la obra (PVC o Aluminio) y se puede elegir una que todavía no fue
- * confirmada: generada (se envía) o pendiente de confirmar (se reenvía).
+ * Reenviar una orden al cliente o al constructor ya no pasa por acá: se hace desde «Consultar
+ * órdenes de producción».
  */
 export function SeleccionarOpView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-  const { ordenId, destino, existente } = useApp()
-  /** Al cliente con una ya cargada; si no, al taller. */
-  const alCliente = destino === 'cliente' && existente
-  /** Qué órdenes se pueden elegir en cada caso. */
-  const elegibleEn = (o: ResumenOrden) =>
-    alCliente ? o.estadoOrden === 'pendiente' : aptaParaTaller(o.estadoOrden, o.envioTaller)
-  /** Al cliente sólo se listan las del tipo de la obra: una OP de Aluminio no es de una obra de PVC. */
-  const delTipo = (o: ResumenOrden) =>
-    !alCliente || !obra.tipo.texto || o.tipo.trim().toLowerCase() === obra.tipo.texto.trim().toLowerCase()
+  const { ordenId, destino } = useApp()
+  /** Al taller sólo va una confirmada que todavía no se envió (ver `aptaParaTaller`). */
+  const elegibleEn = (o: ResumenOrden) => aptaParaTaller(o.estadoOrden, o.envioTaller)
   const [ordenes, setOrdenes] = useState<ResumenOrden[] | null>(null)
   const [error, setError] = useState(false)
   const [faltan, setFaltan] = useState(false)
@@ -67,13 +60,9 @@ export function SeleccionarOpView() {
           }
         }
         if (!vivo) return
-        /* TODAS las órdenes de la obra (del tipo de la obra, al cliente), también las que quedaron
-           sin generar —se cargó el original y la OP final nunca salió—: se tienen que ver, aunque
-           no se puedan enviar. */
-        /* Al cliente con una ya cargada se listan SÓLO las que están "Enviada Pend Confirmar"
-           (`🤖Estado OP`): son las que ya se mandaron y esperan la respuesta, y se reenvían. Al
-           taller, todas —las que no están confirmadas se ven apagadas—. */
-        setOrdenes(todas.filter(delTipo).filter((o) => !alCliente || o.estadoOrden === 'pendiente'))
+        /* TODAS las órdenes de la obra, también las que quedaron sin generar: se tienen que ver
+           —para saber en qué está cada una— aunque no se puedan enviar; las no confirmadas, apagadas. */
+        setOrdenes(todas)
         setError(false)
       } catch {
         if (vivo) {
@@ -85,8 +74,6 @@ export function SeleccionarOpView() {
     return () => {
       vivo = false
     }
-    // `delTipo` depende de la obra y del modo, que no cambian dentro de la etapa.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [obra, intento])
 
   /* Mientras haya órdenes esperando respuesta, la obra se relee cada 15 s: si el cliente confirma,
@@ -119,11 +106,7 @@ export function SeleccionarOpView() {
       <PasoHeader />
       <PasoTitulo
         titulo="Seleccionar OP A Enviar"
-        descripcion={
-          alCliente
-            ? `Elegí la orden de ${obra.tipo.texto || 'la obra'} que querés enviar al cliente o al constructor. Solamente se pueden enviar las órdenes que todavía no fueron confirmadas.`
-            : 'Elegí la orden que sale al taller. Sólo se pueden enviar las confirmadas por el cliente o el constructor.'
-        }
+        descripcion="Elegí la orden que sale al taller. Sólo se pueden enviar las confirmadas por el cliente o el constructor."
       />
 
 
@@ -133,11 +116,7 @@ export function SeleccionarOpView() {
       <div className="cobro-static">
         <div className="cobro-card">
           <h3 className="cobro-card-title">Órdenes de producción disponibles</h3>
-          <p className="cobro-card-desc">
-            {alCliente
-              ? `Órdenes de ${obra.tipo.texto || 'la obra'} de ${obra.nombre} enviadas y pendientes de confirmar. Elegí la que se vuelve a enviar al cliente o al constructor.`
-              : `Órdenes de ${obra.nombre}. Elegí la confirmada que sale al taller.`}
-          </p>
+          <p className="cobro-card-desc">{`Órdenes de ${obra.nombre}. Elegí la confirmada que sale al taller.`}</p>
 
           {/* La tabla está SIEMPRE, con sus columnas fijas: buscando, sin resultados o con órdenes.
               Lo que cambia es el cuerpo; el aviso va centrado en él, ocupando todo el ancho. */}
@@ -176,11 +155,6 @@ export function SeleccionarOpView() {
                       <i className="fas fa-circle-info" />{' '}
                       {error ? (
                         'No se pudieron leer las órdenes desde Monday.'
-                      ) : alCliente ? (
-                        <>
-                          <strong>{obra.nombre}</strong> no tiene órdenes de producción de{' '}
-                          {obra.tipo.texto || 'su tipo'} enviadas y pendientes de confirmar.
-                        </>
                       ) : (
                         <>
                           <strong>{obra.nombre}</strong> todavía no tiene órdenes de producción.
@@ -208,9 +182,7 @@ export function SeleccionarOpView() {
                     const motivo =
                       o.estadoOrden === 'borrador'
                         ? 'Esta orden todavía no tiene la OP final generada: no hay documento para enviar.'
-                        : alCliente
-                          ? 'Esta orden ya fue confirmada, enviada al taller o cancelada: no se envía al cliente.'
-                          : enElTaller(o.estadoOrden, o.envioTaller)
+                        : enElTaller(o.estadoOrden, o.envioTaller)
                             ? 'Esta orden ya se envió al taller: no se vuelve a enviar.'
                             : 'Sólo se puede enviar al taller una orden confirmada.'
                     return (
@@ -272,16 +244,10 @@ export function SeleccionarOpView() {
                   className={`fas ${elegida ? 'fa-circle-check' : elegibles === 0 ? 'fa-circle-exclamation' : 'fa-circle-info'}`}
                 />{' '}
                 {elegibles === 0
-                  ? alCliente
-                    ? (ordenes ?? []).every((o) => o.estadoOrden === 'borrador')
-                  ? 'Ninguna orden de esta obra tiene la OP final generada todavía: no hay documento para enviar.'
-                  : 'Ninguna orden de esta obra está para enviar: están sin generar, confirmadas, enviadas al taller o canceladas.'
-                    : 'Ninguna orden está confirmada todavía: apenas el cliente confirme, se habilita sola.'
+                  ? 'Ninguna orden está confirmada todavía: apenas el cliente confirme, se habilita sola.'
                   : elegida
                     ? `Orden elegida: ${elegida.idOp}${elegida.numero ? ` · N° ${elegida.numero}` : ''}.`
-                    : alCliente
-                      ? `${elegibles} ${elegibles === 1 ? 'orden' : 'órdenes'} para elegir. Tildá la que se envía.`
-                      : `${elegibles} ${elegibles === 1 ? 'orden confirmada' : 'órdenes confirmadas'} para elegir. Tildá la que sale al taller.`}
+                    : `${elegibles} ${elegibles === 1 ? 'orden confirmada' : 'órdenes confirmadas'} para elegir. Tildá la que sale al taller.`}
               </span>
             )}
           </div>
@@ -294,15 +260,13 @@ export function SeleccionarOpView() {
           className="btn btn-primary"
           onClick={() => (elegida ? dispatch({ type: 'goto', paso: 'envio' }) : setFaltan(true))}
         >
-          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra), existente)} <i className="fas fa-arrow-right" />
+          Continuar a {etiquetaPaso('envio', destino, tipoDe(obra))} <i className="fas fa-arrow-right" />
         </button>
       </PieEtapa>
 
       {faltan && (
         <AvisoModal titulo="Elegí la orden a enviar" onClose={() => setFaltan(false)}>
-          {alCliente
-            ? 'Seleccioná en la tabla la orden que querés enviar para pasar al envío.'
-            : 'Seleccioná en la tabla la orden confirmada que sale al taller para pasar al envío.'}
+          Seleccioná en la tabla la orden confirmada que sale al taller para pasar al envío.
         </AvisoModal>
       )}
     </section>

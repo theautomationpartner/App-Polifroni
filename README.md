@@ -116,7 +116,7 @@ usuario, con el stepper a la derecha.
 
 | Operación | Qué hace |
 | --- | --- |
-| **ENVIAR ORDEN DE PRODUCCION** | Pregunta *¿A quién vas a enviarle la orden?* (A Cliente/Constructor · Al Taller) y recorre tres etapas |
+| **CARGAR Y ENVIAR ORDENES DE PRODUCCION** | Pregunta *¿A quién vas a enviarle la orden?* (A Cliente/Constructor · Al Taller) y recorre tres etapas |
 | **CONSULTAR ORDENES DE PRODUCCION** | Todas las OP del tablero, filtradas por estado, con acciones rápidas por orden |
 
 Las etapas de "Enviar" cambian de nombre y de contenido según el destinatario y el tipo de obra:

@@ -24,26 +24,18 @@ export function tipoDe(obra: Obra | null): TipoOrden | null {
  * | 3 | Emitir y Enviar OP | Enviar OP | Enviar OP |
  *
  * Sin obra elegida todavía no se sabe el tipo: se muestran los nombres genéricos.
- *
- * `existente` (al cliente, "Enviar una ya cargada") pisa el tipo: la etapa 2 es la tabla de
- * órdenes, igual que para el taller, y la 3 es sólo el envío —la OP ya está emitida—.
  */
-export function etiquetaPaso(
-  paso: Paso,
-  destino: Destino | null,
-  tipo: TipoOrden | null,
-  existente = false,
-): string {
+export function etiquetaPaso(paso: Paso, destino: Destino | null, tipo: TipoOrden | null): string {
   if (paso === 'obra') return 'Seleccionar Obra'
   if (paso === 'carga') {
-    if (destino === 'taller' || existente) return 'Seleccionar OP A Enviar'
+    if (destino === 'taller') return 'Seleccionar OP A Enviar'
     return tipo === 'PVC' ? 'Cargar OP Hetmo' : 'Cargar OP'
   }
-  return destino === 'cliente' && tipo === 'PVC' && !existente ? 'Emitir y Enviar OP' : 'Enviar OP'
+  return destino === 'cliente' && tipo === 'PVC' ? 'Emitir y Enviar OP' : 'Enviar OP'
 }
 
-export const etiquetasPasos = (destino: Destino | null, tipo: TipoOrden | null, existente = false): string[] =>
-  (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo, existente))
+export const etiquetasPasos = (destino: Destino | null, tipo: TipoOrden | null): string[] =>
+  (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo))
 
 /** Cuántas OP de la obra están en un estado. */
 export const cuantasEn = (obra: Obra, estado: EstadoOrden): number =>
@@ -77,16 +69,18 @@ export function respuestaCliente(obra: Obra, estadoOp: string | null): Respuesta
  *  - `sin`        la obra no tiene ninguna OP vinculada (gris). Se sigue sin preguntar.
  *  - `asignadas`  tiene `n` OP vinculadas y ninguna confirmada (amarillo). Se pregunta si se carga
  *                 una nueva.
- *  - `confirmada` alguna de sus OP ya fue confirmada —o ya salió al taller— (verde). No se carga
- *                 otra: la ventana es bloqueante.
+ *  - `confirmada` alguna de sus OP ya fue confirmada —o ya salió al taller— (verde). Se avisa y
+ *                 se pregunta si se carga otra.
  *
- * `n` son los ítems vinculados a la obra en el tablero de órdenes, tal cual.
+ * Las CANCELADAS no cuentan para ninguno de los tres: una obra con todas sus órdenes canceladas está
+ * "sin orden asignada". `n` son las OP de la obra en el tablero de órdenes que no están canceladas.
  */
 export type SituacionOrdenes = { tipo: 'sin' } | { tipo: 'asignadas'; n: number } | { tipo: 'confirmada' }
 
 export function situacionOrdenes(obra: Obra): SituacionOrdenes {
-  if (obra.ordenes.some((o) => o.estado === 'confirmada' || o.estado === 'taller')) return { tipo: 'confirmada' }
-  const n = obra.ordenesIds.length
+  const vigentes = obra.ordenes.filter((o) => o.estado !== 'cancelada')
+  if (vigentes.some((o) => o.estado === 'confirmada' || o.estado === 'taller')) return { tipo: 'confirmada' }
+  const n = vigentes.length
   return n === 0 ? { tipo: 'sin' } : { tipo: 'asignadas', n }
 }
 

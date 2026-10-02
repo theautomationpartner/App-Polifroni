@@ -112,7 +112,7 @@ export interface Actividad {
 }
 
 /**
- * Las tres etapas de "Enviar Orden de Producción". El nombre de cada una en pantalla depende de a
+ * Las tres etapas de "Cargar y Enviar Órdenes de Producción". El nombre de cada una en pantalla depende de a
  * quién se envía y del tipo de obra (ver `lib/pasos`), pero el lugar en el recorrido es el mismo.
  */
 export type Paso = 'obra' | 'carga' | 'envio'
