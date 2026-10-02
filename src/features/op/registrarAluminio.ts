@@ -34,13 +34,20 @@ export async function registrarAluminio({
   responsableId: string | null
   avanzar: (cambios: Partial<BorradorOp>) => void
 }): Promise<void> {
-  const m = borrador.medicion
-  const nro = m.nroOrden.trim()
   const archivo = borrador.archivo
   if (!archivo) throw new Error('No hay un PDF cargado.')
 
-  const id = borrador.ordenId ?? (await abrirOrdenDeObra(obra, nro, responsableId)).id
-  avanzar({ ordenId: id })
+  /* Normalmente la OP ya existe (se creó al soltar el PDF). Si no, se crea acá y se reserva su
+     número, que puede no ser el que se mostraba. */
+  let m = borrador.medicion
+  let id = borrador.ordenId
+  if (!id) {
+    const nueva = await abrirOrdenDeObra(obra, m, responsableId)
+    id = nueva.id
+    m = { ...m, nroOrden: nueva.numero }
+    avanzar({ ordenId: id, medicion: m })
+  }
+  const nro = m.nroOrden.trim()
 
   if (archivo !== borrador.archivoSubido) {
     await subirEtmoAOrden(id, archivo)

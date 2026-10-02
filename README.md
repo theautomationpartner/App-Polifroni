@@ -23,7 +23,8 @@ En local no hay capa de acceso: se entra con el usuario dueño de `VITE_MONDAY_T
 Automation Partner*), desde el navegador, sin Monday. Nada se reenvía al deploy —sus funciones
 exigen la sesión firmada de Monday y contestaban 403—:
 
-- la numeración de las OP se calcula del tablero de órdenes (con `MAKE_TOKEN` usa el data store);
+- la numeración de las OP vive en la tabla `numeracion_op` de la base Neon (la misma que
+  producción): hace falta `DATABASE_URL` en `.env.local` (ver `db/numeracion.sql`);
 - los escenarios de Make necesitan su URL en `.env.local` (`MAKE_WEBHOOK_*`); sin ella la app dice
   qué variable falta.
 

@@ -198,7 +198,7 @@ export function DatosMedicion({
   valor: Medicion
   onCambio: (v: Medicion) => void
   disabled?: boolean
-  /** Se está leyendo el próximo número del data store. */
+  /** Se está leyendo el próximo número de la numeración. */
   numeroCargando?: boolean
   /** No se pudo leer: el campo queda abierto para escribirlo a mano. */
   numeroError?: boolean

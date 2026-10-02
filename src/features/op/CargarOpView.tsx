@@ -46,8 +46,17 @@ export function CargarOpView() {
     setError('')
     setSubiendo(true)
     try {
-      const id = borrador.ordenId ?? (await abrirOrdenDeObra(obra, m.nroOrden.trim(), responsableId)).id
-      dispatch({ type: 'setBorrador', cambios: { ordenId: id } })
+      /* Al crear la OP se reserva su número: si otra persona tomó el que se mostraba, el campo
+         pasa al que quedó reservado. */
+      const nueva = borrador.ordenId ? null : await abrirOrdenDeObra(obra, m, responsableId)
+      const id = borrador.ordenId ?? nueva!.id
+      dispatch({
+        type: 'setBorrador',
+        cambios: {
+          ordenId: id,
+          ...(nueva && nueva.numero !== m.nroOrden ? { medicion: { ...m, nroOrden: nueva.numero } } : {}),
+        },
+      })
       await subirEtmoAOrden(id, f)
       /* Otro archivo es otra orden: el envío que se hubiera hecho con el anterior ya no vale. */
       dispatch({ type: 'setBorrador', cambios: { archivo: f, archivoSubido: f, generada: true, envio: null } })

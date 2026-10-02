@@ -12,56 +12,6 @@ import { fileURLToPath, URL } from 'node:url'
  *  - `/monday-files`     → bucket S3 de Monday          (bytes de los PDF; S3 no manda CORS)
  *  - `/make/<escenario>` → webhooks de Make             (el hook no responde con cabeceras CORS)
  */
-/**
- * La numeración de las OP en local, sin el data store de Make: el mayor N° de PVC y de Aluminio
- * que ya hay en el tablero de órdenes. Contesta con la misma forma que `api/numeracion`.
- */
-async function numeracionLocal(
-  metodo: string,
-  token: string,
-  res: import('node:http').ServerResponse,
-): Promise<void> {
-  res.setHeader('content-type', 'application/json')
-  if (metodo === 'POST') {
-    res.end(JSON.stringify({ ok: true, local: true }))
-    return
-  }
-  try {
-    const pedir = async (query: string, variables: Record<string, unknown> = {}) => {
-      const r = await fetch('https://api.monday.com/v2', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': '2024-10' },
-        body: JSON.stringify({ query, variables }),
-      })
-      return (await r.json()) as { data?: Record<string, unknown> }
-    }
-    type Pagina = { cursor: string | null; items: { column_values: { id: string; text: string | null }[] }[] }
-    const campos = 'cursor items { column_values(ids: ["numeric_mm7ep0eq", "text_mm7gjg24"]) { id text } }'
-    const primera = await pedir(`query { boards(ids: [18432207111]) { items_page(limit: 500) { ${campos} } } }`)
-    let pagina = (primera.data?.boards as { items_page: Pagina }[] | undefined)?.[0]?.items_page
-    let pvc = 0
-    let alu = 0
-    for (let n = 0; pagina && n < 20; n++) {
-      for (const i of pagina.items) {
-        for (const c of i.column_values) {
-          const v = Number(String(c.text ?? '').replace(/\D/g, '')) || 0
-          if (c.id === 'numeric_mm7ep0eq') pvc = Math.max(pvc, v)
-          else alu = Math.max(alu, v)
-        }
-      }
-      if (!pagina.cursor) break
-      const sig = await pedir(`query ($c: String!) { next_items_page(limit: 500, cursor: $c) { ${campos} } }`, {
-        c: pagina.cursor,
-      })
-      pagina = sig.data?.next_items_page as Pagina | undefined
-    }
-    res.end(JSON.stringify({ nroOrdenPVC: String(pvc), nroOrdenAluminio: `A${alu}` }))
-  } catch {
-    res.statusCode = 502
-    res.end(JSON.stringify({ error: 'No se pudo calcular la numeración desde el tablero.' }))
-  }
-}
-
 export default defineConfig(({ mode }) => {
   // Prefijo vacío: también se leen las variables SIN `VITE_`, que se usan sólo acá (nunca en el bundle).
   const env = loadEnv(mode, process.cwd(), '')
@@ -72,8 +22,8 @@ export default defineConfig(({ mode }) => {
    * computadora vuelve con 403 ("esta app sólo funciona dentro de monday.com") y la app lo leía
    * como "usuario sin permisos". Lo que corre en local, corre ACÁ:
    *  - los escenarios de Make, con su URL en `.env.local` (sin ella, la app avisa qué falta);
-   *  - la numeración, con `MAKE_TOKEN` contra el data store o, sin él, leída del tablero de
-   *    órdenes con el token de desarrollo (ver `numeracionLocal`).
+   *  - la numeración, contra la MISMA tabla de Neon que producción, con la `DATABASE_URL` de
+   *    `.env.local` (ver `funcionesLocales`).
    */
 
   /* Los escenarios leen el PDF con IA: los 30 s por defecto de http-proxy los cortarían a mitad de
@@ -107,24 +57,29 @@ export default defineConfig(({ mode }) => {
   /**
    * Las funciones de `api/` que en local tienen que correr TAL CUAL corren en Vercel.
    *
-   * La numeración habla con el data store de Make con un token del servidor: en vez de reescribirla
-   * para el navegador, Vite carga el mismo archivo y le pasa el pedido. Lo que se prueba en local es
-   * exactamente lo que se despliega.
+   * La numeración vive en la tabla `numeracion_op` de Neon: Vite carga las mismas rutas que usa la
+   * función (`api/_numeracionHttp.ts`) y les pasa el pedido. Sin el guardián, porque en local no hay
+   * sesión de Monday que verificar; la tabla es la misma que en producción, así que el número que se
+   * ve —y el que se reserva— es el real.
    */
   const funcionesLocales: Plugin = {
     name: 'api-local',
     configureServer(server) {
-      if (env.MAKE_TOKEN) process.env.MAKE_TOKEN = env.MAKE_TOKEN
+      const db = env.DATABASE_URL || env.POSTGRES_URL
+      if (db) process.env.DATABASE_URL = db
       server.middlewares.use('/api/numeracion', async (req, res) => {
-        /* Sin `MAKE_TOKEN` en `.env.local` no se puede leer el data store de Make: la numeración
-           se calcula del tablero de órdenes (el último N° de cada tipo), y registrar un número
-           usado no escribe nada —el data store real lo sigue llevando producción—. */
-        if (!env.MAKE_TOKEN) {
-          await numeracionLocal(req.method ?? 'GET', env.VITE_MONDAY_TOKEN ?? '', res)
+        if (!db) {
+          res.statusCode = 503
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error: 'Falta DATABASE_URL en .env.local: la numeración vive en la base de Neon. Cargala (la cadena con pooler) y reiniciá npm run dev.',
+            }),
+          )
           return
         }
-        const mod = await server.ssrLoadModule('/api/numeracion.ts')
-        await mod.default(req, res)
+        const mod = await server.ssrLoadModule('/api/_numeracionHttp.ts')
+        await mod.manejarNumeracion(req, res)
       })
     },
   }

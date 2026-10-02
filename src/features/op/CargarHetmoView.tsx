@@ -80,12 +80,15 @@ export function CargarHetmoView() {
     setErrorCarga('')
     setSubiendo(true)
     try {
-      const id =
-        borrador.ordenId ?? (await abrirOrdenDeObra(obra, m.nroOrden.trim(), responsableId)).id
+      /* Al crear la OP se reserva su número: si otra persona tomó el que se mostraba, el campo
+         pasa al que quedó reservado. */
+      const nueva = borrador.ordenId ? null : await abrirOrdenDeObra(obra, m, responsableId)
+      const id = borrador.ordenId ?? nueva!.id
+      const medicion = nueva && nueva.numero !== m.nroOrden ? { ...m, nroOrden: nueva.numero } : m
       await subirEtmoAOrden(id, archivo)
       const { etmo } = await getArchivosOrden(id)
       lectura.limpiar()
-      cambiar({ ordenId: id, etmo, aberturas: [], vidrios: [] })
+      cambiar({ ordenId: id, etmo, aberturas: [], vidrios: [], medicion })
       setIndice(0)
       const fresca = await refrescar().catch(() => null)
       setProponerLectura(!faltaParaLeer(fresca ?? obra, true))
