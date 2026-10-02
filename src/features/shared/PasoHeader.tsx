@@ -4,12 +4,12 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { LogoEmpresa } from '@/components/ui/LogoEmpresa'
 import { Modal } from '@/components/ui/Modal'
 import { Stepper } from '@/components/ui/Stepper'
-import { procesoDe } from '@/lib/procesos'
+import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { etiquetasPasos, tipoDe } from '@/lib/pasos'
 import { comoUsuario } from '@/services/monday'
 import { OPERACIONES, PASOS, indiceDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
-import type { Operacion } from '@/types'
+import type { Operacion, Proceso } from '@/types'
 
 /** Item de la barra: rótulo arriba, control abajo (mismo patrón que La Batea). */
 /**
@@ -141,6 +141,14 @@ function OperacionSelector() {
   )
 }
 
+/** "Inicio" en el selector de área: vuelve a la pantalla de entrada. */
+const INICIO = 'inicio'
+/** Prefijo de las áreas que todavía no están: se listan apagadas. */
+const PROXIMAMENTE = 'pronto:'
+type OpcionArea = string
+/** Las opciones del selector de área: Inicio primero, después todas las áreas en su orden. */
+const OPCIONES_AREA: OpcionArea[] = [INICIO, ...PROCESOS.map((p) => p.id ?? `${PROXIMAMENTE}${p.titulo}`)]
+
 /**
  * Operación y usuario: misma ubicación y diseño en todas las pantallas (el `SelectoresOperacion`
  * de La Batea). Antes del selector va la SECCIÓN en la que se está —"Producción →"—: es la
@@ -150,15 +158,20 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
   const { proceso, obra, accionEnCurso } = useApp()
   const dispatch = useDispatch()
   const seccion = procesoDe(proceso)
-  /** Se tocó el área con una operación en curso: se pregunta antes de volver al inicio. */
-  const [salir, setSalir] = useState(false)
+  /** Se eligió ir al inicio u otra área con una operación en curso: se pregunta antes. */
+  const [salir, setSalir] = useState<OpcionArea | null>(null)
 
-  /* Cambiar de área es volver al inicio. Con trabajo cargado —una obra elegida— se pregunta, igual
-     que al cambiar de operación: lo que no se guardó se pierde. */
-  const cambiarArea = () => {
+  /** Ir a lo elegido en el selector de área. */
+  const ir = (destino: OpcionArea) =>
+    destino === INICIO ? dispatch({ type: 'reset' }) : dispatch({ type: 'setProceso', proceso: destino as Proceso })
+
+  /* Cambiar de área (o volver al inicio) descarta la operación en curso. Con trabajo cargado —una
+     obra elegida— se pregunta antes, igual que al cambiar de operación. */
+  const elegirArea = (destino: OpcionArea) => {
     if (accionEnCurso) return
-    if (obra) setSalir(true)
-    else dispatch({ type: 'reset' })
+    if (destino !== INICIO && destino === proceso) return
+    if (obra) setSalir(destino)
+    else ir(destino)
   }
 
   return (
@@ -177,23 +190,49 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
           del área. En el inicio todavía no hay área: el recuadro queda vacío y no hay flecha ni
           selector —la operación depende del área—. Elegida una tarjeta, aparece su nombre, la
           flecha y el selector de sus operaciones. */}
+      {/* El ÁREA es un desplegable con "Inicio" primero y todas las áreas después; las que todavía no
+          están se ven, apagadas. En el inicio no hay área elegida: dice "Seleccionar...". */}
       <TopSel label="Área:">
-      <div className="topsel-ruta">
-        {seccion ? (
-          <button
-            type="button"
-            className="topsel-seccion"
-            title={accionEnCurso ?? 'Volver a elegir el área'}
-            disabled={!!accionEnCurso}
-            onClick={cambiarArea}
-          >
-            <i className={`fas ${seccion.icono}`} /> {seccion.titulo}
-          </button>
-        ) : (
-          <span className="topsel-seccion topsel-seccion--vacia" aria-label="Todavía no se eligió un área" />
-        )}
-        {seccion && <i className="fas fa-chevron-right topsel-flecha" aria-hidden="true" />}
-      </div>
+        <div className="topsel-ruta">
+          <span className="topsel-area" title={accionEnCurso ?? undefined}>
+            <Dropdown<OpcionArea>
+              label={
+                seccion ? (
+                  <span className="selbox-val">
+                    <i className={`fas ${seccion.icono} topsel-area-ic`} /> {seccion.titulo}
+                  </span>
+                ) : (
+                  <span className="selbox-ph">Seleccionar...</span>
+                )
+              }
+              items={OPCIONES_AREA}
+              itemKey={(o) => o}
+              esElegido={(o) => o !== INICIO && o === proceso}
+              esInactivo={(o) => o.startsWith(PROXIMAMENTE)}
+              renderItem={(o) => {
+                if (o === INICIO) {
+                  return (
+                    <span className="dd-area">
+                      <i className="fas fa-house" /> Inicio
+                    </span>
+                  )
+                }
+                const p = o.startsWith(PROXIMAMENTE)
+                  ? PROCESOS.find((x) => `${PROXIMAMENTE}${x.titulo}` === o)
+                  : procesoDe(o as Proceso)
+                return (
+                  <span className="dd-area">
+                    <i className={`fas ${p?.icono ?? 'fa-circle'}`} /> {p?.titulo}
+                  </span>
+                )
+              }}
+              itemClassName="dditem--strong"
+              disabled={!!accionEnCurso}
+              onSelect={(o) => elegirArea(o)}
+            />
+          </span>
+          {seccion && <i className="fas fa-chevron-right topsel-flecha" aria-hidden="true" />}
+        </div>
       </TopSel>
       {seccion && (
         <TopSel label="Operación:">
@@ -207,20 +246,21 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
 
       {salir && (
         <Modal
-          title="¿Estás seguro que deseas volver al inicio?"
+          title={salir === INICIO ? '¿Estás seguro que deseas volver al inicio?' : '¿Estás seguro que deseas cambiar de área?'}
           icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
-          onClose={() => setSalir(false)}
+          onClose={() => setSalir(null)}
           actions={
             <>
-              <button type="button" className="btn btn-out" onClick={() => setSalir(false)}>
+              <button type="button" className="btn btn-out" onClick={() => setSalir(null)}>
                 Volver
               </button>
               <button
                 type="button"
                 className="btn btn-primary btn-marca"
                 onClick={() => {
-                  setSalir(false)
-                  dispatch({ type: 'reset' })
+                  const destino = salir
+                  setSalir(null)
+                  ir(destino)
                 }}
               >
                 Aceptar
@@ -228,7 +268,9 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
             </>
           }
         >
-          Al cambiar de área, todos los datos ingresados en la operación en curso se perderán.
+          {salir === INICIO
+            ? 'Al volver al inicio, todos los datos ingresados en la operación en curso se perderán.'
+            : 'Al cambiar de área, todos los datos ingresados en la operación en curso se perderán.'}
         </Modal>
       )}
     </div>

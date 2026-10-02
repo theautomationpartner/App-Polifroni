@@ -14,6 +14,8 @@ interface DropdownProps<T> {
   disabled?: boolean
   /** La opción elegida hoy: se marca en el menú con un tilde. */
   esElegido?: (item: T) => boolean
+  /** Opciones que se muestran pero no se pueden elegir (p. ej. un área que todavía no está). */
+  esInactivo?: (item: T) => boolean
 }
 
 /** Selector con menú desplegable, usado para operación y vendedor. */
@@ -26,6 +28,7 @@ export function Dropdown<T>({
   itemClassName = '',
   disabled = false,
   esElegido,
+  esInactivo,
 }: DropdownProps<T>) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -50,13 +53,16 @@ export function Dropdown<T>({
         <div className="ddmenu" role="listbox">
           {items.map((item) => {
             const elegido = esElegido?.(item) ?? false
+            const inactivo = esInactivo?.(item) ?? false
             return (
               <div
                 key={itemKey(item)}
                 role="option"
                 aria-selected={elegido}
-                className={`dditem ${elegido ? 'dditem--elegido' : ''} ${itemClassName}`}
+                aria-disabled={inactivo || undefined}
+                className={`dditem ${elegido ? 'dditem--elegido' : ''} ${inactivo ? 'dditem--inactivo' : ''} ${itemClassName}`}
                 onClick={() => {
+                  if (inactivo) return
                   onSelect(item)
                   setOpen(false)
                 }}

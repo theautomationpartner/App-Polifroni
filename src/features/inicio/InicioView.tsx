@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { PasoHeader } from '@/features/shared/PasoHeader'
-import { PROCESOS } from '@/lib/procesos'
+import { PROCESOS, procesoDe } from '@/lib/procesos'
+import { normalizar } from '@/lib/texto'
 import { OPERACIONES, PASOS } from '@/state/appState'
 import { useDispatch } from '@/state/hooks'
 import type { Operacion } from '@/types'
@@ -42,34 +44,89 @@ function Tarjeta({
 /**
  * Pantalla de entrada: en qué área se va a trabajar —Presupuesto, Obras o Producción—.
  *
- * Arriba, el mismo encabezado que adentro de cada área: la marca, el área —vacía hasta elegir una—
- * y el usuario en uso. Las áreas salen del catálogo único (`lib/procesos`); las que todavía no
- * están se ven apagadas.
+ * Arriba, el mismo encabezado que adentro de cada área: la marca, el área —sin elegir— y el usuario
+ * en uso. Las áreas salen del catálogo único (`lib/procesos`); las que todavía no están se ven
+ * apagadas.
+ *
+ * El buscador filtra en vivo por el nombre del área o de una operación: lo que coincide con un área
+ * muestra su tarjeta, y lo que coincide con una operación muestra la tarjeta de esa operación, que
+ * entra directo a ella. Sin nada escrito, se ven las áreas.
  */
 export function InicioView() {
   const dispatch = useDispatch()
+  const [busqueda, setBusqueda] = useState('')
+  const t = normalizar(busqueda.trim())
+
+  const areas = PROCESOS.filter((p) => !t || normalizar(p.titulo).includes(t))
+  const operaciones = t
+    ? OPERACIONES.filter((o) => normalizar(TARJETA_OPERACION[o.id].titulo).includes(t))
+    : []
+  const nada = areas.length === 0 && operaciones.length === 0
 
   return (
     <section className="view paso-layout obras-v2">
       <PasoHeader />
 
-      <div className="procesos-intro">
-        <h1>Seleccioná un área:</h1>
+      {/* Sólo el campo de búsqueda, sin la card de fondo de los otros buscadores. */}
+      <div className="inicio-buscador">
+        <div className="search-container">
+          <div className="search-wrapper">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              id="inicio-buscar"
+              type="search"
+              className="search-input"
+              placeholder="Buscar área u operación"
+              aria-label="Buscar área u operación"
+              autoComplete="off"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="procesos-grid">
-        {PROCESOS.map((p) => (
-          <Tarjeta
-            key={p.titulo}
-            icono={p.icono}
-            titulo={p.titulo}
-            descripcion={p.descripcion}
-            detalle={p.detalle}
-            disponible={!!p.id}
-            onElegir={() => p.id && dispatch({ type: 'setProceso', proceso: p.id })}
-          />
-        ))}
-      </div>
+      {nada ? (
+        <div className="inicio-vacio" role="status">
+          <i className="fas fa-magnifying-glass" aria-hidden="true" /> No hay áreas ni operaciones que coincidan con
+          «{busqueda.trim()}».
+        </div>
+      ) : (
+        <div className="procesos-grid">
+          {areas.map((p) => (
+            <Tarjeta
+              key={p.titulo}
+              icono={p.icono}
+              titulo={p.titulo}
+              descripcion={p.descripcion}
+              detalle={p.detalle}
+              disponible={!!p.id}
+              onElegir={() => p.id && dispatch({ type: 'setProceso', proceso: p.id })}
+            />
+          ))}
+          {/* Las operaciones son de Producción (la única área construida): elegirla entra al área
+              y a la operación de una vez. */}
+          {operaciones.map((o) => {
+            const op = TARJETA_OPERACION[o.id]
+            return (
+              <Tarjeta
+                key={o.id}
+                icono={op.icono}
+                titulo={op.titulo}
+                descripcion={`Operación del área ${procesoDe('obras')?.titulo ?? 'Producción'}.`}
+                detalle={`${op.etapas} ${op.etapas === 1 ? 'etapa' : 'etapas'}`}
+                onElegir={() => {
+                  dispatch({ type: 'setProceso', proceso: 'obras' })
+                  dispatch({ type: 'setOperacion', operacion: o.id })
+                }}
+              />
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }

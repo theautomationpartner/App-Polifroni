@@ -2204,3 +2204,48 @@
   font-size: 11px;
   font-weight: 700;
 }
+
+/* El inicio: el buscador de áreas y operaciones, y el aviso cuando no coincide nada. */
+.obras-v2 .inicio-buscador {
+  margin: 8px 0 16px;
+}
+.obras-v2 .inicio-buscador .search-container {
+  width: 100%;
+}
+.obras-v2 .inicio-vacio {
+  padding: 36px 16px;
+  text-align: center;
+  font-size: 14.5px;
+  color: var(--c-text-secondary);
+}
+.obras-v2 .inicio-vacio > i {
+  margin-right: 6px;
+  color: var(--marca);
+}
+/* El selector de área del encabezado: el ícono del área en bordó, "Inicio" y las que faltan. */
+.topsel-area .topsel-area-ic {
+  color: var(--marca);
+  margin-right: 2px;
+}
+.dd-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dd-area > i {
+  width: 16px;
+  text-align: center;
+  color: var(--marca);
+}
+.dditem--inactivo {
+  cursor: default;
+  opacity: 0.55;
+}
+.dditem--inactivo .dd-area > i {
+  color: #94a3b8;
+}
+
+/* El selector de área, un 30 % más angosto que los otros (256 → 180 px): sus opciones son cortas. */
+.topsel-area {
+  --sel-ancho: 180px;
+}
