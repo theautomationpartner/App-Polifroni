@@ -585,15 +585,25 @@ export async function leerOrden(ordenId: string): Promise<ResumenOrden | null> {
   return i && vigente(i) ? aResumen(i) : null
 }
 
+/** Índice de la etiqueta "Enviada Pend Confirmar" en `🤖Estado OP` (ver su `settings_str`). */
+const INDICE_PEND_CONFIRMAR = 3
+
 /**
- * TODAS las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
+ * Las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
  * El tope de 20 páginas (4000 órdenes) es sólo para que un cursor roto no quede girando.
+ *
+ * `soloPendientes`: sólo las "Enviada Pend Confirmar", filtradas por Monday —no se trae el tablero
+ * entero para descartar casi todo—.
  */
-export async function listarOrdenes(): Promise<ResumenOrden[]> {
+export async function listarOrdenes({ soloPendientes = false } = {}): Promise<ResumenOrden[]> {
   type Pagina = { cursor: string | null; items: ItemOrden[] }
   const todas: ItemOrden[] = []
+  const q = soloPendientes
+    ? { rules: [{ column_id: COL_OP.estado, compare_value: [INDICE_PEND_CONFIRMAR], operator: 'any_of' }] }
+    : {}
   const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
-    `query { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
+    `query ($q: ItemsQuery) { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200, query_params: $q) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
+    { q },
   )
   let pagina: Pagina | undefined = d.boards[0]?.items_page
   todas.push(...(pagina?.items ?? []))
@@ -605,10 +615,9 @@ export async function listarOrdenes(): Promise<ResumenOrden[]> {
     pagina = sig.next_items_page
     todas.push(...(pagina?.items ?? []))
   }
-  return todas
-    .filter(vigente)
-    .sort((a, b) => Number(b.id) - Number(a.id))
-    .map(aResumen)
+  const lista = todas.filter(vigente).sort((a, b) => Number(b.id) - Number(a.id)).map(aResumen)
+  /* Lo que diga el filtro de Monday, se confirma con la etiqueta leída. */
+  return soloPendientes ? lista.filter((o) => o.estadoOrden === 'pendiente') : lista
 }
 
 /** Tablero de las cuentas corrientes dadas de baja: una cuenta que vive acá está INACTIVA. */

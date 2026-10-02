@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
-import { useObra } from '@/features/obras/useObra'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { nombreOrden } from '@/features/shared/nombreOrden'
 import {
@@ -29,6 +28,7 @@ import {
   type ResumenOrden,
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
+import type { Obra } from '@/types'
 import { EditarCelular } from './EditarCelular'
 import { MensajeEjemplo } from './MensajeEjemplo'
 import { linkDeRespuesta, registrarActividadEnvio } from './actividadEnvio'
@@ -107,6 +107,20 @@ interface EnviarOpProps {
    * OP, de donde la toma el envío). Si falla, no se envía.
    */
   antesDeEnviar?: () => Promise<void>
+  /**
+   * Fuera de la operación de envío (el reenvío desde la consulta): la obra y el "enviado" son de
+   * quien lo usa, no del estado global de la operación.
+   */
+  contexto?: ContextoEnvio
+}
+
+/** La obra y el cierre del envío, cuando los maneja la pantalla que usa `EnviarOp`. */
+export interface ContextoEnvio {
+  obra: Obra
+  enviado: boolean
+  onEnviado: () => void
+  /** La obra con un dato corregido (el celular de un destinatario). */
+  onObra: (obra: Obra) => void
 }
 
 /** Lo que se sabe de una orden cuyo documento todavía no está en Monday. */
@@ -133,10 +147,14 @@ export interface OrdenLocal {
  * manda de nuevo. Terminado bien, el botón queda en verde y fijo —aunque se vaya y se vuelva con el
  * stepper— y "Finalizar Operación" cierra.
  */
-export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antesDeEnviar }: EnviarOpProps) {
-  const obra = useObra()
+export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antesDeEnviar, contexto }: EnviarOpProps) {
+  const app = useApp()
   const dispatch = useDispatch()
-  const { enviado } = useApp()
+  const obra = contexto?.obra ?? app.obra
+  if (!obra) throw new Error('No hay obra seleccionada')
+  const enviado = contexto ? contexto.enviado : app.enviado
+  const marcarEnviado = () => (contexto ? contexto.onEnviado() : dispatch({ type: 'setEnviado' }))
+  const cambiarObra = (o: Obra) => (contexto ? contexto.onObra(o) : dispatch({ type: 'refrescarObra', obra: o }))
   const cliente = useEnviarOp(obra)
   const taller = useEnviarTaller(obra)
   const corrida = modo === 'cliente' ? cliente : taller
@@ -395,7 +413,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
         }
         await registrarEnvio(e.orden, e.roles, e.reenvio)
       }
-      dispatch({ type: 'setEnviado' })
+      marcarEnviado()
       setCerrando(false)
     })()
     // Sólo importa el cambio de fase; el resto se lee de `enCurso`.
@@ -530,17 +548,17 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
                       : celularValido(d.whatsapp)
                         ? formatoMonday(d.whatsapp)
                         : `TELEFONO INVALIDO (${d.whatsapp})`}
-                    {/* Corregir el número sin salir del envío. Enviada la orden, ya no. */}
-                    {!enviado && (
-                      <button
-                        type="button"
-                        className="citem-editar"
-                        disabled={enviando}
-                        onClick={() => setEditandoCel(r)}
-                      >
-                        Editar
-                      </button>
-                    )}
+                    {/* Corregir el número sin salir del envío, también después de enviar: el celular
+                        es de la ficha de la persona, no de esta orden. Mientras sale el mensaje, no. */}
+                    <button
+                      type="button"
+                      className="citem-editar"
+                      disabled={enviando}
+                      title={enviando ? 'Esperá a que termine el envío' : undefined}
+                      onClick={() => setEditandoCel(r)}
+                    >
+                      Editar
+                    </button>
                   </div>
                 </div>
               </div>
@@ -673,16 +691,19 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           onActualizado={(celular) => {
             /* La app sigue con el número nuevo: el de la obra es un espejo del de la persona. */
             setFallo(null)
-            dispatch({
-              type: 'refrescarObra',
-              obra: editandoCel === 'Cliente' ? { ...obra, celCliente: celular } : { ...obra, celArquitecto: celular },
-            })
+            cambiarObra(editandoCel === 'Cliente' ? { ...obra, celCliente: celular } : { ...obra, celArquitecto: celular })
           }}
         />
       )}
 
       {verMensaje && (
-        <MensajeEjemplo destinatario={etiquetaDestinatarios(roles) || 'Cliente'} onClose={() => setVerMensaje(false)} />
+        <MensajeEjemplo
+          destinatario={etiquetaDestinatarios(roles) || 'Cliente'}
+          roles={roles}
+          confirmador={confirmador}
+          reenvio={reenvio}
+          onClose={() => setVerMensaje(false)}
+        />
       )}
 
       {faltan && (
