@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { useApp, useDispatch } from '@/state/hooks'
+
+/** Cuánto se ve el "Enviado exitosamente" antes de que la operación se finalice sola. */
+const PAUSA_ENVIADO_MS = 900
 
 /**
  * "Finalizar Operación", el cierre de la última etapa (el de La Batea).
@@ -11,6 +14,10 @@ import { useApp, useDispatch } from '@/state/hooks'
  * Con la orden enviada, registra y abre el cierre (`CierreOperacion`): volver al inicio o elegir
  * otra operación. Sin enviar, pregunta antes: lo
  * que se generó queda en el tablero, pero la orden no le llegó a nadie —y es fácil creer que sí—.
+ *
+ * Apenas el envío sale bien, se finaliza SOLA: no hace falta tocar el botón. Se deja ver un momento
+ * el "Enviado exitosamente" y enseguida se registra y aparece el cierre. El botón queda igual, para
+ * finalizar a mano si el registro falló o si se finaliza sin enviar.
  *
  * `registrar`: lo que hay que escribir en Monday al cerrar. Lo usan las órdenes nuevas al cliente
  * (Aluminio y PVC), que no dejan nada en el tablero hasta este botón: la orden, su PDF y su envío
@@ -31,7 +38,20 @@ export function FinalizarOperacion({
 
   useAccionEnCurso('Esperá a que termine de registrarse la orden.', registrando)
 
+  /* El cierre automático: sólo cuando el envío pasa a "enviado" estando en esta pantalla. Volver a
+     una etapa ya enviada con el stepper no dispara nada; ahí se finaliza con el botón. */
+  const enviadoAntes = useRef(enviado)
+  const cerrarRef = useRef<() => Promise<void>>(async () => {})
+  useEffect(() => {
+    const recien = enviado && !enviadoAntes.current
+    enviadoAntes.current = enviado
+    if (!recien) return
+    const t = setTimeout(() => void cerrarRef.current(), PAUSA_ENVIADO_MS)
+    return () => clearTimeout(t)
+  }, [enviado])
+
   const cerrar = async () => {
+    if (registrando) return
     setPreguntar(false)
     if (registrar) {
       setRegistrando(true)
@@ -63,6 +83,10 @@ export function FinalizarOperacion({
       },
     })
   }
+
+  /* El cierre automático usa la versión de `cerrar` de este render: la que ve el envío recién
+     guardado en el borrador. */
+  cerrarRef.current = cerrar
 
   return (
     <>
