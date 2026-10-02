@@ -12,6 +12,7 @@ import {
   type Rol,
 } from '@/lib/destinatario'
 import { VISTA_ESTADO, aptaParaTaller } from '@/lib/estadosOp'
+import { fechaRecordatorio } from '@/lib/recordatorio'
 import { fechaHora, htmlATexto } from '@/lib/texto'
 import {
   BOARD_ORDENES,
@@ -21,6 +22,7 @@ import {
   ETIQUETA,
   guardarConfirmador,
   guardarLinkOrden,
+  guardarRecordatorio,
   leerOrden,
   setEstado,
   setEstadoEnvioOrden,
@@ -31,7 +33,6 @@ import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra } from '@/types'
 import { EditarCelular } from './EditarCelular'
 import { MensajeEjemplo } from './MensajeEjemplo'
-import { linkDeRespuesta, registrarActividadEnvio } from './actividadEnvio'
 import { useEnviarOp } from './useEnviarOp'
 import { useEnviarTaller } from './useEnviarTaller'
 
@@ -44,6 +45,12 @@ const VIA = 'Whatsapp'
  */
 const sobreDeLaOp = (ordenId: string | null) =>
   ordenId ? { boardId: String(BOARD_ORDENES), pulseId: Number(ordenId) } : {}
+
+/** El link al PDF que devuelve el escenario de envío (`link_op`, o sus nombres de antes). */
+const linkDeRespuesta = (cuerpo: Record<string, unknown> | null): string =>
+  [cuerpo?.link_op, cuerpo?.linkPdf, cuerpo?.shareLink, cuerpo?.webContentLink]
+    .map((v) => String(v ?? '').trim())
+    .find((v) => /^https?:\/\//i.test(v)) ?? ''
 
 /** Los destinatarios que la obra ya tenía elegidos: "Cliente", "Constructor" o "Ambos". */
 const rolesIniciales = (texto: string): Rol[] =>
@@ -360,14 +367,10 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
     }
   }
 
-  /** La actividad "OP Enviada" en la línea de tiempo de la obra, con todo lo del envío. */
-  const registrarEnvio = async (o: ResumenOrden, rs: Rol[], esReenvio: boolean) => {
-    const cuerpo = await cliente.esperarRespuesta(15_000)
-    const link = linkDeRespuesta(cuerpo)
+  /** El link al PDF que devolvió el envío, guardado en la OP. */
+  const guardarLink = async (o: ResumenOrden) => {
+    const link = linkDeRespuesta(await cliente.esperarRespuesta(15_000))
     if (link) await guardarLinkOrden(o.id, link).catch(() => {})
-    await registrarActividadEnvio(obra, o, rs, esReenvio, link).catch((e) =>
-      console.warn('[envio] no se pudo crear la actividad OP Enviada', e),
-    )
   }
   /* Cómo terminó la corrida. Lo que queda escrito es de la OP que se mandó (`enCurso`). */
   useEffect(() => {
@@ -400,7 +403,13 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           console.warn('[taller] no se pudo marcar la OP como enviada a taller', err),
         )
       } else {
-        if (!e.reenvio) await setEstadoOrden(e.orden.id, ESTADO_OP.enviada).catch(() => {})
+        if (!e.reenvio) {
+          await setEstadoOrden(e.orden.id, ESTADO_OP.enviada).catch(() => {})
+          /* Primer envío de una OP que ya estaba en el tablero: el recordatorio, a 5 días de hoy. */
+          await guardarRecordatorio(e.orden.id, fechaRecordatorio(new Date())).catch((err) =>
+            console.warn('[envio] no se pudo guardar la fecha de recordatorio', err),
+          )
+        }
         /* Quién confirma esta orden: la consulta lo muestra cuando la confirman. */
         if (e.confirmador) {
           await guardarConfirmador(e.orden.id, e.confirmador).catch((err) =>
@@ -411,7 +420,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
         if (obra.confirmacionOp.texto !== ETIQUETA.pendConfirmar) {
           await setEstado(obra.id, COL.confirmacionOp, ETIQUETA.pendConfirmar).catch(() => {})
         }
-        await registrarEnvio(e.orden, e.roles, e.reenvio)
+        await guardarLink(e.orden)
       }
       marcarEnviado()
       setCerrando(false)

@@ -1,6 +1,6 @@
 /**
  * Todo lo que la app sabe del tablero 🪟 Obras: leer obras, buscarlas, guardar las observaciones,
- * adjuntar el PDF de ETMO y registrar la actividad del ítem.
+ * adjuntar el PDF de ETMO y leer el historial del ítem.
  *
  * Ninguna consulta sale de este board (9617181553). Los datos del cliente y del arquitecto se leen
  * de las columnas ESPEJO y de conexión de la propia obra —su `display_value`—, así no hace falta
@@ -617,20 +617,6 @@ export async function getActividades(itemId: string, limite = 30): Promise<Activ
     fecha: u.created_at,
     autor: u.creator?.name ?? 'Automatización',
   }))
-}
-
-/**
- * Deja constancia en el historial del ítem. Cada acción que la app dispara —adjuntar el ETMO,
- * pedir la generación de la OP, mandarla al cliente o al taller— queda escrita acá, así el
- * tablero cuenta la misma historia que la app.
- */
-export async function registrarActividad(itemId: string, cuerpoHtml: string): Promise<void> {
-  await mondayApi(
-    `mutation ($item: ID!, $body: String!) {
-      create_update(item_id: $item, body: $body) { id }
-    }`,
-    { item: itemId, body: cuerpoHtml },
-  )
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────

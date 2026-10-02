@@ -16,8 +16,7 @@ import { registrarEnvioLocal } from './registrarEnvioLocal'
  *  2. Sube el PDF a `🤖OP OriginaL` —sólo ahí: en Aluminio el original es la orden—.
  *  3. Carga los datos de la medición.
  *  4. Si se envió: deja la OP "Enviada Pend Confirmar" (el estado de envío no se toca), escribe en la
- *     obra a quiénes y por dónde, la pone "Pend de Confirmar", guarda el link del PDF y crea la
- *     actividad "OP Enviada".
+ *     obra a quiénes y por dónde, la pone "Pend de Confirmar" y guarda el link del PDF.
  *  5. Registra el número usado y le da a la OP su nombre definitivo.
  *
  * `avanzar` va guardando en el borrador lo que ya quedó hecho: si algo falla a mitad de camino, el
@@ -66,14 +65,7 @@ export async function registrarAluminio({
   await renombrarOrdenEmitida(id, obra.nombre, 'Aluminio', nro).catch(() => {})
 
   if (borrador.envio) {
-    await registrarEnvioLocal(obra, id, borrador.envio, {
-      numero: nro,
-      tipo: 'Aluminio',
-      nOpHetmo: '',
-      medidoPor: m.medidoPor,
-      fechaMedicion: m.fecha,
-      observacion: m.observacion,
-    })
+    await registrarEnvioLocal(obra, id, borrador.envio)
   }
 
   await registrarNumero('Aluminio', nro).catch((e) => console.warn('[aluminio] no se pudo actualizar la numeración', e))

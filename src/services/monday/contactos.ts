@@ -18,8 +18,8 @@ const TABLERO_CONSTRUCTORES = 9618146225
 const COL_CEL = 'phone_mksydcv6'
 const COL_CTA_CLIENTE = 'board_relation_mkt5evd4'
 
-/** El ítem de la persona y su tablero. */
-async function itemDe(obra: Obra, rol: Rol): Promise<{ board: number; id: string }> {
+/** El ítem de la persona (en Clientes o en Constructor/Arquitecto) y su tablero. */
+export async function itemDe(obra: Obra, rol: Rol): Promise<{ board: number; id: string }> {
   if (rol === 'Constructor') {
     const id = obra.arquitectoIds[0]
     if (!id) throw new Error('La obra no tiene un constructor vinculado.')

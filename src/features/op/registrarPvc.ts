@@ -77,14 +77,7 @@ export async function registrarPvc({
   }
 
   if (b.envio) {
-    await registrarEnvioLocal(obra, id, b.envio, {
-      numero: nro,
-      tipo: 'PVC',
-      nOpHetmo: b.nOpHetmo,
-      medidoPor: m.medidoPor,
-      fechaMedicion: m.fecha,
-      observacion: m.observacion,
-    })
+    await registrarEnvioLocal(obra, id, b.envio)
   } else {
     await Promise.all([
       limpiarEstado(obra.id, COL.estadoEnvioOp).catch(() => {}),

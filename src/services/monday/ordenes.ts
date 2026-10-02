@@ -41,6 +41,10 @@ export const COL_OP = {
   estadoEnvioTaller: 'color_mm7qjqgr',
   /** 🤖Responsable de Confirmar (dropdown, una sola): Cliente | Constructor. Lo escribe el envío. */
   confirmador: 'dropdown_mm7qyr8k',
+  /** 🤖Fecha Recordatorio +5d (date): el primer envío al cliente + 5 días. */
+  recordatorio: 'date_mm7rvtw6',
+  /** 🤖Destinatarios (board_relation → Clientes y Constructor/Arquitecto): a quiénes se envió. */
+  destinatarios: 'board_relation_mm7refvq',
   /** Link al PDF enviado (link): la URL compartida que devuelve el envío. */
   linkPdf: 'link_mm7hmk9d',
   /** 🤖Motivo (long_text): por qué se canceló la OP. */
@@ -691,6 +695,16 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
  *
  * El motivo lleva quién y cuándo, porque la columna es un texto y no guarda autor.
  */
+/** A quiénes se envió la OP: los ítems de las personas, en `🤖Destinatarios`. Reemplaza lo que hubiera. */
+export async function guardarDestinatarios(ordenId: string, personas: string[]): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.destinatarios]: { item_ids: personas.map(Number) } })
+}
+
+/** La fecha del recordatorio de la confirmación (`YYYY-MM-DD`, ver `fechaRecordatorio`). */
+export async function guardarRecordatorio(ordenId: string, fecha: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.recordatorio]: { date: fecha } })
+}
+
 /** Quién es el responsable de confirmar la OP (`🤖Responsable de Confirmar`). */
 export async function guardarConfirmador(ordenId: string, rol: 'Cliente' | 'Constructor'): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.confirmador]: { labels: [rol] } })

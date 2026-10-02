@@ -32,6 +32,7 @@ import {
 } from '../src/lib/destinatario'
 import { etiquetasPasos, ordenesVivas, situacionOrdenes, textoSituacion, tipoDe } from '../src/lib/pasos'
 import { validarEntrada } from '../src/features/obras/validaciones'
+import { fechaRecordatorio } from '../src/lib/recordatorio'
 import type { Obra } from '../src/types'
 
 /* ── Un estado por OP ─────────────────────────────────────────────────────────────────────────── */
@@ -169,3 +170,9 @@ assert.equal(enElTaller('confirmada', 'Error de Envio'), false)
   const pend = obraCon('Aluminio', 'pendiente', 'pendiente')
   assert.match(validarEntrada('taller', pend)?.nota ?? '', /2 órdenes pendientes de confirmar/)
 }
+
+/* ── Recordatorio: el primer envío + 5 días corridos, en la fecha local ───────────────────────── */
+assert.equal(fechaRecordatorio(new Date(2026, 9, 2, 10, 0)), '2026-10-07')
+assert.equal(fechaRecordatorio(new Date(2026, 9, 2, 23, 30)), '2026-10-07', 'de noche sigue siendo el día local')
+assert.equal(fechaRecordatorio(new Date(2026, 9, 29)), '2026-11-03', 'cruza de mes')
+assert.equal(fechaRecordatorio(new Date(2026, 11, 29)), '2027-01-03', 'cruza de año')
