@@ -411,7 +411,7 @@ Qué queda registrado en Monday:
 - **En el tablero de Órdenes de Producción**: la OP con su número, tipo, responsable, quién midió,
   la fecha y la observación; su estado **Enviada Pend Confirmar**, quién confirma y el link al
   PDF. En PVC, además, la OP final adjunta y una línea por abertura y por vidrio.
-- **En la obra**: a quién se envió, por qué vía y la actividad **"OP Enviada"** en el historial.
+- **En la obra**: a quién se envió, por qué vía y que la orden está pendiente de confirmar.
 - **En la numeración**: el número usado, para que la próxima orden tome el siguiente.
 
 **¿Por qué todo al final?** Para que en Monday no queden órdenes a medio hacer: se registra
@@ -508,8 +508,7 @@ fecha de creación, quién midió y el estado.
 - **Reenviar**: abre, debajo de la fila, el mismo bloque de envío de la sección
   [5.5](#55-el-envío-destinatarios-quién-confirma-y-el-mensaje), con el documento que se envía. Sirve si el
   cliente no recibió el mensaje, lo perdió o hay que mandárselo a otra persona. Se puede reenviar
-  las veces que haga falta. La orden **sigue esperando la misma confirmación**; en la obra queda
-  la actividad *"OP Reenviada"*.
+  las veces que haga falta. La orden **sigue esperando la misma confirmación**.
 - **Cancelar**: pide el **motivo** (obligatorio). Por ejemplo, *"el cliente pidió cambiar el
   color a negro"*.
   - La OP **no se borra**: queda en **Cancelada** con el motivo, quién la canceló y cuándo.

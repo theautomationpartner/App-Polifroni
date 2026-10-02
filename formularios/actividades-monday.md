@@ -1,5 +1,8 @@
 # Actividades de Monday CRM sobre la obra
 
+> **La app no crea actividades.** Se sacó del código el 02/10/2026: si se registran, lo hace Make.
+> Esta guía queda como referencia para armarlas desde los escenarios.
+
 Las actividades de la línea de tiempo de la obra (Emails & Activities) se crean con la mutación
 `create_timeline_item` de la API de Monday. Cada una usa una **actividad personalizada** de la
 cuenta, que define su nombre, su color y su ícono.
@@ -8,8 +11,8 @@ cuenta, que define su nombre, su color y su ícono.
 
 | Actividad | `custom_activity_id` |
 |---|---|
-| OP Enviada | `2a577f76-e14f-4e36-8ebc-68912434487a` |
-| OP Confirmada x Client | `e61dc320-5aa0-4d44-bef0-0f25fbbbf47b` |
+| Envio de OP | `755fffba-f273-4d3c-bf10-17d59a419cbb` |
+| OP Confirmada | `a1657332-e862-4707-9118-804af1887e2c` |
 | Nuevo mensaje WhatsApp | `e46503be-08fe-4ea0-806d-20e0f244c7a1` |
 | Gestion de Cobranza | `614960d6-0777-4158-a1fb-379d2660aa75` |
 
@@ -87,25 +90,10 @@ Cada renglón es un `<p>` con el título en negrita:
 <p><b>N° OP HETMO:</b> 9502 - V1</p>
 ```
 
-## OP Enviada (la crea la app)
+## El link del PDF
 
-Cuando el webhook de envío (`MAKE_WEBHOOK_ENVIAR_OP`) contesta, la app crea la actividad con todos
-los renglones de la tabla de arriba. Ejemplo de cómo queda:
-
-```html
-<p><b>Fecha De Envío:</b> 25 de septiembre - 14:32 hs</p>
-<p><b>N° OP Aluminio:</b> A3001</p>
-<p><b>N° OP HETMO:</b> 9502 - V1</p>
-<p><b>Tipo:</b> Aluminio</p>
-<p><b>Enviada A Cliente:</b> test luciano — <b>Teléfono:</b> 5492494240181</p>
-<p><b>Enviada A Constructor:</b> TEST Arquitecto 1 — <b>Teléfono:</b> 5492494014611</p>
-<p><b>Medido Por:</b> Otro</p>
-<p><b>Fecha De Medición:</b> 25/09/2026</p>
-<p><b>Observación:</b> Test - Midió y funcionó</p>
-<p><b>Link PDF:</b> <a href="https://drive.google.com/file/d/...">https://drive.google.com/file/d/...</a></p>
-```
-
-**Lo que tiene que devolver el Webhook response del envío** para que la actividad lleve el link:
+**Lo que tiene que devolver el Webhook response del envío** para que la app guarde el link en la OP
+(`Link al PDF enviado`):
 
 ```json
 {
@@ -145,14 +133,14 @@ renglón (qué pasó y cuándo) y, en el rechazo, el motivo.
 > Adentro de las llaves de Make (`formatDate(...)`, `if(...)`) las comillas van **sin** barra
 > invertida: Make resuelve la fórmula antes de mandar la consulta.
 
-### OP Enviada
+### Envio de OP
 
 ```graphql
 mutation {
   create_timeline_item(
     item_id: {{OBRA.id}}
-    custom_activity_id: "2a577f76-e14f-4e36-8ebc-68912434487a"
-    title: "OP Enviada"
+    custom_activity_id: "755fffba-f273-4d3c-bf10-17d59a419cbb"
+    title: "Envio de OP"
     summary: "Enviada a {{ITERATOR.tipo}} {{ITERATOR.nombre_destinatario}}"
     content: "<p><b>Fecha De Envío:</b> {{formatDate(now; "D [de] MMMM - HH:mm"; "America/Argentina/Buenos_Aires")}} hs</p><p><b>Enviada A {{ITERATOR.tipo}}:</b> {{ITERATOR.nombre_destinatario}} — <b>Teléfono:</b> {{ITERATOR.whatsapp_destinatario}}</p> + RENGLONES COMUNES"
     timestamp: "{{formatDate(now; "YYYY-MM-DDTHH:mm:ssZ")}}"
@@ -160,14 +148,14 @@ mutation {
 }
 ```
 
-### OP Confirmada x Client
+### OP Confirmada
 
 ```graphql
 mutation {
   create_timeline_item(
     item_id: {{OBRA.id}}
-    custom_activity_id: "e61dc320-5aa0-4d44-bef0-0f25fbbbf47b"
-    title: "OP Confirmada x Client"
+    custom_activity_id: "a1657332-e862-4707-9118-804af1887e2c"
+    title: "OP Confirmada"
     summary: "El cliente confirmó la Orden de Producción"
     content: "<p><b>Fecha De Confirmación:</b> {{formatDate(now; "D [de] MMMM - HH:mm"; "America/Argentina/Buenos_Aires")}} hs</p><p><b>Confirmó:</b> {{escapeHTML(NOMBRE_CLIENTE)}}</p> + RENGLONES COMUNES"
     timestamp: "{{formatDate(now; "YYYY-MM-DDTHH:mm:ssZ")}}"

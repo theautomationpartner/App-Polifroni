@@ -159,7 +159,7 @@ src/
   services/make/     sdk.ts (disparo de escenarios)
   state/             reducer + contextos (mismo patrón que La Batea)
   components/ui/     Stepper, Dropdown, Modal, VisorPdf, DropArchivo, Aviso…
-  features/          inicio · obras · op · envio · actividad · shared
+  features/          inicio · obras · op · envio · listado · shared
   styles/            base.css · layout.css · components.css (de La Batea) + obras.css
 ```
 
