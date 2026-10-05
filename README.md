@@ -111,7 +111,7 @@ probar un escenario en local, cargá su URL en `.env.local`.
 
 ## Sección Producción: las operaciones
 
-La pantalla inicial tiene tres secciones: Presupuesto, Obras y Producción (hoy sólo Producción está
+La pantalla inicial tiene las áreas Presupuesto, Obras, Producción y Agenda (Obras todavía no está
 construida). El encabezado es el de La Batea: **Producción → [Seleccionar tipo de operación]** y el
 usuario, con el stepper a la derecha.
 
@@ -247,3 +247,22 @@ un `text_xxxxx` suelto.
 - El logo de `public/logo-polifroni.png` es la versión **blanca** (pensada para fondos oscuros).
   Sobre la barra blanca no se veía, así que se invierte por CSS: es monocromo puro, y al invertirlo
   queda negro limpio. Con el archivo en oscuro, se borra el `filter: invert(1)` de `.marca-img`.
+
+## Área Presupuesto: Crear y Cargar Presupuestos
+
+Tablero 📄 Presupuestos (9984126961): un ítem por cliente o constructor —la "bolsa"— y un subelemento
+(9984270591) por cada presupuesto enviado. Dos etapas:
+
+1. **Seleccionar Cliente / Seleccionar Presupuesto.** "¿Qué querés hacer?": *Crear nuevo presupuesto*
+   (se busca el cliente en 👤 Clientes y/o el constructor en 👤 Constructor/Arquitecto; al menos uno) o
+   *Cargar otro presupuesto* (se busca una bolsa en "Solicitud de Presupuesto" por su cliente o
+   constructor).
+2. **Cargar y Enviar Presupuesto.** El PDF (arrastrar y soltar), `✋Tipo de Carpinteria` y `✋ Color`
+   (las etiquetas se leen de las columnas del subelemento) y el bloque de envío de la OP, por
+   WhatsApp con `/api/whatsapp` (`documento: 'presupuesto'`, el texto lo arma `src/lib/presupuesto.ts`).
+
+En Monday no se escribe nada hasta que el presupuesto sale. Al enviarse, "Finalizar Operación" crea la
+bolsa (sólo al crear: en "Solicitud de Presupuesto", con el cliente/constructor y `✋Enviar a:`) y el
+subelemento con tipo, color, `🤖 Estado de Envio` = Enviado, `Fecha Envio` y el PDF. La app nunca toca
+`✋Enviar` (color_mkvg4tax): es el botón del escenario de Make que manda el presupuesto.
+Reglas en `src/lib/presupuesto.ts`, probadas con `npm run test:presupuesto`.

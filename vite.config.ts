@@ -81,6 +81,55 @@ export default defineConfig(({ mode }) => {
         const mod = await server.ssrLoadModule('/api/_numeracionHttp.ts')
         await mod.manejarNumeracion(req, res)
       })
+
+      /* La lectura de la orden de HETMO con Claude: recibe el PDF de la app y llama a la API con
+         `ANTHROPIC_API_KEY` de `.env.local`. */
+      if (env.ANTHROPIC_API_KEY) process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY
+      server.middlewares.use('/api/hetmo', async (req, res) => {
+        if (!env.ANTHROPIC_API_KEY) {
+          res.statusCode = 503
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error: 'Ocurrio un error al intentar procesar el documento con IA. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_API_KEY_ANTRHOPIC',
+            }),
+          )
+          return
+        }
+        const mod = await server.ssrLoadModule('/api/_hetmoHttp.ts')
+        await mod.manejarHetmo(req, res)
+      })
+
+      /* El envío de la OP por WhatsApp (360messenger) con el PDF en Google Drive: la misma ruta que
+         en producción, con las claves de `.env.local`. */
+      for (const k of [
+        'WHATSAPP_360_API_KEY',
+        'GOOGLE_CLIENT_ID',
+        'GOOGLE_CLIENT_SECRET',
+        'GOOGLE_REFRESH_TOKEN',
+        'GOOGLE_DRIVE_FOLDER_ID',
+        'CONFIRMAR_OP_URL',
+      ]) {
+        if (env[k]) process.env[k] = env[k]
+      }
+      /* Completar producción: la misma lógica que la función de Vercel, que escribe con el token
+         del servidor. En local, el de desarrollo. */
+      const tokenMonday = env.MONDAY_TOKEN || env.VITE_MONDAY_TOKEN
+      if (tokenMonday && !process.env.MONDAY_TOKEN) process.env.MONDAY_TOKEN = tokenMonday
+      server.middlewares.use('/api/produccion-completada', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_produccionHttp.ts')
+        await mod.manejarProduccionCompletada(req, res)
+      })
+
+      /* Va ANTES de '/api/whatsapp': un mensaje de texto suelto (los avisos de la Agenda). */
+      server.middlewares.use('/api/whatsapp-texto', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_whatsappHttp.ts')
+        await mod.manejarWhatsappTexto(req, res)
+      })
+      server.middlewares.use('/api/whatsapp', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_whatsappHttp.ts')
+        await mod.manejarWhatsapp(req, res)
+      })
     },
   }
 
@@ -98,6 +147,9 @@ export default defineConfig(({ mode }) => {
         ...hook('leer-observaciones', env.MAKE_WEBHOOK_LEER_OBSERVACIONES || env.LEER_OBSERVACIONES),
         ...hook('enviar-op-cliente', env.MAKE_WEBHOOK_ENVIAR_OP),
         ...hook('enviar-op-taller', env.MAKE_WEBHOOK_ENVIAR_OP_TALLER),
+        ...hook('agenda-asignacion', env.MAKE_WEBHOOK_AGENDA_ASIGNACION),
+        ...hook('agenda-cancelacion', env.MAKE_WEBHOOK_AGENDA_CANCELACION),
+        ...hook('agenda-confirmacion', env.MAKE_WEBHOOK_AGENDA_CONFIRMACION),
         /* Va ANTES de '/monday-api': Vite matchea por prefijo y '/monday-api-file' también
            empieza con '/monday-api'. */
         '/monday-api-file': {

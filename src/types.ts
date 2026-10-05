@@ -117,14 +117,23 @@ export interface Actividad {
  */
 export type Paso = 'obra' | 'carga' | 'envio'
 
-/** Las operaciones de la sección Producción, las que lista el selector del encabezado. */
-export type Operacion = 'enviar' | 'consultar'
+/** Las operaciones de cada área, las que lista el selector del encabezado (ver `OPERACIONES`). */
+export type Operacion =
+  | 'enviar'
+  | 'consultar'
+  | 'vidrios'
+  | 'crearTurno'
+  | 'gestionarTurnos'
+  | 'presupuestos'
+
+/** Qué puede hacer el usuario según su team de Monday (ver `lib/permisos`). */
+export type Rol = 'admin' | 'produccion'
 
 /** A quién se le envía la orden: al cliente o constructor (para que la confirme) o al taller. */
 export type Destino = 'cliente' | 'taller'
 
 /** Operaciones que ofrece la pantalla principal. */
-export type Proceso = 'obras'
+export type Proceso = 'obras' | 'agenda' | 'presupuesto'
 
 /**
  * Quién está usando la app, ya verificado por el backend (firma de Monday + lista blanca).
@@ -137,6 +146,11 @@ export interface UsuarioActual {
   id: string
   name: string
   isAdmin: boolean
+  /**
+   * Los roles que le dan sus teams: puede estar en varios, y puede hacer la suma de lo que da cada
+   * uno. Vacío: ningún team con permisos (la app no se abre).
+   */
+  roles: Rol[]
   equipos: string[]
   equipoIds: string[]
 }

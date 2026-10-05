@@ -31,6 +31,15 @@
   "functions": {
     "api/make.ts": {
       "maxDuration": 300
+    },
+    "api/hetmo.ts": {
+      "maxDuration": 300
+    },
+    "api/whatsapp.ts": {
+      "maxDuration": 300
+    },
+    "api/whatsapp-texto.ts": {
+      "maxDuration": 120
     }
   },
   "rewrites": [

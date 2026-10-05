@@ -2019,6 +2019,67 @@
   }
 }
 
+/* Completar producción · Finalizar: el botón verde de la fila. */
+.anticipos-v2 .ant-finalizar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--green, #00c875);
+  border-radius: var(--c-radius-md);
+  background: var(--green, #00c875);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.anticipos-v2 .ant-finalizar:hover:not(:disabled) {
+  background: #00a862;
+  border-color: #00a862;
+}
+.anticipos-v2 .ant-finalizar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.anticipos-v2 .ant-finalizar[aria-busy='true'] {
+  opacity: 1;
+  cursor: progress;
+}
+/* Bloqueada (ya finalizada): la fila apagada y sin acción, con el candado en su lugar. El hover
+   general de las filas no la "revive": sigue viéndose bloqueada al pasar o clickear. */
+.anticipos-v2 .ant-row--bloqueada td,
+.anticipos-v2 .ant-row--bloqueada:hover td {
+  color: #8a94a6;
+  background: #f7f8fa;
+  cursor: not-allowed;
+}
+.anticipos-v2 .ant-finalizada {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: #eceff3;
+  color: #676879;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: not-allowed;
+}
+.anticipos-v2 .ant-row--recien .ant-finalizada {
+  animation: ant-cancelada-entra 0.35s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .anticipos-v2 .ant-row--recien .ant-finalizada {
+    animation: none;
+  }
+}
+
 /* "Editar" al lado del celular del destinatario: un botón con estilo de enlace. */
 .obras-v2 .citem-editar {
   margin-left: 8px;
@@ -2248,4 +2309,383 @@
 /* El selector de área, un 30 % más angosto que los otros (256 → 180 px): sus opciones son cortas. */
 .topsel-area {
   --sel-ancho: 180px;
+}
+
+/* ═══════════════ Solicitud de cortes de vidrio ═══════════════ */
+/* Debajo de cada OP, sus vidrios: una tabla chica, metida un nivel adentro. */
+.anticipos-v2 .ant-tabla--fija tr.vid-detalle > td {
+  padding: 0 12px 16px;
+  overflow: visible;
+  white-space: normal;
+  border-bottom: 1px solid var(--o-border, #e2e8f0);
+}
+.anticipos-v2 tr.vid-detalle--fuera .vid-sub {
+  opacity: 0.45;
+}
+/* Fondo blanco y una grilla fina que marca filas y columnas. Las celdas se separan (`separate`, sin
+   espacio) para que el borde redondeado de afuera se vea; `.ant-tabla` va en el selector para
+   ganarle a sus reglas de `th` y `td`. */
+.anticipos-v2 .vid-sub {
+  --vid-grilla: 0.5px solid rgba(0, 0, 0, 0.7);
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #fff;
+  border: var(--vid-grilla);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.anticipos-v2 .ant-tabla .vid-sub th {
+  padding: 7px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--c-text-secondary);
+  background: #fff;
+  border: 0;
+  border-right: var(--vid-grilla);
+  border-bottom: var(--vid-grilla);
+}
+.anticipos-v2 .ant-tabla .vid-sub td {
+  padding: 7px 12px;
+  background: #fff;
+  border: 0;
+  border-right: var(--vid-grilla);
+  border-bottom: var(--vid-grilla);
+  white-space: nowrap;
+}
+.anticipos-v2 .ant-tabla .vid-sub th:last-child,
+.anticipos-v2 .ant-tabla .vid-sub td:last-child {
+  border-right: 0;
+}
+.anticipos-v2 .ant-tabla .vid-sub tbody tr:last-child td {
+  border-bottom: 0;
+}
+.anticipos-v2 .vid-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.anticipos-v2 .vid-modelo {
+  font-weight: 700;
+}
+.anticipos-v2 .vid-cant {
+  font-weight: 700;
+}
+.anticipos-v2 .vid-falta {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #c0273c;
+}
+.anticipos-v2 .vid-falta-ic {
+  margin-left: 6px;
+  color: #d97706;
+}
+/* Simple o DVH, de un vistazo. */
+.anticipos-v2 .vid-tipo {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: #eef2f7;
+  color: #475569;
+}
+.anticipos-v2 .vid-tipo--dvh {
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+/* Las capas del vidrio: vidrio · cámara · vidrio, como se arma el DVH. */
+.anticipos-v2 .vid-capas {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.anticipos-v2 .vid-capa {
+  min-width: 30px;
+  padding: 2px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.anticipos-v2 .vid-capa--camara {
+  border-style: dashed;
+  background: transparent;
+  color: var(--c-text-secondary);
+  font-weight: 600;
+}
+.anticipos-v2 .vid-cuenta {
+  font-weight: 700;
+  color: var(--marca);
+}
+/* Etapa 3: el resumen de la orden de compra a la izquierda y sus cortes a la derecha. */
+.obras-v2 .vid-solicitud {
+  align-items: stretch;
+}
+/* La card de cortes mide lo que mide el resumen: `contain: size` saca a la lista del cálculo del
+   alto de la fila (lo pone el resumen) y la card se estira hasta él. Lo que no entra se recorre con
+   el scroll de la lista, que no le pasa el scroll a la página al llegar al final. */
+.obras-v2 .vid-cortes-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  contain: size;
+}
+.obras-v2 .vid-cortes-card .resumen-title {
+  margin-bottom: 6px;
+}
+.obras-v2 .vid-cortes-desc {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--c-text-secondary);
+}
+.obras-v2 .vid-cortes-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--o-border, #e2e8f0);
+  border-radius: 10px;
+}
+/* Apiladas en pantallas angostas, el resumen ya no está al lado: la lista tiene su propio tope. */
+@media (max-width: 1279px) {
+  .obras-v2 .vid-cortes-card {
+    contain: none;
+  }
+  .obras-v2 .vid-cortes-scroll {
+    flex: none;
+    max-height: 420px;
+  }
+}
+/* La cabecera queda fija arriba al recorrer la lista. */
+.anticipos-v2 .vid-cortes thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+}
+.anticipos-v2 .vid-cortes td,
+.anticipos-v2 .vid-cortes th {
+  white-space: nowrap;
+}
+.anticipos-v2 .vid-cortes tbody tr:last-child td {
+  border-bottom: 0;
+}
+.obras-v2 .vid-cortes-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--marca-suave);
+  color: var(--marca);
+  font-size: 14px;
+  font-weight: 700;
+}
+.anticipos-v2 .vid-aviso {
+  margin-top: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #b45309;
+}
+/* Descargar y Abrir Tempoglass, uno al lado del otro debajo de Generar. */
+.obras-v2 .vid-acciones {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.obras-v2 .vid-acciones a.pres-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* ── Solicitud de cortes · la tabla de vidrios desplegable ── */
+.anticipos-v2 .vid-abrir {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.anticipos-v2 .vid-abrir:hover,
+.anticipos-v2 .vid-abrir:focus-visible {
+  background: var(--marca-suave);
+  outline: none;
+}
+.anticipos-v2 .vid-chev {
+  font-size: 11px;
+  color: var(--marca);
+  transition: transform 0.2s ease;
+}
+.anticipos-v2 .vid-chev--on {
+  transform: rotate(180deg);
+}
+/* Los vidrios: entran bajando y se van subiendo (220 ms, `CIERRE_MS`). */
+.anticipos-v2 .ant-tabla--fija tr.vid-detalle > td {
+  padding: 0 16px 16px 56px;
+  animation: vid-abre 0.22s ease-out;
+}
+.anticipos-v2 .ant-tabla--fija tr.vid-detalle.vid-detalle--cierra > td {
+  animation: vid-cierra 0.22s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes vid-abre {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes vid-cierra {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .anticipos-v2 .ant-tabla--fija tr.vid-detalle > td,
+  .anticipos-v2 .ant-tabla--fija tr.vid-detalle.vid-detalle--cierra > td,
+  .anticipos-v2 .vid-chev {
+    animation: none;
+    transition: none;
+  }
+}
+/* Las columnas de los vidrios: anchos fijos y todo centrado, para leer cada columna de arriba abajo. */
+.anticipos-v2 .vid-sub {
+  table-layout: fixed;
+}
+.anticipos-v2 .vid-sub .vid-w-modelo {
+  width: 16%;
+}
+.anticipos-v2 .vid-sub .vid-w-tipo {
+  width: 12%;
+}
+.anticipos-v2 .vid-sub .vid-w-comp {
+  width: 26%;
+}
+.anticipos-v2 .vid-sub .vid-w-med {
+  width: 16%;
+}
+.anticipos-v2 .vid-sub .vid-w-cant {
+  width: 14%;
+}
+.anticipos-v2 .vid-sub th,
+.anticipos-v2 .vid-sub td,
+.anticipos-v2 .vid-sub td.vid-num {
+  text-align: center;
+}
+.anticipos-v2 .vid-sub .vid-capas {
+  justify-content: center;
+}
+/* Los títulos de la tabla de vidrios, centrados sobre sus valores (le gana a `.ant-tabla thead th`). */
+.anticipos-v2 .ant-tabla .vid-sub thead th {
+  text-align: center;
+}
+
+/* La ficha de la obra: tres cards de importes y, a la derecha, la torta del porcentaje cancelado. */
+.obras-v2 .kpi-grid--torta {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: stretch;
+}
+.obras-v2 .kpi-torta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 120px;
+  padding: 0 8px;
+}
+.obras-v2 .kpi-torta-t,
+.obras-v2 .kpi-torta-l {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+}
+.obras-v2 .kpi-torta .donut-v {
+  font-size: 21px;
+}
+.obras-v2 .kpi-torta-sk {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+}
+@media (max-width: 900px) {
+  .obras-v2 .kpi-grid--torta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* "Medido por": las opciones fijas del final (Cliente y Otro). El filete va sólo arriba de la
+   primera; la segunda queda pegada a ella. */
+.med-op--otro:not(.med-op--primera-fija) {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 8px;
+}
+.med-op--otro.med-op--primera-fija {
+  border-radius: 0;
+}
+.med-op--otro > .fa-check {
+  margin-left: auto;
+}
+
+/* ===== Lectura de la orden de HETMO (vidrios y observaciones) ===== */
+.hl-tabla-wrap {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid #e3e7f0;
+  border-radius: 10px;
+  margin-top: 4px;
+}
+.hl-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--text-dark);
+}
+.hl-tabla th {
+  position: sticky;
+  top: 0;
+  background: #f5f7fb;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-gray);
+  padding: 9px 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+.hl-tabla td {
+  padding: 8px 10px;
+  text-align: center;
+  border-top: 1px solid #eef1f6;
+  font-variant-numeric: tabular-nums;
+}
+.hl-giro {
+  display: inline-block;
+  width: 42px;
+  height: 42px;
+  border: 3px solid #e8d3d8;
+  border-top-color: #89263c;
+  border-radius: 50%;
+  animation: cobro-lector-giro 0.7s linear infinite;
+}
+.hl-leyendo {
+  margin: 0;
 }

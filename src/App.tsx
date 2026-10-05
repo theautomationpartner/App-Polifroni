@@ -8,28 +8,59 @@ import { EnviarOpView } from '@/features/envio/EnviarOpView'
 import { SeleccionarOpView } from '@/features/envio/SeleccionarOpView'
 import { InicioView, ProduccionInicioView } from '@/features/inicio/InicioView'
 import { ListadoView } from '@/features/listado/ListadoView'
+import { CrearTurnoClienteView } from '@/features/agenda/CrearTurnoClienteView'
+import { CrearTurnoDatosView } from '@/features/agenda/CrearTurnoDatosView'
+import { CrearTurnoRegistrarView } from '@/features/agenda/CrearTurnoRegistrarView'
+import { GestionarTurnosView } from '@/features/agenda/GestionarTurnosView'
+import { conDestinatario } from '@/features/presupuesto/borrador'
+import { CargarPresupuestoView } from '@/features/presupuesto/CargarPresupuestoView'
+import { PresupuestoDestinatarioView } from '@/features/presupuesto/PresupuestoDestinatarioView'
+import { VidriosObraView } from '@/features/vidrios/VidriosObraView'
+import { VidriosSeleccionView } from '@/features/vidrios/VidriosSeleccionView'
+import { VidriosSolicitudView } from '@/features/vidrios/VidriosSolicitudView'
 import { ObrasView } from '@/features/obras/ObrasView'
 import { CargarHetmoView } from '@/features/op/CargarHetmoView'
 import { CargarOpView } from '@/features/op/CargarOpView'
 import { EmitirEnviarView } from '@/features/op/EmitirEnviarView'
 import { tipoDe } from '@/lib/pasos'
+import { puedeOperar } from '@/lib/permisos'
 import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
 import { bloqueaLaApp, notificarErrorSeguridad } from '@/lib/errorSeguridad'
 import { enMonday, getSessionToken, resumenSessionToken } from '@/lib/mondayAuth'
 import { estadoSegundoFactor } from '@/services/mfa'
 import { getUsuarioActual, getUsuarios } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
-import type { AppState } from '@/state/appState'
+import { areaPermitida, type AppState } from '@/state/appState'
 
 /**
  * Qué pantalla corresponde. La tercera etapa y la segunda cambian según a quién se envía y el tipo
  * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
  * taller se elige una OP confirmada y se envía.
  */
-function vistaDe({ proceso, operacion, destino, paso, obra }: AppState): () => JSX.Element {
-  if (proceso === null) return InicioView
-  if (operacion === null) return ProduccionInicioView
+function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, usuario }: AppState): () => JSX.Element {
+  /* Lo que el team del usuario no habilita no se dibuja, llegue como llegue (ver `lib/permisos`). */
+  if (proceso === null || !areaPermitida(proceso, usuario?.roles)) return InicioView
+  if (operacion === null || !puedeOperar(usuario?.roles, operacion)) return ProduccionInicioView
+  /* Presupuesto · Crear y Cargar: a quién (o qué bolsa abierta), y el presupuesto con su envío. Sin
+     a quién mandarlo no hay etapa 2 que dibujar. */
+  if (operacion === 'presupuestos') {
+    return paso === 'obra' || !conDestinatario(presupuesto) ? PresupuestoDestinatarioView : CargarPresupuestoView
+  }
+  /* Agenda: crear un turno (cliente, datos, registro) o gestionar los que ya están. */
+  if (operacion === 'gestionarTurnos') return GestionarTurnosView
+  if (operacion === 'crearTurno') {
+    if (!turno.cliente || paso === 'obra') return CrearTurnoClienteView
+    /* El registro necesita los datos completos: si se cambió el tipo y se saltó con el stepper, la
+       obra elegida ya no vale y se vuelve a los datos. */
+    const completo = Boolean(turno.elementos && turno.tipo && turno.elementoId)
+    return paso === 'carga' || !completo ? CrearTurnoDatosView : CrearTurnoRegistrarView
+  }
   if (operacion === 'consultar') return ListadoView
+  /* Solicitud de cortes de vidrio: la obra, los vidrios de sus OP en el taller, la solicitud. */
+  if (operacion === 'vidrios') {
+    if (!obra || paso === 'obra') return VidriosObraView
+    return paso === 'carga' ? VidriosSeleccionView : VidriosSolicitudView
+  }
   /* Sin obra (o sin a quién enviar) no hay etapa 2 ni 3 que dibujar: cualquier paso cae en la obra. */
   if (!obra || !destino || paso === 'obra') return ObrasView
   const pvc = tipoDe(obra) === 'PVC'
@@ -96,6 +127,13 @@ export function App() {
            el segundo factor: es el paso 1, y exigir el 3 acá haría imposible llegar al muro. */
         const usuario = await getUsuarioActual()
         if (!vivo) return
+        /* Sin team con permisos la app no se abre. En producción ya lo cortó el servidor con un 403;
+           esto lo cubre en local, donde los roles salen de los teams de `me`. */
+        if (!usuario?.roles.length) {
+          notificarErrorSeguridad(usuario?.equipos.length ? 'sinRol' : 'sinEquipo', 403)
+          setAcceso('rechazado')
+          return
+        }
         /* PASO 2 · el usuario habilitado queda en el estado global. */
         dispatch({ type: 'setUsuario', usuario })
 
@@ -158,7 +196,13 @@ export function App() {
         /* Si se cierra el aviso, la tarjeta no queda vacía: dice qué pasó y qué hacer. */
         <MuroAcceso>
           <h2 className="mfa-titulo">Acceso no disponible</h2>
-          <p className="mfa-texto">Abrí la aplicación desde Monday. Si ya estás ahí, recargá la página.</p>
+          <p className="mfa-texto">
+            {errorSeguridad?.clase === 'sinEquipo'
+              ? 'Tu usuario no está asignado a ningún team dentro de la aplicación. Pedile a un administrador que te agregue en Monday.'
+              : errorSeguridad?.clase === 'sinRol'
+                ? 'Tu team de Monday no tiene permisos asignados en la aplicación. Pedile a un administrador que te agregue al team que corresponde.'
+                : 'Abrí la aplicación desde Monday. Si ya estás ahí, recargá la página.'}
+          </p>
         </MuroAcceso>
       )}
       {acceso === 'mfa' && <MfaGuard onListo={() => setAcceso('permitido')} />}

@@ -8,6 +8,8 @@ import '@/styles/layout.css'
 import '@/styles/components.css'
 import '@/styles/obras.css'
 import '@/styles/labatea.css'
+import '@/styles/agenda.css'
+import '@/styles/presupuesto.css'
 import '@/styles/seguridad.css'
 
 const container = document.getElementById('root')

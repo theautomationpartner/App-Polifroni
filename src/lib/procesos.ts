@@ -14,11 +14,18 @@ export interface ProcesoDef {
 
 /**
  * Catálogo de secciones, fuera de la vista que las dibuja: agregar una es agregar una entrada acá.
- * Hoy sólo está construida Producción; las otras dos se listan apagadas a propósito, porque verlas
+ * Las que todavía no están construidas (hoy, Obras) se listan apagadas a propósito, porque verlas
  * dice que existen y que todavía no están.
  */
 export const PROCESOS: ProcesoDef[] = [
-  { id: null, icono: 'fa-file-invoice-dollar', titulo: 'Presupuesto', detalle: 'Próximamente' },
+  {
+    id: 'presupuesto',
+    icono: 'fa-file-invoice-dollar',
+    titulo: 'Presupuesto',
+    descripcion:
+      'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp y suma nuevas versiones al mismo presupuesto.',
+    detalle: '1 operación',
+  },
   { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
   {
     id: 'obras',
@@ -26,6 +33,14 @@ export const PROCESOS: ProcesoDef[] = [
     titulo: 'Producción',
     descripcion:
       'Carga órdenes de producción, envíalas a tus clientes/constructores o a la fábrica, y gestiona los estados de cada una de ellas.',
+    detalle: '3 operaciones',
+  },
+  {
+    id: 'agenda',
+    icono: 'fa-calendar-days',
+    titulo: 'Agenda',
+    descripcion:
+      'Registra turnos de colocación, reparación, entrega y medición con tus clientes, avísales por WhatsApp y gestiona cada turno hasta que se cumpla.',
     detalle: '2 operaciones',
   },
 ]

@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { PasoHeader } from '@/features/shared/PasoHeader'
 import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { normalizar } from '@/lib/texto'
-import { OPERACIONES, PASOS } from '@/state/appState'
-import { useDispatch } from '@/state/hooks'
-import type { Operacion } from '@/types'
+import { puedeOperar } from '@/lib/permisos'
+import { OPERACIONES, PASOS, areaPermitida, operacionesDe } from '@/state/appState'
+import { useApp, useDispatch } from '@/state/hooks'
+import type { Operacion, Proceso, Rol } from '@/types'
 
 /** Una tarjeta del inicio: el mismo diseño para las áreas y para las operaciones de un área. */
 function Tarjeta({
@@ -54,12 +55,16 @@ function Tarjeta({
  */
 export function InicioView() {
   const dispatch = useDispatch()
+  const { usuario } = useApp()
+  const roles = usuario?.roles
   const [busqueda, setBusqueda] = useState('')
   const t = normalizar(busqueda.trim())
 
-  const areas = PROCESOS.filter((p) => !t || normalizar(p.titulo).includes(t))
+  /* Las áreas y operaciones que el team del usuario no habilita no se muestran. Las que todavía no
+     están construidas se ven apagadas para todos. */
+  const areas = PROCESOS.filter((p) => (!p.id || areaPermitida(p.id, roles)) && (!t || normalizar(p.titulo).includes(t)))
   const operaciones = t
-    ? OPERACIONES.filter((o) => normalizar(TARJETA_OPERACION[o.id].titulo).includes(t))
+    ? OPERACIONES.filter((o) => puedeOperar(roles, o.id) && normalizar(TARJETA_OPERACION[o.id].titulo).includes(t))
     : []
   const nada = areas.length === 0 && operaciones.length === 0
 
@@ -102,13 +107,12 @@ export function InicioView() {
               icono={p.icono}
               titulo={p.titulo}
               descripcion={p.descripcion}
-              detalle={p.detalle}
+              detalle={detalleArea(p.id, p.detalle, roles)}
               disponible={!!p.id}
               onElegir={() => p.id && dispatch({ type: 'setProceso', proceso: p.id })}
             />
           ))}
-          {/* Las operaciones son de Producción (la única área construida): elegirla entra al área
-              y a la operación de una vez. */}
+          {/* Elegir una operación entra a su área y a la operación de una vez. */}
           {operaciones.map((o) => {
             const op = TARJETA_OPERACION[o.id]
             return (
@@ -116,10 +120,10 @@ export function InicioView() {
                 key={o.id}
                 icono={op.icono}
                 titulo={op.titulo}
-                descripcion={`Operación del área ${procesoDe('obras')?.titulo ?? 'Producción'}.`}
+                descripcion={`Operación del área ${procesoDe(o.proceso)?.titulo ?? 'Producción'}.`}
                 detalle={`${op.etapas} ${op.etapas === 1 ? 'etapa' : 'etapas'}`}
                 onElegir={() => {
-                  dispatch({ type: 'setProceso', proceso: 'obras' })
+                  dispatch({ type: 'setProceso', proceso: o.proceso })
                   dispatch({ type: 'setOperacion', operacion: o.id })
                 }}
               />
@@ -136,6 +140,20 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   enviar: { icono: 'fa-paper-plane', titulo: 'Cargar y Enviar Órdenes de Producción', etapas: PASOS.length },
   /* La consulta es una sola pantalla: una etapa. */
   consultar: { icono: 'fa-table-list', titulo: 'Consultar Órdenes de Producción', etapas: 1 },
+  vidrios: { icono: 'fa-border-all', titulo: 'Solicitud de Cortes de Vidrio', etapas: PASOS.length },
+  /* Una sola pantalla: la tabla de las órdenes enviadas al taller. */
+  crearTurno: { icono: 'fa-calendar-plus', titulo: 'Crear Turnos', etapas: PASOS.length },
+  /* La gestión es una sola pantalla, como la consulta de órdenes. */
+  gestionarTurnos: { icono: 'fa-calendar-check', titulo: 'Consultar y Gestionar Turnos', etapas: 1 },
+  /* Dos etapas: a quién es el presupuesto, y el presupuesto con su envío. */
+  presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear y Cargar Presupuestos', etapas: 2 },
+}
+
+/** El pie de la tarjeta de un área: cuántas operaciones tiene PARA ESTE USUARIO. */
+function detalleArea(id: Proceso | null, detalle: string, roles: readonly Rol[] | undefined): string {
+  if (!id) return detalle
+  const n = operacionesDe(id, roles).length
+  return `${n} ${n === 1 ? 'operación' : 'operaciones'}`
 }
 
 /**
@@ -144,6 +162,7 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
  */
 export function ProduccionInicioView() {
   const dispatch = useDispatch()
+  const { proceso, usuario } = useApp()
 
   return (
     <section className="view paso-layout obras-v2">
@@ -154,7 +173,7 @@ export function ProduccionInicioView() {
       </div>
 
       <div className="procesos-grid">
-        {OPERACIONES.map((o) => {
+        {operacionesDe(proceso, usuario?.roles).map((o) => {
           const t = TARJETA_OPERACION[o.id]
           return (
             <Tarjeta
