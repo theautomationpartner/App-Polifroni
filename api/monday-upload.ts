@@ -11,6 +11,7 @@
  * Equivale al proxy de Vite (`/monday-api-file`) que sólo existe en desarrollo.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { exigirAdmin } from './_equipos.js'
 import { autorizarPedido, respuestaDeError } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 
@@ -26,7 +27,8 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
   /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. Sin él,
      esta ruta sería el token de Monday de Polifroni publicado en internet. */
   try {
-    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+    // Sólo el team Admin: el team Produccion no usa esta ruta.
+    exigirAdmin(await autorizarPedido(req.headers.authorization, deviceTokenDe(req)))
   } catch (e) {
     const { status, cuerpo } = respuestaDeError(e)
     /* El `codigo` es lo que le deja a la pantalla distinguir "no estás habilitado" de "tu sesión

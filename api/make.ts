@@ -9,6 +9,7 @@
  * Equivale a las rutas `/make/*` del proxy de Vite en desarrollo.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { exigirAdmin } from './_equipos.js'
 import { autorizarPedido, respuestaDeError } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 
@@ -25,6 +26,9 @@ const ESCENARIOS: Record<string, string[]> = {
   'leer-observaciones': ['MAKE_WEBHOOK_LEER_OBSERVACIONES', 'LEER_OBSERVACIONES'],
   'enviar-op-cliente': ['MAKE_WEBHOOK_ENVIAR_OP', 'ENVIAR_OP'],
   'enviar-op-taller': ['MAKE_WEBHOOK_ENVIAR_OP_TALLER', 'ENVIAR_OP_TALLER'],
+  'agenda-asignacion': ['MAKE_WEBHOOK_AGENDA_ASIGNACION'],
+  'agenda-cancelacion': ['MAKE_WEBHOOK_AGENDA_CANCELACION'],
+  'agenda-confirmacion': ['MAKE_WEBHOOK_AGENDA_CONFIRMACION'],
 }
 
 /** La primera de las variables del escenario que tenga una URL cargada. */
@@ -42,7 +46,8 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
   /* El guardián antes que nada: disparar un escenario gasta operaciones de Make y manda mensajes
      de WhatsApp de verdad, así que sólo lo hace un usuario habilitado. */
   try {
-    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+    // Sólo el team Admin: el team Produccion no usa esta ruta.
+    exigirAdmin(await autorizarPedido(req.headers.authorization, deviceTokenDe(req)))
   } catch (e) {
     const { status, cuerpo } = respuestaDeError(e)
     return responder(res, status, cuerpo)
@@ -80,10 +85,15 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
   const url = cargada.url
 
   try {
-    const body = await leerCuerpo(req)
+    /* Un pedido con archivo (el PDF de la OP en el envío) llega como multipart: se reenvía TAL CUAL,
+       bytes y boundary, sin pasarlo a texto ni a base64. Así un PDF que entró en el tope de Vercel
+       llega entero a Make, que recibe el archivo como binario. */
+    const tipo = String(req.headers['content-type'] ?? '')
+    const multipart = tipo.startsWith('multipart/form-data')
+    const body = multipart ? new Uint8Array(await leerBytes(req)) : await leerCuerpo(req)
     const upstream = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': multipart ? tipo : 'application/json' },
       body,
       /* Del otro lado hay un módulo de IA leyendo un PDF. El tope lo pone igual la plataforma
          (`maxDuration`), pero sin esto el fetch se cortaría antes por su cuenta. */
@@ -108,6 +118,14 @@ async function leerCuerpo(req: Pedido): Promise<string> {
   const partes: Buffer[] = []
   for await (const trozo of req) partes.push(Buffer.from(trozo))
   return Buffer.concat(partes).toString('utf8')
+}
+
+/** Se lee el stream ANTES de tocar `req.body`: en Vercel ese campo es un getter que lo consume. */
+async function leerBytes(req: Pedido): Promise<Buffer> {
+  const partes: Buffer[] = []
+  for await (const trozo of req) partes.push(Buffer.from(trozo))
+  const cuerpo = Buffer.concat(partes)
+  return !cuerpo.length && Buffer.isBuffer(req.body) ? req.body : cuerpo
 }
 
 function responder(res: ServerResponse, status: number, data: unknown): void {

@@ -138,6 +138,39 @@ const TEXTOS: Record<
       </>
     ),
   },
+  /* Está dado de alta, pero sin team: los permisos de la app salen del team de Monday. */
+  sinEquipo: {
+    titulo: 'ERROR 403 · Sin team asignado',
+    recargar: false,
+    mostrarCodigo: false,
+    cuerpo: (
+      <>
+        <p>
+          Tu usuario <strong>no está asignado a ningún team</strong> dentro de la aplicación.
+        </p>
+        <p>Pedile a un administrador que te agregue al team que corresponde en Monday.</p>
+      </>
+    ),
+  },
+  sinRol: {
+    titulo: 'ERROR 403 · Team sin permisos',
+    recargar: false,
+    mostrarCodigo: false,
+    cuerpo: (
+      <>
+        <p>
+          Tu team de Monday <strong>no tiene permisos asignados</strong> en la aplicación.
+        </p>
+        <p>Pedile a un administrador que te agregue al team que corresponde en Monday.</p>
+      </>
+    ),
+  },
+  operacionNoPermitida: {
+    titulo: 'ERROR 403 · Operación no habilitada',
+    recargar: false,
+    mostrarCodigo: false,
+    cuerpo: <p>Tu team no tiene permiso para realizar esta operación.</p>,
+  },
   segundoFactor: {
     titulo: 'Falta verificar el segundo factor',
     recargar: true,

@@ -12,6 +12,7 @@
  * consultas a Monday) y la app la guarda en memoria mientras la pestaña está abierta.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { exigirAdmin } from './_equipos.js'
 import { autorizarPedido, respuestaDeError } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 
@@ -45,7 +46,8 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   res.setHeader('cache-control', 'private, no-store')
   /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. */
   try {
-    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+    // Sólo el team Admin: el team Produccion no usa esta ruta.
+    exigirAdmin(await autorizarPedido(req.headers.authorization, deviceTokenDe(req)))
   } catch (e) {
     const { status, cuerpo } = respuestaDeError(e)
     return responder(res, status, cuerpo)

@@ -14,6 +14,9 @@
  *  · `token_incompleto` la firma cerró, pero el token no trae quién es el usuario.
  *  · `no_habilitado` el usuario no está dado de alta. Lo arregla un administrador.
  *  · `mfa`           falta el segundo factor. Lo arregla el propio usuario.
+ *  · `sin_equipo`    el usuario no está en ningún team de Monday. Lo arregla un administrador.
+ *  · `sin_rol`       sus teams no tienen permisos definidos en la app.
+ *  · `operacion_no_permitida` su team no habilita ESTA operación (ver `_equipos.ts`).
  */
 export type CodigoRechazo =
   | 'config'
@@ -21,6 +24,12 @@ export type CodigoRechazo =
   | 'token_incompleto'
   | 'no_habilitado'
   | 'mfa'
+  | 'sin_equipo'
+  | 'sin_rol'
+  | 'operacion_no_permitida'
+
+/** Qué puede hacer el usuario adentro de la app, según su team de Monday (ver `_equipos.ts`). */
+export type Rol = 'admin' | 'produccion'
 
 /** Quién es el usuario, según lo que la firma de Monday deja probar. */
 export interface Sesion {
@@ -37,6 +46,11 @@ export interface Sesion {
    * dato no se puede inventar desde afuera.
    */
   appId: string
+  /**
+   * Los roles que le dan sus teams (puede estar en varios: vale la suma). Lo completa
+   * `autorizarSinMfa`; sin él, la sesión no pasó ese control.
+   */
+  roles?: Rol[]
 }
 
 /**

@@ -19,6 +19,7 @@
  */
 import type { ServerResponse } from 'node:http'
 import { endpointMfa, type Pedido } from './_http.js'
+import { esAdmin } from './_equipos.js'
 import { perfilDe, tipoEnListaBlanca } from './_whitelist.js'
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
@@ -34,9 +35,14 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
          tenga Tipo = "Admin" en la lista blanca. Es lo que habilita elegir a nombre de quién se
          emite la OP; el resto de la app es igual para todos. */
       isAdmin:
-        sesion.isAdmin || (perfil?.esAdminDeCuenta ?? false) || (tipo ?? '').toLowerCase() === 'admin',
-      /* Los equipos de Monday. Hoy la app no restringe nada por equipo —todos los habilitados pueden
-         hacer todo—; viajan para cuando haga falta. */
+        esAdmin(sesion) ||
+        sesion.isAdmin ||
+        (perfil?.esAdminDeCuenta ?? false) ||
+        (tipo ?? '').toLowerCase() === 'admin',
+      /* Los roles que le dan sus teams (ver `_equipos.ts`): decide qué áreas y operaciones ve, la
+         suma de lo de cada team. Sin ninguno, el guardián ya habría cortado con 403. */
+      roles: sesion.roles ?? [],
+      /* Los equipos de Monday, tal cual. El permiso lo dan `roles`. */
       equipos: perfil?.equipos ?? [],
       /* Los IDS de esos equipos, como texto. */
       equipoIds: perfil?.equipoIds ?? [],

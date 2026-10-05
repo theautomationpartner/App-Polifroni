@@ -13,7 +13,8 @@
  * En desarrollo no hay funciones serverless ni iframe: ahí se usa `me` con el token local, que es la
  * única identidad disponible en localhost.
  */
-import type { UsuarioActual } from '@/types'
+import { rolesDeEquipos } from '@/lib/permisos'
+import type { Rol, UsuarioActual } from '@/types'
 import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
 
 export async function getUsuarioActual(): Promise<UsuarioActual | null> {
@@ -24,7 +25,8 @@ export async function getUsuarioActual(): Promise<UsuarioActual | null> {
       body: '{}',
     })
     await verificarRespuesta(res, 'Sesión')
-    return (await res.json()) as UsuarioActual
+    const u = (await res.json()) as UsuarioActual
+    return { ...u, roles: u.roles ?? [] }
   }
 
   const d = await mondayApi<{
@@ -32,11 +34,22 @@ export async function getUsuarioActual(): Promise<UsuarioActual | null> {
   }>('query { me { id name is_admin teams { id name } } }')
   const me = d.me
   if (!me) return null
+  const equipos = (me.teams ?? []).map((t) => t.name)
+  /* En local no hay servidor que decida los roles: la misma regla, con los teams de `me`.
+     `VITE_DEV_ROL` los fuerza para probar en local: uno o varios separados por coma
+     ("produccion", "admin,produccion"), o "ninguno". */
+  const forzado = String(import.meta.env.VITE_DEV_ROL ?? '').trim()
+  const roles: Rol[] = !forzado
+    ? rolesDeEquipos(equipos)
+    : forzado === 'ninguno'
+      ? []
+      : [...new Set(forzado.split(',').map((r) => r.trim()))].filter((r): r is Rol => r === 'admin' || r === 'produccion')
   return {
     id: String(me.id),
     name: me.name,
-    isAdmin: Boolean(me.is_admin),
-    equipos: (me.teams ?? []).map((t) => t.name),
+    isAdmin: Boolean(me.is_admin) || roles.includes('admin'),
+    roles,
+    equipos,
     equipoIds: (me.teams ?? []).map((t) => String(t.id)),
   }
 }

@@ -13,6 +13,7 @@
  *     La app se instala por cuenta y el token es legítimo para cualquiera que la instale; esto la
  *     deja atada a la cuenta que corresponde.
  *  4. La lista blanca del tablero privado (ver `_whitelist.ts`).
+ *  5. El team de Monday del usuario, que define su ROL (ver `_equipos.ts`). Sin team, 403.
  *
  * Lo que NO mira: si el usuario es invitado (`is_guest`) de Monday. Hubo una regla que los rechazaba
  * de plano, y se sacó porque contradecía a la lista blanca: un permiso EXPLÍCITO —una fila en un
@@ -25,6 +26,7 @@
  */
 import jwt from 'jsonwebtoken'
 import { ErrorAuth, type CodigoRechazo, type Sesion } from './_errores.js'
+import { exigirEquipo } from './_equipos.js'
 import { exigirMfa } from './_mfa.js'
 import { exigirListaBlanca } from './_whitelist.js'
 
@@ -121,7 +123,7 @@ export async function autorizarPedido(
 }
 
 /**
- * Firma + lista blanca, SIN exigir el segundo factor.
+ * Firma + lista blanca + team, SIN exigir el segundo factor.
  *
  * Es lo que usan los propios endpoints de `/api/mfa/*`, y no puede ser de otra manera: pedir el
  * segundo factor para poder enrolarse dejaría a todo el mundo afuera para siempre. Lo que sí se
@@ -130,6 +132,8 @@ export async function autorizarPedido(
 export async function autorizarSinMfa(authorization: string | undefined): Promise<Sesion> {
   const sesion = verificarSesion(authorization)
   await exigirListaBlanca(sesion)
+  /* Después de la lista blanca: a quien no está habilitado no se le cuenta si tiene team o no. */
+  sesion.roles = await exigirEquipo(sesion)
   return sesion
 }
 

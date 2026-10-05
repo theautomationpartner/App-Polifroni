@@ -15,11 +15,17 @@ export class ErrorMondayServidor extends Error {}
 export async function mondayServidor<T>(
   query: string,
   variables: Record<string, unknown>,
+  { escritura = false }: { escritura?: boolean } = {},
 ): Promise<T> {
   /* `MONDAY_API_TOKEN` es el de solo lectura para la lista blanca; si no está, se usa el mismo del
      proxy. Tenerlos separados permite que la consulta que decide quién entra no lleve permisos de
-     escritura, pero no obliga a configurar dos tokens para arrancar. */
-  const token = (process.env.MONDAY_API_TOKEN ?? process.env.MONDAY_TOKEN)?.trim()
+     escritura, pero no obliga a configurar dos tokens para arrancar. Una ESCRITURA va con el del
+     proxy (`MONDAY_TOKEN`), que es el que puede escribir en los tableros. */
+  const token = (
+    escritura
+      ? process.env.MONDAY_TOKEN ?? process.env.MONDAY_API_TOKEN
+      : process.env.MONDAY_API_TOKEN ?? process.env.MONDAY_TOKEN
+  )?.trim()
   if (!token) throw new ErrorMondayServidor('falta MONDAY_API_TOKEN / MONDAY_TOKEN')
 
   let res: Response

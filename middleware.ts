@@ -31,6 +31,7 @@ export const config = {
     '/api/monday-file',
     '/api/make',
     '/api/numeracion',
+    '/api/produccion-completada',
     '/api/obras-indice',
     '/api/usuario',
     '/api/mfa/:path*',

@@ -13,9 +13,15 @@
  * Antes de reenviar nada se verifica QUIÉN pide (`_guard.ts`): la firma del session token de Monday,
  * el alta en la lista blanca y el segundo factor. Corre en Node —no en edge— porque `jsonwebtoken`
  * lo necesita.
+ *
+ * ── El rol ──
+ * Quien esté en el team Admin —aunque también esté en otros— pasa cualquier consulta. Sin él (hoy,
+ * sólo Produccion) se LEE: una `mutation` se rechaza con 403. Su única escritura —marcar la producción completada— no pasa por
+ * acá sino por `/api/produccion-completada`, donde la consulta la escribe el servidor.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { autorizarPedido, respuestaDeError } from './_guard.js'
+import { esAdmin } from './_equipos.js'
+import { autorizarPedido, respuestaDeError, type Sesion } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 
 const API_VERSION = '2024-10'
@@ -30,8 +36,9 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
 
   /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. Sin él,
      esta ruta sería el token de Monday de Polifroni publicado en internet. */
+  let sesion: Sesion
   try {
-    await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
+    sesion = await autorizarPedido(req.headers.authorization, deviceTokenDe(req))
   } catch (e) {
     const { status, cuerpo } = respuestaDeError(e)
     /* El `codigo` es lo que le deja a la pantalla distinguir "no estás habilitado" de "tu sesión
@@ -53,6 +60,13 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
     /* El cuerpo se reenvía tal cual (query + variables). La Authorization que haya mandado el
        cliente NO se usa: contra Monday sólo vale el token del servidor. */
     const body = await leerCuerpo(req)
+    if (!esAdmin(sesion) && esMutacion(body)) {
+      console.warn(`[api/monday] 403 · mutation sin rol admin (${sesion.roles?.join(', ') || 'ninguno'}, usuario ${sesion.userId})`)
+      return responder(res, 403, {
+        errors: [{ message: 'Forbidden' }],
+        codigo: 'operacion_no_permitida',
+      })
+    }
     const upstream = await fetch('https://api.monday.com/v2', {
       method: 'POST',
       headers: {
@@ -71,6 +85,20 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
     /* El detalle queda en el log de la función; al cliente le llega el aviso, no las tripas. */
     console.error('[api/monday]', e)
     responder(res, 502, { errors: [{ message: 'No se pudo hablar con la API de Monday.' }] })
+  }
+}
+
+/**
+ * ¿El pedido escribe? Se mira la palabra `mutation` en CUALQUIER lugar de la consulta, no sólo al
+ * principio: un documento GraphQL puede traer varias operaciones. Un cuerpo ilegible cuenta como
+ * mutación: ante la duda, se rechaza.
+ */
+function esMutacion(body: string): boolean {
+  try {
+    const { query } = JSON.parse(body) as { query?: unknown }
+    return typeof query !== 'string' || /mutation/i.test(query)
+  } catch {
+    return true
   }
 }
 
