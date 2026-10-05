@@ -20,6 +20,10 @@ export const ESCENARIO = {
   leerObservaciones: 'leer-observaciones',
   enviarOpCliente: 'enviar-op-cliente',
   enviarOpTaller: 'enviar-op-taller',
+  /** Agenda: los tres mensajes al cliente. La app arma el texto; el escenario sólo lo manda. */
+  agendaAsignacion: 'agenda-asignacion',
+  agendaCancelacion: 'agenda-cancelacion',
+  agendaConfirmacion: 'agenda-confirmacion',
 } as const
 
 export type Escenario = (typeof ESCENARIO)[keyof typeof ESCENARIO]
@@ -145,6 +149,23 @@ export const respondioEnviado =
  * Si la respuesta no llega, no se lanza error: se devuelve `sinRespuesta` y el que llamó sigue
  * mirando el tablero, que es donde el escenario deja el resultado pase lo que pase.
  */
+/**
+ * El cuerpo del pedido. Sin archivo, el JSON de siempre. Con un archivo (`extra.archivo`, el PDF de
+ * la OP en el envío), un multipart: el campo `datos` lleva el MISMO JSON —sin el archivo— y el campo
+ * `archivo` lleva el PDF en binario, que el webhook de Make recibe como archivo. Se manda en binario
+ * a propósito: en base64 pesaría un tercio más y un PDF de 3,4 MB ya no entraría en el tope de 4,5 MB
+ * de Vercel.
+ */
+function armarPedido(itemId: string, extra: Record<string, unknown>): { body: BodyInit; tipo?: string } {
+  const { archivo, ...resto } = extra
+  if (!(archivo instanceof Blob)) return { body: JSON.stringify(cuerpo(itemId, extra)), tipo: 'application/json' }
+  const form = new FormData()
+  form.append('datos', JSON.stringify(cuerpo(itemId, resto)))
+  form.append('archivo', archivo, archivo instanceof File ? archivo.name : 'orden.pdf')
+  /* Sin Content-Type a mano: el navegador lo pone con su boundary. */
+  return { body: form }
+}
+
 export async function dispararEscenario(
   escenario: Escenario,
   itemId: string,
@@ -154,10 +175,11 @@ export async function dispararEscenario(
   const corte = setTimeout(() => control.abort(), 180_000)
 
   try {
+    const pedido = armarPedido(itemId, extra)
     const res = await fetch(rutaDe(escenario), {
       method: 'POST',
-      headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(cuerpo(itemId, extra)),
+      headers: await cabecerasPropias(pedido.tipo ? { 'Content-Type': pedido.tipo } : {}),
+      body: pedido.body,
       signal: control.signal,
     })
     /* Un rechazo del guardián no es un escenario que falló: se muestra la pantalla de seguridad. */

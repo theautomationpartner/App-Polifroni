@@ -55,3 +55,20 @@ export async function actualizarCelular(obra: Obra, rol: Rol, celular: string): 
     },
   )
 }
+
+/**
+ * Cambia el `✋Cel-WHATSAPP` de un cliente de 👤 Clientes por su id: la Agenda ya tiene el cliente
+ * (el asignado en la cuenta corriente) y no pasa por la obra. Mismo formato que `actualizarCelular`.
+ */
+export async function actualizarCelularCliente(clienteId: string, celular: string): Promise<void> {
+  await mondayApi(
+    `mutation ($board: ID!, $id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: $board, item_id: $id, column_values: $valores) { id }
+    }`,
+    {
+      board: String(TABLERO_CLIENTES),
+      id: clienteId,
+      valores: JSON.stringify({ [COL_CEL]: { phone: celular, countryShortName: 'AR' } }),
+    },
+  )
+}

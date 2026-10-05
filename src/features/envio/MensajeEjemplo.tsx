@@ -91,7 +91,7 @@ export function MensajeEjemplo({
             {recibeEnlace ? (
               <p>
                 📌 <strong>RECORDÁ</strong> que para comenzar con la produccion necesitamos tu
-                confirmacion. Podes confirmar clickeando este link:{' '}
+                confirmacion. Podes confirmar la orden con el siguiente link:{' '}
                 <span className="msj-link">enlace para confirmar la orden</span>
               </p>
             ) : (

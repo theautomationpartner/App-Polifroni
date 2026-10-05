@@ -14,6 +14,9 @@ const MOSTRAR_OK_MS = 1200
  * de la persona —el cliente en el tablero de clientes, el constructor en el de constructores (ver
  * `actualizarCelular`)— y la app sigue con el número nuevo (`onActualizado`). Sin cambios, confirmar
  * sólo cierra: no se escribe nada.
+ *
+ * Fuera de Producción no hay obra: quien lo usa pasa `guardar`, que escribe el número donde
+ * corresponde (la Agenda, en el cliente asignado a la cuenta corriente).
  */
 export function EditarCelular({
   obra,
@@ -22,14 +25,21 @@ export function EditarCelular({
   actual,
   onCerrar,
   onActualizado,
+  guardar,
+  queSeEnvia = 'la orden',
 }: {
-  obra: Obra
+  /** Producción: la obra, de donde se llega a la ficha de la persona. Sin obra, va `guardar`. */
+  obra?: Obra
   rol: Rol
   nombre: string
   /** El celular de hoy, en dígitos. */
   actual: string
   onCerrar: () => void
   onActualizado: (celular: string) => void
+  /** Escribe el número en Monday sin pasar por la obra. */
+  guardar?: (celular: string) => Promise<void>
+  /** Lo que se le manda a ese número, para la nota de la ventana ("el mensaje del turno"). */
+  queSeEnvia?: string
 }) {
   const [texto, setTexto] = useState(actual ? formatoMonday(actual) : '')
   const [fase, setFase] = useState<'editando' | 'confirmando' | 'confirmado'>('editando')
@@ -57,7 +67,9 @@ export function EditarCelular({
     setError('')
     setFase('confirmando')
     try {
-      await actualizarCelular(obra, rol, nuevo)
+      if (guardar) await guardar(nuevo)
+      else if (obra) await actualizarCelular(obra, rol, nuevo)
+      else throw new Error('No hay dónde guardar el celular.')
       setFase('confirmado')
       onActualizado(nuevo)
       cierre.current = setTimeout(onCerrar, MOSTRAR_OK_MS)
@@ -105,8 +117,8 @@ export function EditarCelular({
     >
       <p className="modal-clave">{nombre || rol}</p>
       <p className="modal-nota">
-        El número se actualiza en Monday, en la ficha del {rol === 'Cliente' ? 'cliente' : 'constructor'}, y la orden
-        se envía a ese número.
+        El número se actualiza en Monday, en la ficha del {rol === 'Cliente' ? 'cliente' : 'constructor'}, y{' '}
+        {queSeEnvia} se envía a ese número.
       </p>
       <label className="campo-l" htmlFor="celular-nuevo">
         Cel-WhatsApp

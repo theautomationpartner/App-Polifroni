@@ -20,6 +20,7 @@ import {
   ESTADO_ENVIO_OP,
   ESTADO_OP,
   ETIQUETA,
+  getUrlArchivo,
   guardarConfirmador,
   guardarLinkOrden,
   guardarRecordatorio,
@@ -33,10 +34,10 @@ import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra } from '@/types'
 import { EditarCelular } from './EditarCelular'
 import { MensajeEjemplo } from './MensajeEjemplo'
-import { useEnviarOp } from './useEnviarOp'
 import { useEnviarTaller } from './useEnviarTaller'
+import { useEnviarWhatsapp, type DestinoWsp } from './useEnviarWhatsapp'
 
-/** La única vía de envío: WhatsApp, por la automatización de Monday. */
+/** La única vía de envío: WhatsApp (al cliente o constructor, por 360messenger desde la app). */
 const VIA = 'Whatsapp'
 
 /**
@@ -46,11 +47,11 @@ const VIA = 'Whatsapp'
 const sobreDeLaOp = (ordenId: string | null) =>
   ordenId ? { boardId: String(BOARD_ORDENES), pulseId: Number(ordenId) } : {}
 
-/** El link al PDF que devuelve el escenario de envío (`link_op`, o sus nombres de antes). */
-const linkDeRespuesta = (cuerpo: Record<string, unknown> | null): string =>
-  [cuerpo?.link_op, cuerpo?.linkPdf, cuerpo?.shareLink, cuerpo?.webContentLink]
-    .map((v) => String(v ?? '').trim())
-    .find((v) => /^https?:\/\//i.test(v)) ?? ''
+/** El link al PDF compartido en Drive que devuelve el envío (`link_op`). */
+const linkDeRespuesta = (cuerpo: { link_op?: string } | null): string => {
+  const link = String(cuerpo?.link_op ?? '').trim()
+  return /^https?:\/\//i.test(link) ? link : ''
+}
 
 /** Los destinatarios que la obra ya tenía elegidos: "Cliente", "Constructor" o "Ambos". */
 const rolesIniciales = (texto: string): Rol[] =>
@@ -75,10 +76,10 @@ const iniciales = (nombre: string) =>
     .join('')
     .toUpperCase() || '?'
 
-type EstadoFila = 'idle' | 'enviando' | 'ok' | 'error'
+export type EstadoFila = 'idle' | 'enviando' | 'ok' | 'error'
 
 /** El círculo de estado de la fila, el mismo de La Batea (`cobro-ok`). */
-function EstadoEnvioContacto({ estado, motivo }: { estado: EstadoFila; motivo?: string }) {
+export function EstadoEnvioContacto({ estado, motivo }: { estado: EstadoFila; motivo?: string }) {
   if (estado === 'enviando') {
     return (
       <span className="cobro-ok cobro-ok--cargando" role="status" aria-label="Enviando">
@@ -104,9 +105,9 @@ interface EnviarOpProps {
   /** Qué falta cuando no está lista ("Falta generar la OP final"). */
   avisoNoListo?: string
   /**
-   * Orden nueva cuyo registro se hace al finalizar (Aluminio y PVC). El documento ya está adjunto en
-   * la OP —el escenario lo descarga de ahí— pero el envío no escribe estados en el tablero: lo que
-   * salió queda en el borrador y se registra al finalizar la operación.
+   * Orden nueva, que todavía no existe en Monday (Aluminio y PVC): la OP se crea al finalizar. El
+   * PDF va DENTRO del pedido al escenario y el envío no escribe nada en el tablero: lo que salió
+   * queda en el borrador y se registra al finalizar la operación.
    */
   local?: OrdenLocal | null
   /**
@@ -132,7 +133,7 @@ export interface ContextoEnvio {
 
 /** Lo que se sabe de una orden cuyo documento todavía no está en Monday. */
 export interface OrdenLocal {
-  /** La OP del tablero: nace al cargar el documento (el PDF de Aluminio o el HETMO de PVC). */
+  /** La OP del tablero. En una orden nueva es `null`: la OP nace al finalizar. */
   ordenId: string | null
   archivo: File
   numero: string
@@ -162,9 +163,9 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
   const enviado = contexto ? contexto.enviado : app.enviado
   const marcarEnviado = () => (contexto ? contexto.onEnviado() : dispatch({ type: 'setEnviado' }))
   const cambiarObra = (o: Obra) => (contexto ? contexto.onObra(o) : dispatch({ type: 'refrescarObra', obra: o }))
-  const cliente = useEnviarOp(obra)
+  /* Al cliente o constructor: por WhatsApp desde la app, sin escenario. Al taller: su escenario. */
+  const cliente = useEnviarWhatsapp()
   const taller = useEnviarTaller(obra)
-  const corrida = modo === 'cliente' ? cliente : taller
 
   /**
    * A quiénes se envía: el cliente, el constructor o los dos. Se agregan desde el selector a la
@@ -194,7 +195,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
   } | null>(null)
   const disparando = useRef(false)
 
-  const enviando = preparando || corrida.enCurso || cerrando
+  const enviando = preparando || (modo === 'cliente' ? cliente.enCurso : taller.enCurso) || cerrando
   useAccionEnCurso(
     modo === 'cliente' ? 'Esperá a que termine el envío de la OP.' : 'Esperá a que termine el envío al taller.',
     enviando,
@@ -220,9 +221,9 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           : null
   /* Reenviar es mandar de nuevo una que ya espera respuesta: el estado de la OP no cambia. */
   const reenvio = orden?.estadoOrden === 'pendiente'
-  /* Una orden local se envía recién cuando su documento ya está adjunto en una OP del tablero. */
-  const sinDocumento = !listo || (!orden && !local?.ordenId)
-  const fase = corrida.estado.fase
+  /* Una orden local lleva su PDF en el pedido: no necesita estar en el tablero. */
+  const sinDocumento = !listo || (!orden && !local)
+  const fase = modo === 'cliente' ? cliente.estado.fase : taller.estado.fase
   const estadoBoton: 'idle' | 'enviando' | 'enviado' | 'error' = enviado
     ? 'enviado'
     : enviando
@@ -253,40 +254,31 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
     }
     disparando.current = true
     setPreparando(true)
+    /* Los destinatarios, como los recibe el envío: a cada uno, si es quien confirma. */
+    const destinosWsp = (): DestinoWsp[] =>
+      roles.map((r) => {
+        const d = destinoDe(obra, r)
+        return { tipo: d.tipo, nombre: d.nombre, whatsapp: d.whatsapp, confirmador: d.tipo === confirmador }
+      })
     try {
       /* Orden que todavía no está en Monday: va el PDF de la app y no se escribe nada en el tablero
          —ni el destinatario en la obra—. Todo eso se registra al finalizar. */
       if (local) {
         if (antesDeEnviar) await antesDeEnviar()
-        const destinos = roles.map((r) => destinoDe(obra, r))
         enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador }
-        void cliente.correr({
-          ...sobreDeLaOp(local.ordenId),
-          ordenId: local.ordenId,
-          itemIdObra: obra.id,
-          idOp: '',
-          numero: local.numero,
-          tipo: local.tipo,
-          medidoPor: local.medidoPor,
-          fechaMedicion: local.fecha ? local.fecha.split('-').reverse().join('/') : '',
-          destinatario: etiquetaDestinatarios(roles),
-          via: VIA,
-          celCliente: obra.celCliente,
-          celArquitecto: obra.celArquitecto,
-          destinos: destinos.map((d) => ({
-            tipo: d.tipo,
-            nombre: d.nombre,
-            whatsapp: d.whatsapp,
-            email: d.email,
-            confirmador: d.tipo === confirmador,
-          })),
-          /* Quién es el responsable de confirmar la orden: "Cliente" o "Constructor". */
-          confirmador,
-          conEnlaceConfirmacion: true,
-          /* Sin el PDF en el pedido: el escenario lo descarga de la OP (`ordenId`) —Aluminio:
-             🤖OP OriginaL; PVC: 🤖Op V2 Mejorada—. Así el pedido no tiene tope de tamaño. */
-          reenvio: false,
-        })
+        /* El PDF de la app va en el pedido: Aluminio, el PDF cargado; PVC, la OP final generada. */
+        void cliente.correr(
+          {
+            destinos: destinosWsp(),
+            reenvio: false,
+            ordenId: local.ordenId,
+            obraId: obra.id,
+            numero: local.numero,
+            tipo: local.tipo,
+          },
+          local.archivo,
+          local.archivo.name,
+        )
         return
       }
       if (!orden) return
@@ -326,38 +318,34 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
         })
         return
       }
-      const destinos = roles.map((r) => destinoDe(obra, r))
       const etiqueta = etiquetaDestinatarios(roles)
-      /* Recién ahora se escribe en la obra a quiénes y por dónde: el escenario lo lee de ahí. Elegir
-         los destinatarios no escribe nada: navegar no deja registros a medias. */
+      /* El PDF de la OP, del tablero: es el que se manda. */
+      if (!pdf) {
+        setFaltan({ titulo: 'La orden no tiene la OP final adjunta', items: [`${nombreOrden(fresca)} no tiene el PDF para enviar.`] })
+        return
+      }
+      const bajada = await fetch(await getUrlArchivo(pdf.assetId))
+      if (!bajada.ok) throw new Error(`No se pudo bajar la OP final (HTTP ${bajada.status})`)
+      const archivo = await bajada.blob()
+      /* Recién ahora se escribe en la obra a quiénes y por dónde. Elegir los destinatarios no escribe
+         nada: navegar no deja registros a medias. */
       if (obra.opDestinatario.texto !== etiqueta) await setEstado(obra.id, COL.opDestinatario, etiqueta)
       if (obra.opVia.texto !== VIA) await setEstado(obra.id, COL.opVia, VIA)
       const esReenvio = fresca.estadoOrden === 'pendiente'
       enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio, confirmador }
-      void cliente.correr({
-        ...sobreDeLaOp(fresca.id),
-        ordenId: fresca.id,
-        itemIdObra: obra.id,
-        idOp: fresca.idOp,
-        numero: fresca.numero,
-        destinatario: etiqueta,
-        via: VIA,
-        celCliente: obra.celCliente,
-        celArquitecto: obra.celArquitecto,
-        /* Una entrada por destinatario: el escenario las recorre y le manda a cada uno. */
-        destinos: destinos.map((d) => ({
-          tipo: d.tipo,
-          nombre: d.nombre,
-          whatsapp: d.whatsapp,
-          email: d.email,
-          confirmador: d.tipo === confirmador,
-        })),
-        /* Quién es el responsable de confirmar la orden: "Cliente" o "Constructor". */
-        confirmador,
-        /* El mensaje SIEMPRE lleva el enlace, a cada destinatario (ver formularios/LEEME.md). */
-        conEnlaceConfirmacion: true,
-        reenvio: esReenvio,
-      })
+      await setEstadoEnvioOrden(fresca.id, ESTADO_ENVIO_OP.enviando).catch(() => {})
+      void cliente.correr(
+        {
+          destinos: destinosWsp(),
+          reenvio: esReenvio,
+          ordenId: fresca.id,
+          obraId: obra.id,
+          numero: fresca.numero,
+          tipo: fresca.tipo,
+        },
+        archivo,
+        pdf.nombre || 'Orden de Produccion.pdf',
+      )
     } catch {
       setFallo('No se pudo preparar el envío en Monday. Reintentá.')
       dispatch({ type: 'errorMonday', accion: 'preparar el envío de la OP' })
@@ -369,7 +357,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
 
   /** El link al PDF que devolvió el envío, guardado en la OP. */
   const guardarLink = async (o: ResumenOrden) => {
-    const link = linkDeRespuesta(await cliente.esperarRespuesta(15_000))
+    const link = linkDeRespuesta(cliente.respuesta())
     if (link) await guardarLinkOrden(o.id, link).catch(() => {})
   }
   /* Cómo terminó la corrida. Lo que queda escrito es de la OP que se mandó (`enCurso`). */
@@ -386,7 +374,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       if (!e.orden) {
         /* Orden local: nada se escribe ahora. Se guarda qué salió, a quiénes y el link, para
            registrarlo todo al finalizar la operación. */
-        const cuerpo = await cliente.esperarRespuesta(15_000)
+        const cuerpo = cliente.respuesta()
         dispatch({
           type: 'setBorrador',
           cambios: {
@@ -403,6 +391,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           console.warn('[taller] no se pudo marcar la OP como enviada a taller', err),
         )
       } else {
+        await setEstadoEnvioOrden(e.orden.id, ESTADO_ENVIO_OP.enviada).catch(() => {})
         if (!e.reenvio) {
           await setEstadoOrden(e.orden.id, ESTADO_OP.enviada).catch(() => {})
           /* Primer envío de una OP que ya estaba en el tablero: el recordatorio, a 5 días de hoy. */
@@ -431,10 +420,12 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
 
   /* Lo que salió mal, dicho al lado del botón. */
   const errorCorrida =
-    fase === 'error'
-      ? (corrida.estado.updateError ? htmlATexto(corrida.estado.updateError.body) : corrida.estado.problema) ||
-        'La automatización no confirmó el envío. Reintentá.'
-      : null
+    fase !== 'error'
+      ? null
+      : modo === 'cliente'
+        ? cliente.estado.problema || 'No se pudo confirmar el envío por WhatsApp. Reintentá.'
+        : (taller.estado.updateError ? htmlATexto(taller.estado.updateError.body) : taller.estado.problema) ||
+          'La automatización no confirmó el envío. Reintentá.'
 
 
   return (
@@ -664,23 +655,23 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             {(errorCorrida || fallo) && (
               <p className="enviar-aviso enviar-aviso--err">
                 <i className="fas fa-circle-exclamation" aria-hidden="true" />
-                {corrida.estado.vencida ? (
+                {modo === 'taller' && taller.estado.vencida ? (
                   /* Pasó el tope de espera: el mensaje es uno solo y dice a quién acudir. */
                   <span>{errorCorrida}</span>
                 ) : (
-                  <span>
+                  <span style={{ whiteSpace: 'pre-line' }}>
                     <strong>No se pudo enviar.</strong> {errorCorrida ?? fallo}
-                    {corrida.estado.updateError && ` (${fechaHora(corrida.estado.updateError.fecha)})`}
+                    {modo === 'taller' && taller.estado.updateError && ` (${fechaHora(taller.estado.updateError.fecha)})`}
                   </span>
                 )}
               </p>
             )}
-            {fase === 'demorado' && (
+            {modo === 'taller' && fase === 'demorado' && (
               <p className="enviar-aviso enviar-aviso--warn">
                 <i className="fas fa-hourglass-half" aria-hidden="true" />
                 <span>
                   <strong>Está tardando más de lo normal.</strong>{' '}
-                  <button type="button" className="enviar-mas" onClick={() => void corrida.seguirEsperando()}>
+                  <button type="button" className="enviar-mas" onClick={() => void taller.seguirEsperando()}>
                     Seguir esperando
                   </button>
                 </span>
