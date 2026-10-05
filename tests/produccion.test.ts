@@ -271,7 +271,12 @@ assert.equal(validarTelWsp('').success, false)
 
 /* ── El enlace de confirmación y el reenvío ────────────────────────────────────────────────────── */
 {
+  /* Sin la URL del formulario no hay enlace (no se manda la OP); con una de prueba, se arma. */
+  delete process.env.CONFIRMAR_OP_URL
+  assert.throws(() => enlaceConfirmacion({ ordenId: '1', obraId: '9', nombre: 'Juan' }), /CONFIRMAR_OP_URL/)
+  process.env.CONFIRMAR_OP_URL = 'https://formulario.test/confirmar'
   const conOp = enlaceConfirmacion({ ordenId: '123', obraId: '9', nombre: 'Juan Pérez' })
+  assert.ok(conOp.startsWith('https://formulario.test/confirmar?'), 'la URL sale de la variable')
   assert.ok(conOp.includes('itemId=123') && conOp.includes('itemIdObra=9') && !conOp.includes('nroOrden'))
   const sinOp = enlaceConfirmacion({ ordenId: null, obraId: '9', nombre: 'Juan', numero: '2291', tipo: 'PVC' })
   assert.ok(sinOp.includes('itemId=&') && sinOp.includes('nroOrden=2291') && sinOp.includes('tipo=PVC'), 'OP sin crear: va por obra y número')
