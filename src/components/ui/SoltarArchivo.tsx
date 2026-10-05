@@ -17,6 +17,9 @@ interface SoltarArchivoProps {
   onQuitar?: () => void
   /** Acción extra junto al archivo (p. ej. "Leer de nuevo"). */
   accion?: { texto: string; onClick: () => void }
+  /** Qué archivos acepta el buscador, y cómo se los nombra en la ayuda. Por defecto, sólo PDF. */
+  accept?: string
+  formatos?: string
 }
 
 /**
@@ -37,6 +40,8 @@ export function SoltarArchivo({
   onArchivo,
   onQuitar,
   accion,
+  accept = 'application/pdf,.pdf',
+  formatos = 'PDF',
 }: SoltarArchivoProps) {
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -73,7 +78,7 @@ export function SoltarArchivo({
             ? 'Esperá a que termine de procesarse el documento'
             : archivo
               ? 'Reemplazar el documento cargado'
-              : 'Arrastrá para subir · PDF'
+              : `Arrastrá para subir · ${formatos}`
         }
         aria-label={
           estado === 'procesando'
@@ -90,7 +95,7 @@ export function SoltarArchivo({
         id={id}
         type="file"
         hidden
-        accept="application/pdf,.pdf"
+        accept={accept}
         onChange={(e) => {
           tomar(e.target.files?.[0])
           e.target.value = ''

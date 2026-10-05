@@ -7,8 +7,8 @@ import { registrarEnvioLocal } from './registrarEnvioLocal'
 
 /**
  * Registra en Monday la orden de Aluminio y, si se mandó, su envío: se llama al tocar "Finalizar
- * Operación". La OP y su PDF en `🤖OP OriginaL` ya existen desde la carga (`CargarOpView`): acá se
- * reusan, y sólo se crean o suben si por algún motivo faltan.
+ * Operación". Recién ACÁ se escribe en Monday: hasta ahora la OP no existía y el PDF vivía en la app
+ * (`CargarOpView`).
  *
  * En orden:
  *  1. Crea la OP en el tablero de órdenes (vínculo a la obra, tipo, número, responsable) y la suma
@@ -36,12 +36,12 @@ export async function registrarAluminio({
   const archivo = borrador.archivo
   if (!archivo) throw new Error('No hay un PDF cargado.')
 
-  /* Normalmente la OP ya existe (se creó al soltar el PDF). Si no, se crea acá y se reserva su
-     número, que puede no ser el que se mostraba. */
+  /* La OP nace acá, con el número que se reservó al cargar el PDF. Un reintento reusa la misma OP
+     (`ordenId` queda en el borrador). */
   let m = borrador.medicion
   let id = borrador.ordenId
   if (!id) {
-    const nueva = await abrirOrdenDeObra(obra, m, responsableId)
+    const nueva = await abrirOrdenDeObra(obra, m, responsableId, borrador.numeroReservado)
     id = nueva.id
     m = { ...m, nroOrden: nueva.numero }
     avanzar({ ordenId: id, medicion: m })

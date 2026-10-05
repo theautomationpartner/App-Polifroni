@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
@@ -11,13 +11,12 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useRefrescarObra } from '@/features/shared/PasoNav'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
-import { BOARD_ORDENES, comoUsuario, subirOpFinal } from '@/services/monday'
+import { comoUsuario } from '@/services/monday'
+import { ErrorLecturaIA, leerListado } from '@/services/ia/hetmo'
 import { useApp, useDispatch } from '@/state/hooks'
 import { hoyLocal } from './DatosMedicion'
-import { serializar } from './observaciones'
 import { generarOpFinal } from './opFinal/generar'
 import { registrarPvc } from './registrarPvc'
-import { datosObservaciones, useGenerarOp } from './useGenerarOp'
 
 /** "2026-09-25" → "25/09/2026". */
 const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso)
@@ -43,25 +42,26 @@ function Fila({ label, requerido = true, children }: { label: string; requerido?
  * lo cargado en la etapa anterior, de sólo lectura— con el botón de generar y, debajo, "Ver OP
  * Final"; a la derecha, el envío. El envío se habilita con la OP final generada.
  *
- * Generar dispara la lectura del documento con IA y arma el PDF final EN LA APP: no escribe nada en
- * Monday. "Ver OP Final" usa ese PDF. "Confirmar y Enviar" lo adjunta antes en la OP (el escenario
- * de envío lo toma de ahí) y además lo manda en el pedido. Los datos, los subelementos (observaciones y
- * vidrios), el N° de HETMO y la OP final adjunta se registran al tocar "Finalizar Operación" (ver
- * `registrarPvc`). Se puede volver a generar mientras la orden no se haya enviado.
+ * Generar le pasa el PDF de HETMO (el que se cargó en la app) a Claude para leer el listado completo
+ * y arma el PDF final EN LA APP: no escribe nada en Monday. "Ver OP Final" usa ese PDF y "Confirmar
+ * y Enviar" lo manda dentro del pedido al escenario de envío. En Monday no existe todavía ninguna
+ * OP: "Finalizar Operación" la crea, le sube el original y la OP final, y registra los datos, los
+ * subelementos (observaciones y vidrios), el N° de HETMO y el envío (ver `registrarPvc`). Se puede
+ * volver a generar mientras la orden no se haya enviado.
  */
 export function EmitirEnviarView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
   const { borrador, usuario, usuarios, responsableId, enviado } = useApp()
-  const generacion = useGenerarOp(obra, borrador.ordenId)
-
+  /** La IA está leyendo el listado completo. */
+  const [leyendo, setLeyendo] = useState(false)
   /** Armando el PDF con la lectura que devolvió la IA. */
   const [armando, setArmando] = useState(false)
   const [errorGen, setErrorGen] = useState<string | null>(null)
   const [avisos, setAvisos] = useState<string[] | null>(null)
 
-  useAccionEnCurso('Esperá a que termine la generación de la OP.', generacion.enCurso || armando)
+  useAccionEnCurso('Esperá a que termine la generación de la OP.', leyendo || armando)
 
   /* Lo último del borrador, para leerlo cuando la generación termina (fuera de este render). */
   const borradorRef = useRef(borrador)
@@ -72,7 +72,7 @@ export function EmitirEnviarView() {
     usuarios.find((u) => u.id === responsableId) ?? (usuario ? comoUsuario(usuario.id, usuario.name) : null)
   const escritas = borrador.aberturas.filter((a) => a.texto.trim()).length
   const coord = coordinador(obra)
-  const generando = generacion.enCurso || armando
+  const generando = leyendo || armando
   const opFinal = borrador.generada ? borrador.opFinal : null
   const generada = !!opFinal
   const nro = m.nroOrden
@@ -81,7 +81,7 @@ export function EmitirEnviarView() {
   /* El envío manda la OP final de la app: en Monday todavía no está. */
   const local: OrdenLocal | null = opFinal
     ? {
-        ordenId: borrador.ordenId,
+        ordenId: null,
         archivo: opFinal,
         numero: nro.trim(),
         tipo: 'PVC',
@@ -94,7 +94,7 @@ export function EmitirEnviarView() {
   const pedirGenerar = () => {
     if (generando || enviado) return
     const f = [
-      ...(!borrador.ordenId || borrador.etmo.length === 0 ? ['Falta la orden de HETMO: cargala en la etapa anterior.'] : []),
+      ...(!borrador.hetmo ? ['Falta la orden de HETMO: cargala en la etapa anterior.'] : []),
       ...(!m.nroOrden.trim() ? ['Falta el N° de orden.'] : []),
     ]
     if (f.length) {
@@ -103,94 +103,72 @@ export function EmitirEnviarView() {
       setFaltan(f)
       return
     }
-    /* Sin ventana en el medio: tocar "Generar OP final" ya es la decisión, y el escenario sale en
-       el acto. */
+    /* Sin ventana en el medio: tocar "Generar OP final" ya es la decisión, y la lectura sale en el
+       acto. */
     void generar()
   }
   const [faltan, setFaltan] = useState<string[] | null>(null)
 
   /**
-   * Le pide a la automatización la lectura del documento. Las observaciones y los datos de la
-   * medición van A MANO en `correr`: el `extra` del hook se armó con el render anterior.
+   * Lee el listado con Claude y arma el PDF final en la app. Nada va a Monday. Lo del borrador se lee
+   * de la referencia: la lectura tarda, y en el medio puede cambiar.
    */
   const generar = async () => {
     setErrorGen(null)
-    const b = borradorRef.current
-    const idOrden = b.ordenId
-    await generacion.correr({
-      ...datosObservaciones(serializar(b.aberturas)),
-      ...(idOrden ? { itemId: idOrden, pulseId: Number(idOrden), boardId: String(BOARD_ORDENES) } : {}),
-      ordenId: idOrden,
-      obraId: obra.id,
-      assetId: b.etmo[0]?.assetId ?? null,
-      fileName: b.etmo[0]?.nombre ?? null,
-      nroOrden: b.medicion.nroOrden.trim(),
-      tipoOrden: 'PVC',
-      medidoPor: b.medicion.medidoPor,
-      fechaMedicion: b.medicion.fecha ? b.medicion.fecha.split('-').reverse().join('/') : '',
-      observacionMedicion: b.medicion.observacion,
-    })
-  }
+    const pdf = borradorRef.current.hetmo
+    if (!pdf) return
+    setLeyendo(true)
+    let lectura: Awaited<ReturnType<typeof leerListado>>
+    try {
+      lectura = await leerListado(pdf)
+    } catch (e) {
+      setErrorGen(
+        e instanceof ErrorLecturaIA ? e.message : 'No se pudo leer el documento con IA. Volvé a generar la OP final.',
+      )
+      return
+    } finally {
+      setLeyendo(false)
+    }
 
-  /* Terminada la lectura: se arma el PDF final en la app y el envío se habilita. Nada va a Monday. */
-  useEffect(() => {
-    if (generacion.estado.fase !== 'listo') return
-    void (async () => {
-      setArmando(true)
-      try {
-        const b = borradorRef.current
-        const cuerpo = await generacion.esperarRespuesta(20_000)
-        if (cuerpo?.datos == null) {
-          setErrorGen('La automatización no devolvió la lectura del documento. Volvé a generar la OP final.')
-          return
-        }
-        const fresca = await refrescar().catch(() => null)
-        const base = fresca ?? obra
-        const r = await generarOpFinal({
-          etmo: b.etmo[0] ?? null,
-          lectura: cuerpo.datos,
-          obra: base.nombre,
-          direccion: base.ubicacion,
-          celular: base.celCoordinar,
-          nroOrden: b.medicion.nroOrden.trim(),
-          fecha: hoyLocal().split('-').reverse().join('/'),
-          medidoPor: b.medicion.medidoPor,
-          fechaMedicion: b.medicion.fecha ? b.medicion.fecha.split('-').reverse().join('/') : '',
-          observacionOp: b.medicion.observacion,
-          aberturas: b.aberturas,
-        })
-        if (!r.ok || !r.archivo) {
-          setErrorGen(`No se generó la OP final. ${r.errores.join(' · ')}`)
-          return
-        }
-        const nOpHetmo = String(cuerpo.nOpHetmo ?? '').trim()
-        dispatch({
-          type: 'setBorrador',
-          cambios: {
-            generada: true,
-            opFinal: r.archivo,
-            lecturaOp: cuerpo.datos,
-            nOpHetmo: nOpHetmo && !/^-?$/.test(nOpHetmo) ? nOpHetmo : '',
-            /* Otra OP final es otra orden: un envío hecho con la anterior ya no vale. */
-            envio: null,
-          },
-        })
-        if (r.avisos.length) setAvisos(r.avisos)
-      } finally {
-        setArmando(false)
+    setArmando(true)
+    try {
+      const b = borradorRef.current
+      const fresca = await refrescar().catch(() => null)
+      const base = fresca ?? obra
+      const r = await generarOpFinal({
+        hetmo: pdf,
+        deFoto: b.hetmoDeFoto,
+        lectura,
+        obra: base.nombre,
+        direccion: base.ubicacion,
+        celular: base.celCoordinar,
+        nroOrden: b.medicion.nroOrden.trim(),
+        fecha: hoyLocal().split('-').reverse().join('/'),
+        medidoPor: b.medicion.medidoPor,
+        fechaMedicion: b.medicion.fecha ? b.medicion.fecha.split('-').reverse().join('/') : '',
+        observacionOp: b.medicion.observacion,
+        aberturas: b.aberturas,
+      })
+      if (!r.ok || !r.archivo) {
+        setErrorGen(`No se generó la OP final. ${r.errores.join(' · ')}`)
+        return
       }
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generacion.estado.fase])
-
-  /* El escenario de envío toma la OP final del ítem de la OP: se adjunta en 🤖Op V2 Mejorada al
-     tocar "Confirmar y Enviar". Queda anotada como subida, así "Finalizar Operación" no la repite. */
-  const adjuntarParaEnviar = async () => {
-    const b = borradorRef.current
-    const archivo = b.generada ? b.opFinal : null
-    if (!b.ordenId || !archivo || b.opFinalSubida === archivo) return
-    await subirOpFinal(b.ordenId, archivo)
-    dispatch({ type: 'setBorrador', cambios: { opFinalSubida: archivo } })
+      dispatch({
+        type: 'setBorrador',
+        cambios: {
+          generada: true,
+          opFinal: r.archivo,
+          lecturaOp: lectura,
+          /* El N° de OP de HETMO es el número del listado, del encabezado ("9.205"). */
+          nOpHetmo: (lectura.numeroListado ?? '').trim(),
+          /* Otra OP final es otra orden: un envío hecho con la anterior ya no vale. */
+          envio: null,
+        },
+      })
+      if (r.avisos.length) setAvisos(r.avisos)
+    } finally {
+      setArmando(false)
+    }
   }
 
   const verOpFinal = () => {
@@ -201,10 +179,7 @@ export function EmitirEnviarView() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
 
-  const errorCorrida =
-    generacion.estado.fase === 'error'
-      ? (generacion.estado.problema ?? 'Revisá el update que dejó la automatización y volvé a intentar.')
-      : null
+  const errorCorrida: string | null = null
 
   return (
     <section className="view paso-layout obras-v2">
@@ -265,8 +240,8 @@ export function EmitirEnviarView() {
                 {borrador.aberturas.length ? `${escritas} de ${borrador.aberturas.length}` : ''}
               </Fila>
               <Fila label="Documento HETMO">
-                <span className="rvalue-txt" title={borrador.etmo[0]?.nombre}>
-                  {borrador.etmo[0]?.nombre ?? ''}
+                <span className="rvalue-txt" title={borrador.hetmo?.name}>
+                  {borrador.hetmo?.name ?? ''}
                 </span>
               </Fila>
             </div>
@@ -334,7 +309,6 @@ export function EmitirEnviarView() {
           modo="cliente"
           orden={null}
           local={local}
-          antesDeEnviar={adjuntarParaEnviar}
           listo={generada}
           avisoNoListo="Falta generar la OP final. Generala para poder enviarla"
         />
@@ -384,7 +358,7 @@ export function EmitirEnviarView() {
         </AvisoModal>
       )}
 
-      {generacion.enCurso && (
+      {leyendo && (
         <ModalCargando titulo="Generando la Orden de Producción final" detalle="La IA está leyendo el documento…" />
       )}
       {armando && <ModalCargando titulo="Generando la Orden de Producción final" detalle="Armando el PDF de la orden…" />}

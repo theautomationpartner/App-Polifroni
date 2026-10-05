@@ -2,26 +2,27 @@
  * Arma la Orden de Producción final en el navegador. NO la sube a Monday: queda en la app, se
  * envía desde ahí y se adjunta a la OP recién al finalizar la operación (ver `registrarPvc`).
  *
- * Reemplaza a los módulos 39 (hojas a PNG), 59 (armado de datos) y 54 (HTML a PDF) del escenario
- * de generación. Del escenario sólo se usa la lectura de Claude, que llega como `datos` en su
- * respuesta.
+ * Reemplaza al escenario de generación entero: la lectura la hace Claude (`/api/hetmo?modo=listado`)
+ * y las hojas, el armado de datos y el PDF se hacen acá.
  *
  * Todo lo que el documento necesita se valida ANTES de dibujar: si falta algo que la orden no
  * puede llevar vacía (la obra, la dirección, el número, la lectura), no se genera y se dice qué
  * falta. Lo que la IA no pudo leer de un modelo sale con una raya y se avisa.
  */
-import type { ArchivoObra } from '@/types'
+import { LIMITE_EFECTIVO } from '@/services/monday/subidaArchivos'
 import { armarDatosOp, type EntradaOp, type ModeloOp } from './datos'
 import { cargarHojas, recortar, type Dibujo } from './hojas'
 
-/** Límite de la función de Vercel que sube el archivo a Monday (4,5 MB), con margen: se valida
-    acá para no generar una orden que después no se pueda adjuntar al finalizar. */
-const TOPE_BYTES = 4.3 * 1024 * 1024
+/** El tope de subida a Monday por Vercel (4,5 MB, con el margen del multipart): se valida acá para
+    no generar una orden que después no se pueda adjuntar (ver `subidaArchivos.ts`). */
+const TOPE_BYTES = LIMITE_EFECTIVO
 const LOGO = '/logo-polifroni.png'
 
 export interface EntradaGenerar extends EntradaOp {
-  /** La Orden HETMO de la OP: de ahí salen los dibujos. */
-  etmo: ArchivoObra | null
+  /** La Orden HETMO cargada en la app: de ahí salen los dibujos. */
+  hetmo: File | null
+  /** El documento fue una foto, pasada a PDF al cargarla: su única hoja no se recorta por mitades. */
+  deFoto?: boolean
 }
 
 export interface ResultadoGenerar {
@@ -50,13 +51,13 @@ const nombreArchivo = (obra: string, nro: string) =>
 
 export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenerar> {
   const { datos, errores, avisos } = armarDatosOp(e)
-  if (!e.etmo) errores.push('La OP no tiene el PDF original adjunto: de ahí salen los dibujos.')
+  if (!e.hetmo) errores.push('Falta el PDF de HETMO: de ahí salen los dibujos.')
   if (!datos || errores.length) return { ok: false, errores, avisos }
 
   /* ── Los dibujos ──────────────────────────────────────────────────────── */
   let hojas: HTMLCanvasElement[]
   try {
-    hojas = await cargarHojas(e.etmo as ArchivoObra)
+    hojas = await cargarHojas(e.hetmo as File)
   } catch (err) {
     return {
       ok: false,
@@ -70,7 +71,7 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
     )
   }
   /* Una foto no se recorta por mitades: se muestra entera. */
-  const esFoto = !/\.pdf$/i.test((e.etmo as ArchivoObra).nombre)
+  const esFoto = !!e.deFoto || !/\.pdf$/i.test((e.hetmo as File).name)
   const cache = new Map<string, Dibujo | null>()
   const dibujo = (m: ModeloOp): Dibujo | null => {
     if (m.hojaIdx == null || !hojas[m.hojaIdx]) return null

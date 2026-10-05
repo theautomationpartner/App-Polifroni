@@ -10,8 +10,6 @@
  * que lo dibuje.
  */
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { getUrlArchivo } from '@/services/monday'
-import type { ArchivoObra } from '@/types'
 import type { Slot } from './datos'
 
 /**
@@ -30,17 +28,11 @@ const ANCHO_HOJA_PX = 1600
 /** Ancho máximo del recorte que va al PDF. */
 const ANCHO_RECORTE_PX = 520
 
-const esPdf = (archivo: ArchivoObra, tipo: string) =>
-  tipo === 'application/pdf' || /\.pdf$/i.test(archivo.nombre)
+const esPdf = (archivo: File) => archivo.type === 'application/pdf' || /\.pdf$/i.test(archivo.name)
 
-/** Baja la Orden HETMO de la OP y devuelve una imagen por hoja. */
-export async function cargarHojas(archivo: ArchivoObra): Promise<HTMLCanvasElement[]> {
-  const url = await getUrlArchivo(archivo.assetId)
-  const r = await fetch(url)
-  if (!r.ok) throw new Error(`No se pudo bajar la Orden HETMO (HTTP ${r.status}).`)
-  const blob = await r.blob()
-
-  if (!esPdf(archivo, blob.type)) {
+/** La Orden HETMO cargada en la app, una imagen por hoja. */
+export async function cargarHojas(blob: File): Promise<HTMLCanvasElement[]> {
+  if (!esPdf(blob)) {
     /* Una foto: es la única hoja. */
     const imagen = await createImageBitmap(blob)
     const escala = Math.min(1, ANCHO_HOJA_PX / imagen.width)

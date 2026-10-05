@@ -23,6 +23,7 @@
  * capas existe.
  */
 import { leerDeviceToken, olvidarDeviceToken } from '@/lib/deviceToken'
+import { prepararArchivoParaSubir } from './subidaArchivos'
 import { notificarErrorSeguridad, type ClaseErrorSeguridad } from '@/lib/errorSeguridad'
 import { getSessionToken, invalidarSessionToken, sessionTokenEnCache } from '@/lib/mondayAuth'
 
@@ -202,6 +203,9 @@ export async function verificarRespuesta(res: Response, contexto: string): Promi
 function claseDeRechazo(status: number, codigo: string | undefined): ClaseErrorSeguridad {
   if (codigo === 'mfa') return 'segundoFactor'
   if (codigo === 'no_habilitado') return 'sinPermiso'
+  if (codigo === 'sin_equipo') return 'sinEquipo'
+  if (codigo === 'sin_rol') return 'sinRol'
+  if (codigo === 'operacion_no_permitida') return 'operacionNoPermitida'
   if (codigo === 'config') return 'configuracion'
   if (status === 429) return 'demasiadosIntentos'
   return status === 401 ? 'sesion' : 'sinPermiso'
@@ -227,7 +231,11 @@ export async function mondayApi<T>(query: string, variables?: Record<string, unk
  * el binario va en multipart. El `Content-Type` no se setea a mano —lo arma el navegador con su
  * `boundary`—.
  */
-export async function mondaySubirArchivo<T>(query: string, archivo: File): Promise<T> {
+export async function mondaySubirArchivo<T>(query: string, original: File): Promise<T> {
+  /* Las fotos se achican acá y lo que no entra corta con un mensaje claro: en producción esto va a
+     una función de Vercel, que rechaza con 413 cualquier cuerpo de más de 4,5 MB (ver
+     `subidaArchivos.ts`). */
+  const archivo = await prepararArchivoParaSubir(original)
   /* El `FormData` se arma de nuevo en cada intento: un cuerpo ya consumido no se puede reenviar, y
      el reintento por token vencido necesita uno entero. */
   const res = await pedir(ENDPOINT_ARCHIVO, (auth) => {

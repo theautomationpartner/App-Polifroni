@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { Aviso } from '@/components/ui/Aviso'
+import { useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
 import { SoltarArchivo, type EstadoSoltar } from '@/components/ui/SoltarArchivo'
@@ -8,16 +7,17 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useRefrescarObra } from '@/features/shared/PasoNav'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
-import { getArchivosOrden, quitarEtmoDeOrden, subirEtmoAOrden } from '@/services/monday'
+import { ArchivoMuyPesado, esImagen, prepararArchivoParaSubir } from '@/services/monday'
+import { ErrorLecturaIA, aAberturasOp, aVidriosOp, leerHetmo } from '@/services/ia/hetmo'
+import { imagenAPdf } from '@/lib/imagenAPdf'
 import { etiquetaPaso, tipoDe } from '@/lib/pasos'
 import { useApp, useDispatch } from '@/state/hooks'
 import { DatosMedicion } from './DatosMedicion'
 import { DatosObraFaltantes } from './DatosObraFaltantes'
+import { LecturaHetmoModal, type FaseLecturaHetmo } from './LecturaHetmoModal'
 import { ObservacionesAberturas } from './ObservacionesAberturas'
 import { fusionar } from './observaciones'
-import { abrirOrdenDeObra } from './ordenDeObra'
-import { faltaParaLeer } from './requisitos'
-import { useLeerObservaciones } from './useLeerObservaciones'
+import { reservarNumeroDeCarga } from './ordenDeObra'
 import { useNumeroOrden } from './useNumeroOrden'
 
 /**
@@ -25,10 +25,13 @@ import { useNumeroOrden } from './useNumeroOrden'
  *
  * Es un formulario de tres partes:
  *  1. CARGAR la orden de producción de HETMO, en el recuadro de arrastrar y soltar del cobro
- *     CONTADO de La Batea. Es ACÁ donde nace la OP en el tablero de órdenes: antes no tenía nada que
- *     guardar, y entrar a mirar una obra no deja ítems vacíos.
- *  2. Indicar si se cargan observaciones: al soltar el documento se pregunta si la IA lo lee para
- *     armar una caja por abertura. Si se dice que no, el desplegable lo ofrece de nuevo.
+ *     CONTADO de La Batea. El documento queda EN LA APP: en Monday no se crea nada hasta "Finalizar
+ *     Operación", que crea la OP y le sube este original (ver `registrarPvc`). Al cargarlo sólo se
+ *     reserva el N° de orden en la base, porque va impreso en la OP final que se envía.
+ *  2. La lectura con IA (Claude, vía `/api/hetmo`): al soltar el documento se buscan sus vidrios y
+ *     se muestran en una ventana. La IA recibe el PDF directo de la app. La ventana que ofrece generar las observaciones —una caja por abertura—. Si
+ *     ahí se dice que no, la sección de observaciones lo ofrece de nuevo. También se acepta una foto
+ *     del listado: se convierte a PDF antes de subirla.
  *  3. Los datos base de la OP: el desplegable "Datos de Medición" (N° de orden, medido por y
  *     fecha).
  *
@@ -39,13 +42,14 @@ export function CargarHetmoView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-  const { borrador, responsableId, enviado, destino } = useApp()
-  const lectura = useLeerObservaciones(obra.id)
+  const { borrador, enviado, destino } = useApp()
   const numero = useNumeroOrden(obra)
 
   const [subiendo, setSubiendo] = useState(false)
   const [errorCarga, setErrorCarga] = useState('')
-  const [proponerLectura, setProponerLectura] = useState(false)
+  /** La IA está leyendo el documento: los vidrios (al soltarlo) o las observaciones. */
+  const [leyendo, setLeyendo] = useState<'vidrios' | 'observaciones' | null>(null)
+  const [ventana, setVentana] = useState<FaseLecturaHetmo | null>(null)
   const [confirmarQuitar, setConfirmarQuitar] = useState<File | 'quitar' | null>(null)
   const [faltan, setFaltan] = useState<string[] | null>(null)
   const [indice, setIndice] = useState(0)
@@ -53,10 +57,11 @@ export function CargarHetmoView() {
 
   /* Enviada la orden, la carga queda de consulta: lo que se mandó no se cambia. */
   const bloqueado = enviado
-  useAccionEnCurso('Esperá a que termine de cargarse el documento.', subiendo || lectura.leyendo)
+  useAccionEnCurso('Esperá a que termine de procesarse el documento.', subiendo || !!leyendo)
 
-  const tieneEtmo = borrador.etmo.length > 0
-  const falta = faltaParaLeer(obra, tieneEtmo)
+  /** El PDF de HETMO cargado en la app (todavía no está en Monday). */
+  const documento = borrador.hetmo
+  const tieneDocumento = !!documento
   const faltanDatosObra = !obra.ubicacion.trim() || !obra.celCoordinar.trim()
   const escritas = borrador.aberturas.filter((a) => a.texto.trim()).length
   const m = borrador.medicion
@@ -65,39 +70,99 @@ export function CargarHetmoView() {
   const cambiar = (cambios: Partial<typeof borrador>) =>
     dispatch({ type: 'setBorrador', cambios: { ...cambios, generada: false } })
 
-  /* Los vidrios que devuelve la lectura van con la OP (subelementos): se guardan en el borrador. */
-  useEffect(() => {
-    if (lectura.vidrios.length) dispatch({ type: 'setBorrador', cambios: { vidrios: lectura.vidrios } })
-  }, [lectura.vidrios, dispatch])
+  const problemaDe = (e: unknown) =>
+    e instanceof ErrorLecturaIA ? e.message : 'No se pudo procesar el documento. Probá de nuevo en unos segundos.'
 
-  /** Sube el documento a la OP —creándola si todavía no existe— y ofrece leerlo. */
-  const subir = async (archivo: File) => {
+  /**
+   * Primera lectura: los vidrios. Van con la OP (subelementos), así que se guardan en el borrador, y
+   * se muestran en la ventana —aunque no haya ninguno: eso también hay que verlo—.
+   */
+  const buscarVidrios = async (pdf: File) => {
+    setLeyendo('vidrios')
+    try {
+      const lectura = await leerHetmo(pdf, 'vidrios')
+      dispatch({ type: 'setBorrador', cambios: { vidrios: aVidriosOp(lectura.vidrios), generada: false } })
+      setVentana({ fase: 'vidrios' })
+    } catch (e) {
+      setVentana({ fase: 'error', problema: problemaDe(e), reintentar: () => void buscarVidrios(pdf) })
+    } finally {
+      setLeyendo(null)
+    }
+  }
+
+  /**
+   * Segunda lectura: las observaciones, en la misma ventana. Lo que importa son las ABERTURAS (los
+   * modelos del documento): con ellas se arma una caja por abertura y la ventana se cierra sola,
+   * aunque el PDF no traiga ninguna observación escrita —las cajas quedan vacías para que el usuario
+   * las cargue—. Sólo se avisa si el documento no tiene ninguna abertura.
+   */
+  const generarObservaciones = async () => {
+    if (!tieneDocumento) return
+    setVentana({ fase: 'leyendoObs' })
+    setLeyendo('observaciones')
+    try {
+      const lectura = await leerHetmo(documento!, 'observaciones')
+      const leidas = aAberturasOp(lectura.observaciones)
+      /* Lo ya escrito manda: la lectura aporta la LISTA, no pisa observaciones hechas a mano. */
+      if (leidas.length) cambiar({ aberturas: fusionar(leidas, borrador.aberturas) })
+      setIndice(0)
+      setVentana(leidas.length ? null : { fase: 'sinObs' })
+    } catch (e) {
+      setVentana({ fase: 'error', problema: problemaDe(e), reintentar: () => void generarObservaciones() })
+    } finally {
+      setLeyendo(null)
+    }
+  }
+
+  /**
+   * Toma el documento: lo deja en la app, se lo pasa a la IA para buscar sus vidrios y reserva el
+   * N° de orden. A Monday no va nada: eso pasa al finalizar.
+   */
+  const subir = async (elegido: File) => {
+    let archivo = elegido
     setConfirmarQuitar(null)
-    if (!/pdf$/i.test(archivo.type || archivo.name)) {
-      setErrorCarga('El archivo tiene que ser un PDF: es el documento que genera HETMO.')
+    const pdf = /pdf$/i.test(archivo.type || archivo.name)
+    if (!pdf && !esImagen(archivo)) {
+      setErrorCarga('El archivo tiene que ser el PDF que genera HETMO, o una foto del listado.')
       return
     }
     setErrorCarga('')
     setSubiendo(true)
+    let lectura: Promise<void> | null = null
     try {
-      /* Al crear la OP se reserva su número: si otra persona tomó el que se mostraba, el campo
-         pasa al que quedó reservado. */
-      const nueva = borrador.ordenId ? null : await abrirOrdenDeObra(obra, m, responsableId)
-      const id = borrador.ordenId ?? nueva!.id
-      const medicion = nueva && nueva.numero !== m.nroOrden ? { ...m, nroOrden: nueva.numero } : m
-      await subirEtmoAOrden(id, archivo)
-      const { etmo } = await getArchivosOrden(id)
-      lectura.limpiar()
-      cambiar({ ordenId: id, etmo, aberturas: [], vidrios: [], medicion })
+      /* Una foto se convierte en un PDF de una hoja: la OP guarda siempre un PDF. */
+      if (!pdf) {
+        try {
+          archivo = await imagenAPdf(archivo)
+        } catch {
+          setErrorCarga('No se pudo convertir la imagen a PDF. Probá con otra foto o con el PDF de HETMO.')
+          return
+        }
+      }
+      /* El mismo filtro que se aplica al subir: un archivo que no entra en el tope de Vercel se
+         rechaza AHORA, no al finalizar. */
+      archivo = await prepararArchivoParaSubir(archivo)
+      /* Otro documento: los vidrios y las observaciones del anterior ya no valen. */
+      cambiar({ hetmo: archivo, hetmoDeFoto: !pdf, aberturas: [], vidrios: [] })
       setIndice(0)
-      const fresca = await refrescar().catch(() => null)
-      setProponerLectura(!faltaParaLeer(fresca ?? obra, true))
-    } catch {
-      setErrorCarga('No se pudo guardar el documento en Monday. Probá de nuevo en unos segundos.')
-      dispatch({ type: 'errorMonday', accion: 'cargar la orden de HETMO' })
+      lectura = buscarVidrios(archivo)
+      /* Si otra persona tomó el número que se mostraba, el campo pasa al que quedó reservado. Si la
+         base no contesta, se sigue: el número se reserva al finalizar. */
+      const reservado = await reservarNumeroDeCarga(obra, m, borrador.numeroReservado).catch((e) => {
+        console.warn('[numeración] no se pudo reservar el número al cargar', e)
+        return null
+      })
+      if (reservado) cambiar({ medicion: { ...m, nroOrden: reservado }, numeroReservado: true })
+    } catch (e) {
+      if (e instanceof ArchivoMuyPesado) {
+        setErrorCarga(e.message)
+        return
+      }
+      setErrorCarga('No se pudo preparar el documento. Probá de nuevo en unos segundos.')
     } finally {
       setSubiendo(false)
     }
+    await lectura
   }
 
   /* Reemplazar o quitar el documento se lleva las observaciones: son las de ESE documento. Si hay
@@ -107,44 +172,21 @@ export function CargarHetmoView() {
     else void subir(archivo)
   }
 
-  const quitar = async () => {
+  /* El documento vive en la app: quitarlo no toca Monday. */
+  const quitar = () => {
     setConfirmarQuitar(null)
-    if (!borrador.ordenId) return
-    setSubiendo(true)
-    try {
-      await quitarEtmoDeOrden(borrador.ordenId)
-      lectura.limpiar()
-      cambiar({ etmo: [], aberturas: [], vidrios: [] })
-    } catch {
-      dispatch({ type: 'errorMonday', accion: 'quitar el documento' })
-    } finally {
-      setSubiendo(false)
-    }
-  }
-
-  const leer = async () => {
-    setProponerLectura(false)
-    const leidas = await lectura.leer(borrador.ordenId, borrador.etmo[0] ?? null)
-    if (borrador.ordenId) {
-      void getArchivosOrden(borrador.ordenId)
-        .then((a) => dispatch({ type: 'setBorrador', cambios: { etmo: a.etmo } }))
-        .catch(() => {})
-    }
-    if (!leidas) return
-    /* Lo ya escrito manda: la lectura aporta la LISTA, no pisa observaciones hechas a mano. */
-    cambiar({ aberturas: fusionar(leidas, borrador.aberturas) })
-    setIndice(0)
+    cambiar({ hetmo: null, aberturas: [], vidrios: [] })
   }
 
   const continuar = () => {
-    /* Con el documento todavía en proceso no se avanza: la lectura de Make llegaría con la etapa 3
-       ya armada sin sus observaciones, y la OP final saldría incompleta. */
-    if (lectura.leyendo || subiendo) {
-      setProcesando(lectura.leyendo ? 'leyendo' : 'subiendo')
+    /* Con el documento todavía en proceso no se avanza: la lectura llegaría con la etapa 3 ya
+       armada sin sus vidrios ni sus observaciones, y la OP final saldría incompleta. */
+    if (leyendo || subiendo) {
+      setProcesando(leyendo ? 'leyendo' : 'subiendo')
       return
     }
     const f = [
-      ...(!tieneEtmo ? ['Cargá la orden de producción de HETMO.'] : []),
+      ...(!tieneDocumento ? ['Cargá la orden de producción de HETMO.'] : []),
       ...(!m.nroOrden.trim() ? ['Falta el N° de orden en «Datos de Medición».'] : []),
       ...(faltanDatosObra ? ['La obra no tiene la ubicación o el celular a coordinar.'] : []),
     ]
@@ -155,15 +197,8 @@ export function CargarHetmoView() {
     dispatch({ type: 'goto', paso: 'envio' })
   }
 
-  const estadoDrop: EstadoSoltar = subiendo
-    ? 'procesando'
-    : lectura.leyendo
-      ? 'procesando'
-      : errorCarga
-        ? 'error'
-        : tieneEtmo
-          ? 'listo'
-          : 'vacio'
+  const estadoDrop: EstadoSoltar =
+    subiendo || leyendo ? 'procesando' : errorCarga ? 'error' : tieneDocumento ? 'listo' : 'vacio'
 
   return (
     <section className="view paso-layout obras-v2">
@@ -177,38 +212,40 @@ export function CargarHetmoView() {
       <div className="carga-grid">
         <SoltarArchivo
           id="op-hetmo"
-          archivo={borrador.etmo[0]?.nombre ?? null}
+          archivo={documento?.name ?? null}
           estado={estadoDrop}
           titulo={
-            subiendo
-              ? 'Guardando el documento…'
-              : lectura.leyendo
-                ? 'Leyendo el documento…'
-                : errorCarga
+            subiendo || leyendo
+              ? 'Procesando documento…'
+              : errorCarga
                   ? 'No se pudo cargar'
-                  : tieneEtmo
+                  : tieneDocumento
                     ? 'Orden de HETMO cargada'
                     : undefined
           }
           detalle={
-            subiendo
-              ? 'Adjuntándolo a la orden de producción'
-              : lectura.leyendo
-                ? 'La IA está buscando los modelos y las aberturas'
+            leyendo
+              ? leyendo === 'vidrios'
+                ? 'La IA está buscando los vidrios de la orden'
+                : 'La IA está leyendo las observaciones de cada modelo'
+              : subiendo
+                ? 'Preparando el documento'
                 : errorCarga
                   ? errorCarga
-                  : tieneEtmo
+                  : tieneDocumento
                     ? borrador.aberturas.length
                       ? `${borrador.aberturas.length} ${borrador.aberturas.length === 1 ? 'abertura leída' : 'aberturas leídas'}`
                       : 'Sin observaciones cargadas'
-                    : 'Soltá en este área el PDF de la orden de HETMO, o hacé click para elegirlo'
+                    : 'Soltá en este área el PDF de la orden de HETMO (o una foto del listado), o hacé click para elegirlo'
           }
+          accept="application/pdf,.pdf,image/*"
+          formatos="PDF o imagen"
           deshabilitado={bloqueado}
-          onArchivo={(f) => (tieneEtmo ? pedirReemplazo(f) : void subir(f))}
-          onQuitar={tieneEtmo ? () => (escritas > 0 ? setConfirmarQuitar('quitar') : void quitar()) : undefined}
+          onArchivo={(f) => (tieneDocumento ? pedirReemplazo(f) : void subir(f))}
+          onQuitar={tieneDocumento ? () => (escritas > 0 ? setConfirmarQuitar('quitar') : quitar()) : undefined}
           accion={
-            tieneEtmo && !borrador.aberturas.length && !falta
-              ? { texto: 'Cargar observaciones', onClick: () => void leer() }
+            tieneDocumento && !borrador.aberturas.length && !leyendo
+              ? { texto: 'Cargar observaciones', onClick: () => void generarObservaciones() }
               : undefined
           }
         />
@@ -245,7 +282,7 @@ export function CargarHetmoView() {
                 aberturas={borrador.aberturas}
                 indice={indice}
                 onIndice={setIndice}
-                disabled={lectura.leyendo || bloqueado}
+                disabled={!!leyendo || bloqueado}
                 onTexto={(i, valor) =>
                   cambiar({ aberturas: borrador.aberturas.map((a, n) => (n === i ? { ...a, texto: valor } : a)) })
                 }
@@ -254,19 +291,18 @@ export function CargarHetmoView() {
               <div className="obs-vacio">
                 <i className="fas fa-wand-magic-sparkles" />
                 <p>
-                  {tieneEtmo
+                  {tieneDocumento
                     ? 'La IA lee el documento y arma una caja por abertura para escribir su observación.'
                     : 'Primero cargá la orden de HETMO: las aberturas salen del documento.'}
                 </p>
-                {tieneEtmo && (
+                {tieneDocumento && (
                   <button
                     type="button"
                     className="btn btn-out btn--sm"
-                    disabled={!!falta || lectura.leyendo || bloqueado}
-                    title={falta || undefined}
-                    onClick={() => void leer()}
+                    disabled={!!leyendo || bloqueado}
+                    onClick={() => void generarObservaciones()}
                   >
-                    {lectura.leyendo ? (
+                    {leyendo === 'observaciones' ? (
                       <>
                         <i className="fas fa-circle-notch spin" /> Leyendo el documento…
                       </>
@@ -277,16 +313,6 @@ export function CargarHetmoView() {
                     )}
                   </button>
                 )}
-              </div>
-            )}
-            {lectura.estado.fase === 'error' && (
-              <div style={{ marginTop: 12 }}>
-                <Aviso tono="err">{lectura.estado.problema}</Aviso>
-              </div>
-            )}
-            {falta && tieneEtmo && (
-              <div style={{ marginTop: 12 }}>
-                <Aviso tono="warn">{falta} La lectura de observaciones los necesita.</Aviso>
               </div>
             )}
           </section>
@@ -309,25 +335,13 @@ export function CargarHetmoView() {
         />
       )}
 
-      {proponerLectura && (
-        <Modal
-          title="¿Querés cargar observaciones?"
-          icon={<i className="fas fa-wand-magic-sparkles modal-icon--info" />}
-          onClose={() => setProponerLectura(false)}
-          actions={
-            <>
-              <button type="button" className="btn btn-out" onClick={() => setProponerLectura(false)}>
-                No cargar observaciones
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => void leer()}>
-                <i className="fas fa-wand-magic-sparkles" /> Cargar observaciones
-              </button>
-            </>
-          }
-        >
-          La IA lee el documento y arma una caja por abertura. Si ahora no, lo podés hacer después
-          desde «Cargar Observaciones».
-        </Modal>
+      {ventana && (
+        <LecturaHetmoModal
+          vidrios={borrador.vidrios}
+          estado={ventana}
+          onGenerarObservaciones={() => void generarObservaciones()}
+          onClose={() => setVentana(null)}
+        />
       )}
 
       {confirmarQuitar && (
@@ -343,7 +357,7 @@ export function CargarHetmoView() {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => (confirmarQuitar === 'quitar' ? void quitar() : void subir(confirmarQuitar))}
+                onClick={() => (confirmarQuitar === 'quitar' ? quitar() : void subir(confirmarQuitar))}
               >
                 {confirmarQuitar === 'quitar' ? 'Quitar igual' : 'Reemplazar igual'}
               </button>
@@ -357,12 +371,12 @@ export function CargarHetmoView() {
 
       {procesando && (
         <AvisoModal
-          titulo={procesando === 'leyendo' ? 'Se están leyendo las observaciones' : 'Se está cargando el documento'}
+          titulo={procesando === 'leyendo' ? 'Se está procesando el documento' : 'Se está cargando el documento'}
           onClose={() => setProcesando(null)}
         >
           {procesando === 'leyendo'
-            ? 'La IA todavía está procesando la orden de HETMO para armar las observaciones por abertura. Esperá a que termine para continuar: si avanzás ahora, la OP final saldría sin ellas.'
-            : 'La orden de HETMO todavía se está guardando en el sistema. Esperá a que termine para continuar.'}
+            ? 'La IA todavía está procesando la orden de HETMO para leer sus vidrios y observaciones. Esperá a que termine para continuar: si avanzás ahora, la OP final saldría sin ellos.'
+            : 'La orden de HETMO todavía se está preparando. Esperá a que termine para continuar.'}
         </AvisoModal>
       )}
 

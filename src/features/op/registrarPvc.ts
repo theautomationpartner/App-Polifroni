@@ -6,6 +6,7 @@ import {
   guardarNroHetmo,
   limpiarEstado,
   renombrarOrdenEmitida,
+  subirEtmoAOrden,
   subirOpFinal,
   terminarVisita,
 } from '@/services/monday'
@@ -13,13 +14,17 @@ import type { BorradorOp } from '@/state/appState'
 import type { Obra } from '@/types'
 import { normalizarNombre } from './observaciones'
 import { cantidadDe, cantidadesPorModelo } from './opFinal/datos'
+import { abrirOrdenDeObra } from './ordenDeObra'
 import { registrarEnvioLocal } from './registrarEnvioLocal'
 
 /**
  * Registra en Monday la OP de PVC al tocar "Finalizar Operación". "Generar OP final" sólo arma el
  * PDF en la app: todo lo que queda escrito en el tablero se escribe acá.
  *
- * La OP ya existe (nació al cargar la orden de HETMO, con el documento adjunto). En orden:
+ * Recién ACÁ se escribe en Monday: hasta ahora la OP no existía y los documentos vivían en la app.
+ * En orden:
+ *  0. Crea la OP en el tablero de órdenes (con el número reservado al cargar el documento) y le sube
+ *     el PDF original de HETMO a `🤖OP OriginaL`.
  *  1. Los datos de la medición.
  *  2. Con la OP final generada: los subelementos —una observación por abertura y un renglón por
  *     vidrio, con la cantidad TOTAL a pedir: la de su línea por las aberturas del modelo—, el N° de
@@ -28,8 +33,8 @@ import { registrarEnvioLocal } from './registrarEnvioLocal'
  *     la obra: hablan de una orden anterior, no de ésta.
  *  4. El número usado.
  *
- * `avanzar` va guardando lo que ya quedó hecho: un reintento no vuelve a subir la OP final ni
- * duplica los subelementos.
+ * `avanzar` va guardando lo que ya quedó hecho: un reintento no vuelve a crear la OP, no vuelve a
+ * subir los archivos ni duplica los subelementos.
  */
 export async function registrarPvc({
   obra,
@@ -42,9 +47,20 @@ export async function registrarPvc({
   responsableId: string | null
   avanzar: (cambios: Partial<BorradorOp>) => void
 }): Promise<void> {
-  const id = b.ordenId
-  if (!id) throw new Error('La OP todavía no existe en el tablero.')
-  const m = b.medicion
+  const original = b.hetmo
+  if (!original) throw new Error('No hay una orden de HETMO cargada.')
+  let m = b.medicion
+  let id = b.ordenId
+  if (!id) {
+    const nueva = await abrirOrdenDeObra(obra, m, responsableId, b.numeroReservado)
+    id = nueva.id
+    m = { ...m, nroOrden: nueva.numero }
+    avanzar({ ordenId: id, medicion: m })
+  }
+  if (b.archivoSubido !== original) {
+    await subirEtmoAOrden(id, original)
+    avanzar({ archivoSubido: original })
+  }
   const nro = m.nroOrden.trim()
   const opFinal = b.generada ? b.opFinal : null
 

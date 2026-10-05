@@ -4,6 +4,10 @@ import { getMedidores } from '@/services/monday'
 
 /** La opción para quien no figura en el legajo. Al elegirla aparece el campo para escribirlo. */
 export const OTRO = 'Otro'
+/** Cuando midió el propio cliente: va al final, junto a "Otro", fuera del legajo. */
+export const CLIENTE = 'Cliente'
+/** Las opciones fijas del final de la lista, siempre visibles aunque se filtre. */
+const FIJAS = [CLIENTE, OTRO]
 
 export interface Medicion {
   nroOrden: string
@@ -33,7 +37,7 @@ export const medicionInicial = (): Medicion => ({
 
 /**
  * Selector con buscador. Son veintitantas personas: con una lista a secas hay que leerlas todas
- * para encontrar una, y escribiendo tres letras aparece sola. "Otro" va siempre al final, fuera
+ * para encontrar una, y escribiendo tres letras aparece sola. "Cliente" y "Otro" van siempre al final, fuera
  * del filtro, para que no desaparezca justo cuando el nombre buscado no está.
  */
 function SelectPersona({
@@ -71,7 +75,7 @@ function SelectPersona({
           o.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(q),
         )
       : opciones
-    return [...base, OTRO]
+    return [...base.filter((o) => !FIJAS.includes(o)), ...FIJAS]
   }, [busqueda, opciones])
 
   useEffect(() => {
@@ -155,7 +159,8 @@ function SelectPersona({
                   'med-op',
                   i === activo ? 'med-op--activo' : '',
                   o === valor ? 'med-op--elegido' : '',
-                  o === OTRO ? 'med-op--otro' : '',
+                  FIJAS.includes(o) ? 'med-op--otro' : '',
+                  o === FIJAS[0] ? 'med-op--primera-fija' : '',
                 ].join(' ')}
                 onMouseEnter={() => setActivo(i)}
                 onClick={() => elegir(o)}
@@ -163,6 +168,11 @@ function SelectPersona({
                 {o === OTRO ? (
                   <>
                     <i className="fas fa-user-pen" /> Otro <span>no está en la lista</span>
+                  </>
+                ) : o === CLIENTE ? (
+                  <>
+                    <i className="fas fa-user-pen" /> Cliente <span>lo midió el cliente</span>
+                    {o === valor && <i className="fas fa-check" />}
                   </>
                 ) : (
                   <>
@@ -173,7 +183,7 @@ function SelectPersona({
               </li>
             ))}
           </ul>
-          {filtradas.length === 1 && busqueda && (
+          {filtradas.length === FIJAS.length && busqueda && (
             <p className="med-menu-nota">Nadie coincide con «{busqueda}».</p>
           )}
         </div>
