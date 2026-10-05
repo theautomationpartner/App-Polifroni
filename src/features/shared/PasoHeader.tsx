@@ -7,9 +7,10 @@ import { Stepper } from '@/components/ui/Stepper'
 import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { etiquetasPasos, tipoDe } from '@/lib/pasos'
 import { comoUsuario } from '@/services/monday'
-import { OPERACIONES, PASOS, indiceDe } from '@/state/appState'
+import { presupuestoEnCurso } from '@/features/presupuesto/borrador'
+import { OPERACIONES, PASOS, areaPermitida, conEtapas, indiceDe, operacionesDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
-import type { Operacion, Proceso } from '@/types'
+import type { Operacion, Proceso, Rol } from '@/types'
 
 /** Item de la barra: rótulo arriba, control abajo (mismo patrón que La Batea). */
 /**
@@ -80,14 +81,17 @@ export function TopSel({ label, children }: { label: string; children: ReactNode
  * de operación descarta lo cargado.
  */
 function OperacionSelector() {
-  const { operacion, obra, accionEnCurso } = useApp()
+  const { proceso, operacion, obra, turno, presupuesto, accionEnCurso, usuario } = useApp()
   const dispatch = useDispatch()
   const [pendiente, setPendiente] = useState<Operacion | null>(null)
   const actual = OPERACIONES.find((o) => o.id === operacion)
+  /* Con trabajo cargado —una obra, el cliente de un turno o lo elegido de un presupuesto— cambiar de
+     operación lo descarta. */
+  const hayTrabajo = Boolean(obra || turno.cliente || presupuestoEnCurso(presupuesto))
 
   const elegir = (op: Operacion) => {
     if (op === operacion || accionEnCurso) return
-    if (!obra) {
+    if (!hayTrabajo) {
       dispatch({ type: 'setOperacion', operacion: op })
       return
     }
@@ -99,7 +103,7 @@ function OperacionSelector() {
       <span className="topsel-op" title={accionEnCurso ?? undefined}>
         <Dropdown<Operacion>
           label={<span className={actual ? '' : 'selbox-ph'}>{actual?.titulo ?? 'Seleccionar...'}</span>}
-          items={OPERACIONES.map((o) => o.id)}
+          items={operacionesDe(proceso, usuario?.roles).map((o) => o.id)}
           itemKey={(op) => op}
           esElegido={(op) => op === operacion}
           renderItem={(op) => OPERACIONES.find((o) => o.id === op)?.titulo ?? op}
@@ -146,8 +150,14 @@ const INICIO = 'inicio'
 /** Prefijo de las áreas que todavía no están: se listan apagadas. */
 const PROXIMAMENTE = 'pronto:'
 type OpcionArea = string
-/** Las opciones del selector de área: Inicio primero, después todas las áreas en su orden. */
-const OPCIONES_AREA: OpcionArea[] = [INICIO, ...PROCESOS.map((p) => p.id ?? `${PROXIMAMENTE}${p.titulo}`)]
+/**
+ * Las opciones del selector de área: Inicio primero, después las áreas en su orden. Las que el team
+ * del usuario no habilita no se listan; las que todavía no están, sí (apagadas).
+ */
+const opcionesArea = (roles: readonly Rol[] | undefined): OpcionArea[] => [
+  INICIO,
+  ...PROCESOS.filter((p) => !p.id || areaPermitida(p.id, roles)).map((p) => p.id ?? `${PROXIMAMENTE}${p.titulo}`),
+]
 
 /**
  * Operación y usuario: misma ubicación y diseño en todas las pantallas (el `SelectoresOperacion`
@@ -155,7 +165,7 @@ const OPCIONES_AREA: OpcionArea[] = [INICIO, ...PROCESOS.map((p) => p.id ?? `${P
  * tarjeta que se eligió en la pantalla inicial, y tocarla vuelve ahí.
  */
 export function SelectoresOperacion({ children }: { children?: ReactNode }) {
-  const { proceso, obra, accionEnCurso } = useApp()
+  const { proceso, obra, turno, presupuesto, accionEnCurso, usuario } = useApp()
   const dispatch = useDispatch()
   const seccion = procesoDe(proceso)
   /** Se eligió ir al inicio u otra área con una operación en curso: se pregunta antes. */
@@ -170,7 +180,7 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
   const elegirArea = (destino: OpcionArea) => {
     if (accionEnCurso) return
     if (destino !== INICIO && destino === proceso) return
-    if (obra) setSalir(destino)
+    if (obra || turno.cliente || presupuestoEnCurso(presupuesto)) setSalir(destino)
     else ir(destino)
   }
 
@@ -186,12 +196,9 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
       >
         <LogoEmpresa />
       </button>
-      {/* El ÁREA va aparte, afuera del rótulo: "Seleccionar tipo de operación" es del selector, no
-          del área. En el inicio todavía no hay área: el recuadro queda vacío y no hay flecha ni
-          selector —la operación depende del área—. Elegida una tarjeta, aparece su nombre, la
-          flecha y el selector de sus operaciones. */}
       {/* El ÁREA es un desplegable con "Inicio" primero y todas las áreas después; las que todavía no
-          están se ven, apagadas. En el inicio no hay área elegida: dice "Seleccionar...". */}
+          están se ven, apagadas. En el inicio —el estado inicial de la app— muestra "Inicio".
+          Elegida un área, aparece su nombre, la flecha y el selector de sus operaciones. */}
       <TopSel label="Área:">
         <div className="topsel-ruta">
           <span className="topsel-area" title={accionEnCurso ?? undefined}>
@@ -202,12 +209,14 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
                     <i className={`fas ${seccion.icono} topsel-area-ic`} /> {seccion.titulo}
                   </span>
                 ) : (
-                  <span className="selbox-ph">Seleccionar...</span>
+                  <span className="selbox-val">
+                    <i className="fas fa-house topsel-area-ic" /> Inicio
+                  </span>
                 )
               }
-              items={OPCIONES_AREA}
+              items={opcionesArea(usuario?.roles)}
               itemKey={(o) => o}
-              esElegido={(o) => o !== INICIO && o === proceso}
+              esElegido={(o) => (o === INICIO ? proceso === null : o === proceso)}
               esInactivo={(o) => o.startsWith(PROXIMAMENTE)}
               renderItem={(o) => {
                 if (o === INICIO) {
@@ -289,10 +298,10 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
  * hacia adelante sin perder lo cargado. Las futuras quedan bloqueadas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { operacion, destino, obra, paso, pasoMax, accionEnCurso } = useApp()
+  const { operacion, destino, obra, paso, pasoMax, accionEnCurso, presupuesto } = useApp()
   const dispatch = useDispatch()
-  const conPasos = operacion === 'enviar'
-  const etapas = etiquetasPasos(destino, tipoDe(obra))
+  const conPasos = conEtapas(operacion)
+  const etapas = etiquetasPasos(destino, tipoDe(obra), operacion, presupuesto.modo)
 
   return (
     <header className="paso-header">

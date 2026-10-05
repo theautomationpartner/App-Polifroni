@@ -23,12 +23,29 @@ const PAUSA_ENVIADO_MS = 900
  * (Aluminio y PVC), que no dejan nada en el tablero hasta este botón: la orden, su PDF y su envío
  * se registran recién acá, con la ventana de espera arriba.
  */
+/** Lo que dicen el cierre y sus ventanas. Por defecto, los de la Orden de Producción. */
+export interface TextosFinalizar {
+  /** El título del cierre, con lo enviado. */
+  enviado: string
+  /** El título del cierre sin enviar y sin nada que registrar. */
+  sinEnviar: string
+  preguntaTitulo: string
+  pregunta: string
+  registrando: string
+  registrandoDetalle: string
+  errorTitulo: string
+  error: string
+}
+
 export function FinalizarOperacion({
   detalle,
   registrar,
+  textos,
 }: {
   detalle?: string
   registrar?: () => Promise<void>
+  /** Otra operación que no es una OP (el presupuesto): sus propios textos. */
+  textos?: TextosFinalizar
 }) {
   const { enviado, accionEnCurso, destino } = useApp()
   const dispatch = useDispatch()
@@ -62,7 +79,8 @@ export function FinalizarOperacion({
            escribió queda en el borrador: el reintento reusa la misma OP. */
         console.warn('[finalizar] no se pudo registrar la orden', e)
         setError(
-          'Monday no respondió al intentar registrar la orden. Reintentá en unos segundos; si la falla persiste, contactate con el soporte de TAP.',
+          textos?.error ??
+            'Monday no respondió al intentar registrar la orden. Reintentá en unos segundos; si la falla persiste, contactate con el soporte de TAP.',
         )
         return
       } finally {
@@ -72,7 +90,11 @@ export function FinalizarOperacion({
     dispatch({
       type: 'exito',
       exito: {
-        texto: enviado
+        texto: textos
+          ? enviado
+            ? textos.enviado
+            : textos.sinEnviar
+          : enviado
           ? destino === 'taller'
             ? 'OP enviada al taller'
             : 'OP enviada al cliente'
@@ -102,7 +124,7 @@ export function FinalizarOperacion({
 
       {preguntar && (
         <Modal
-          title="La orden todavía no se envió"
+          title={textos?.preguntaTitulo ?? 'La orden todavía no se envió'}
           icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
           onClose={() => setPreguntar(false)}
           actions={
@@ -116,7 +138,9 @@ export function FinalizarOperacion({
             </>
           }
         >
-          {registrar
+          {textos
+            ? textos.pregunta
+            : registrar
             ? 'La orden se registra en el sistema, pero no le llegó a nadie. Podés mandarla después desde «Consultar órdenes de producción».'
             : 'Lo que se cargó queda guardado en el tablero, pero la orden no le llegó a nadie. Podés mandarla después desde «Consultar órdenes de producción».'}
         </Modal>
@@ -124,9 +148,13 @@ export function FinalizarOperacion({
 
       {registrando && (
         <ModalCargando
-          titulo={enviado ? 'Registrando orden y envío en el sistema...' : 'Registrando orden en el sistema...'}
+          titulo={
+            textos?.registrando ?? (enviado ? 'Registrando orden y envío en el sistema...' : 'Registrando orden en el sistema...')
+          }
           detalle={
-            enviado
+            textos
+              ? textos.registrandoDetalle
+              : enviado
               ? 'Guardamos la orden de producción en Monday con su PDF y dejamos constancia del envío. Esperá unos segundos.'
               : 'Guardamos la orden de producción en Monday con su PDF. Esperá unos segundos.'
           }
@@ -134,7 +162,7 @@ export function FinalizarOperacion({
       )}
 
       {error && (
-        <AvisoModal titulo="No se pudo registrar la orden" onClose={() => setError(null)}>
+        <AvisoModal titulo={textos?.errorTitulo ?? 'No se pudo registrar la orden'} onClose={() => setError(null)}>
           {error}
         </AvisoModal>
       )}

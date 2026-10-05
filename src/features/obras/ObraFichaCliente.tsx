@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react'
+import { Donut } from '@/components/ui/Donut'
+import { colorCancelado, porcentajeCancelado } from '@/lib/cancelado'
 import { importe } from '@/lib/format'
 import { formatoMonday } from '@/lib/destinatario'
 import { coordinador } from './coordinador'
@@ -42,6 +44,7 @@ export function ObraFichaCliente({ obra, cargando = false, children }: { obra: O
   const total = obra ? aNumero(obra.totalPactado) : null
   const saldo = obra ? aNumero(obra.saldo) : null
   const cancelado = total !== null && saldo !== null ? total - saldo : null
+  const pct = obra ? porcentajeCancelado(obra.pctCancelado, cancelado, total) : null
   const situacion = obra ? situacionOrdenes(obra) : null
   const coord = obra ? coordinador(obra) : null
   const cel = obra ? formatoMonday(obra.celCoordinar) : ''
@@ -137,18 +140,29 @@ export function ObraFichaCliente({ obra, cargando = false, children }: { obra: O
       <hr className="divider" />
 
       <section className="credito-grupo">
-        <div className="kpi-grid kpi-grid--3">
+        {/* Primero lo pactado, después lo que falta cobrar y al final lo cobrado, con la torta del
+            porcentaje cancelado a la derecha. */}
+        <div className="kpi-grid kpi-grid--3 kpi-grid--torta">
           <div className="kpi-card">
             <span className="kpi-label">Total obra pactado</span>
             {val(dinero(total))}
           </div>
           <div className="kpi-card">
+            <span className="kpi-label">Pendiente de cobro</span>
+            {val(dinero(saldo), saldo && saldo > 0 ? 'v-red' : '')}
+          </div>
+          <div className="kpi-card">
             <span className="kpi-label">Cancelado</span>
             {val(dinero(cancelado), 'v-green')}
           </div>
-          <div className="kpi-card">
-            <span className="kpi-label">Pendiente de cobro</span>
-            {val(dinero(saldo), saldo && saldo > 0 ? 'v-red' : '')}
+          <div className="kpi-torta" aria-label="Porcentaje cancelado">
+            <span className="kpi-torta-t">Equivale a:</span>
+            {vacio || pct === null ? (
+              <span className="skeleton kpi-torta-sk" />
+            ) : (
+              <Donut porcentaje={pct} color={colorCancelado(pct)} etiqueta="" size="md" />
+            )}
+            <span className="kpi-torta-l">cancelado</span>
           </div>
         </div>
 

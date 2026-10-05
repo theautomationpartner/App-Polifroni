@@ -10,6 +10,9 @@
  *                            │                    │  ▲ reenviar                         │
  *                            │                    ▼  │                                  ▼
  *                            │               NO Confirmado                        Enviada a taller
+ *                            │                    │                                     │ taller
+ *                            │                    │                                     ▼
+ *                            │                    │                          Produccion Completada
  *                            └────────────────────┴───────────── cancelar ──▶ Cancelada
  *
  * Regla de negocio: una OP NO se modifica ni se borra. Si el cliente pide un cambio, se cancela y
@@ -28,6 +31,8 @@ export const ETIQUETA_OP = {
      (`create_labels_if_missing`), así el tablero no necesita un cambio manual antes de usarlas. */
   taller: 'Enviada a Taller',
   cancelada: 'Cancelada',
+  /* La marca el team Produccion cuando el taller terminó la orden ("Completar producción"). */
+  completada: 'Produccion Completada',
 } as const
 
 export type EstadoOrden =
@@ -37,6 +42,7 @@ export type EstadoOrden =
   | 'confirmada'
   | 'rechazada'
   | 'taller'
+  | 'completada'
   | 'cancelada'
 
 /**
@@ -51,6 +57,8 @@ export function estadoDeOrden(etiqueta: string, tieneOpFinal: boolean): EstadoOr
   switch (etiqueta.trim()) {
     case ETIQUETA_OP.cancelada:
       return 'cancelada'
+    case ETIQUETA_OP.completada:
+      return 'completada'
     case ETIQUETA_OP.taller:
       return 'taller'
     case ETIQUETA_OP.confirmada:
@@ -75,6 +83,7 @@ export const VISTA_ESTADO: Record<EstadoOrden, { rotulo: string; color: string; 
   confirmada: { rotulo: 'Confirmada', color: '#00c875', icono: 'fa-circle-check' },
   rechazada: { rotulo: 'No confirmada', color: '#df2f4a', icono: 'fa-circle-xmark' },
   taller: { rotulo: 'Enviada a taller', color: '#9d50dd', icono: 'fa-industry' },
+  completada: { rotulo: 'Producción completada', color: '#ff6d3b', icono: 'fa-flag-checkered' },
   cancelada: { rotulo: 'Cancelada', color: '#df2f4a', icono: 'fa-ban' },
 }
 
@@ -88,7 +97,8 @@ export type AccionOrden = 'enviar' | 'reenviar' | 'taller' | 'cancelar'
  * - Al taller sólo va una OP Confirmada. Sin la confirmación no se fabrica.
  * - Una OP rechazada no se reenvía: el cliente pidió un cambio, y un cambio es cancelar y generar
  *   otra.
- * - Enviada a taller y Cancelada son finales: sólo se consultan.
+ * - Enviada a taller, Producción completada y Cancelada no admiten ninguna de estas acciones. La
+ *   única salida de Enviada a taller es completar la producción (ver `completable`).
  * - Un borrador se puede cancelar: es la forma de limpiar los que quedaron a medio hacer.
  */
 const ACCIONES: Record<EstadoOrden, readonly AccionOrden[]> = {
@@ -98,6 +108,7 @@ const ACCIONES: Record<EstadoOrden, readonly AccionOrden[]> = {
   confirmada: ['taller', 'cancelar'],
   rechazada: ['cancelar'],
   taller: [],
+  completada: [],
   cancelada: [],
 }
 
@@ -128,6 +139,7 @@ export const FILTROS_CONSULTA: readonly EstadoOrden[] = [
   'pendiente',
   'confirmada',
   'taller',
+  'completada',
   'rechazada',
   'cancelada',
   'borrador',
@@ -150,3 +162,6 @@ export const aptaParaTaller = (estado: EstadoOrden, envioTaller: string | undefi
 /** La OP ya llegó al taller (o está llegando): el estado final, o el envío en curso/hecho. */
 export const enElTaller = (estado: EstadoOrden, envioTaller: string | undefined): boolean =>
   estado === 'taller' || (estado === 'confirmada' && yaEnviadaAlTaller(envioTaller))
+
+/** "Completar producción": sólo una OP Enviada a taller pasa a Producción completada. */
+export const completable = (estado: EstadoOrden): boolean => estado === 'taller'

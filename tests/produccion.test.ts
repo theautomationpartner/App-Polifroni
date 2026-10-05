@@ -17,6 +17,7 @@ import {
   accionesDe,
   admite,
   aptaParaTaller,
+  completable,
   enElTaller,
   estadoDeOrden,
   type EstadoOrden,
@@ -33,6 +34,11 @@ import {
 import { etiquetasPasos, ordenesVivas, situacionOrdenes, textoSituacion, tipoDe } from '../src/lib/pasos'
 import { validarEntrada } from '../src/features/obras/validaciones'
 import { fechaRecordatorio } from '../src/lib/recordatorio'
+import { colorCancelado, porcentajeCancelado } from '../src/lib/cancelado'
+import { composicion, consolidar, ordenParaCortes, textoSolicitud } from '../src/lib/vidrios'
+import { aAberturasOp, aVidriosOp } from '../src/lib/lecturaHetmo'
+import { validarTelWsp } from '../api/_telWsp'
+import { enlaceConfirmacion, textoReenvio } from '../api/_mensajeOp'
 import type { Obra } from '../src/types'
 
 /* ── Un estado por OP ─────────────────────────────────────────────────────────────────────────── */
@@ -176,3 +182,99 @@ assert.equal(fechaRecordatorio(new Date(2026, 9, 2, 10, 0)), '2026-10-07')
 assert.equal(fechaRecordatorio(new Date(2026, 9, 2, 23, 30)), '2026-10-07', 'de noche sigue siendo el día local')
 assert.equal(fechaRecordatorio(new Date(2026, 9, 29)), '2026-11-03', 'cruza de mes')
 assert.equal(fechaRecordatorio(new Date(2026, 11, 29)), '2027-01-03', 'cruza de año')
+
+/* ── Vidrios: composición y cortes consolidados para el proveedor ─────────────────────────────── */
+{
+  const v = (modelo: string, comp1: string, camara: string, comp2: string, ancho: string, alto: string, cantidad: number | null) =>
+    ({ modelo, comp1, camara, comp2, ancho, alto, cantidad })
+  assert.equal(composicion(v('V1', '4', '12', '4', '843', '1.013', 1)), '4 + 12 + 4', 'DVH')
+  assert.equal(composicion(v('V2', '3+3', '', '', '500', '700', 1)), '3+3', 'simple')
+  const cortes = consolidar([
+    { op: 'IDOP-071', vidrio: v('V1', '4', '12', '4', '843', '1.013', 2) },
+    { op: 'IDOP-072', vidrio: v('V7', '4', '12', '4', '843', '1013', 1) },
+    { op: 'IDOP-071', vidrio: v('V2', '4', '12', '4', '459', '923', 1) },
+    { op: 'IDOP-071', vidrio: v('M1', '3+3', '', '', '500', '700', null) },
+  ])
+  assert.equal(cortes.length, 3, 'los cortes iguales se juntan aunque la medida venga con o sin punto de miles')
+  assert.equal(cortes[0].composicion, '3+3', 'ordenados por composición')
+  assert.equal(cortes[0].sinCantidad, true, 'sin cantidad se marca para revisar')
+  assert.equal(cortes[1].cantidad, 3, 'suma las piezas de las dos OP')
+  assert.deepEqual(cortes[1].origen, ['IDOP-071 · V1', 'IDOP-072 · V7'])
+  assert.equal(cortes[2].ancho, '459', 'dentro de una composición, de la más grande a la más chica')
+  assert.match(textoSolicitud('Obra X', cortes), /Total: 4 piezas/)
+}
+
+/* ── % cancelado de la obra: el valor y el color de la torta ───────────────────────────────────── */
+assert.equal(porcentajeCancelado('96%', null, null), 96)
+assert.equal(porcentajeCancelado('', 2880, 10000), 28.8, 'fórmula vacía: se calcula con los importes')
+assert.equal(porcentajeCancelado('', null, null), null)
+assert.equal(colorCancelado(69.9), '#e2445c', 'menos del 70: rojo')
+assert.equal(colorCancelado(0), '#e2445c')
+assert.equal(colorCancelado(70), '#ff9f1c', '70 a 90: amarillo anaranjado')
+assert.equal(colorCancelado(89), '#ff9f1c')
+assert.equal(colorCancelado(90), '#00c875', '90 a 100: verde')
+assert.equal(colorCancelado(100), '#00c875')
+
+/* ── Qué órdenes entran en una solicitud de cortes ─────────────────────────────────────────────── */
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 4 }), true)
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Solicitados', vidrios: 4 }), false, 'ya pedidos')
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Colocados', vidrios: 4 }), false)
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Cancelados', vidrios: 4 }), false)
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: '', vidrios: 4 }), false, 'sin estado: no')
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 0 }), false, 'sin vidrios')
+assert.equal(ordenParaCortes({ enTaller: false, estadoVidrios: 'Pend de Solicitar', vidrios: 4 }), false, 'no salió al taller')
+
+/* ── La respuesta de la lectura de HETMO con Claude ────────────────────────────────────────────── */
+{
+  const base = { composicion: '3+3/12/4', terminacion: 'INC', ancho: '696', alto: '1.696', cant: 1 }
+  const [dvh] = aVidriosOp([{ ...base, modelo: 'v2', comp1: '3+3', camara: '12', comp2: '4' }])
+  assert.deepEqual(dvh, { modelo: 'V2', comp1: '3+3', camara: '12', comp2: '4', ancho: '696', alto: '1.696', cant: 1 })
+  const [simple] = aVidriosOp([{ ...base, modelo: 'v1', composicion: '4', comp1: null, camara: null, comp2: null }])
+  assert.equal(simple.comp1, '4', 'composición que no se parte: entera en Comp 1')
+  assert.equal(simple.camara, null)
+  const [sinCant] = aVidriosOp([{ ...base, modelo: null, comp1: '4', camara: '9', comp2: '4', cant: null }])
+  assert.equal(sinCant.cant, null, 'sin "ud:": cantidad nula, no 0')
+  assert.equal(sinCant.modelo, '')
+  assert.equal(sinCant.alto, '1.696', 'las medidas quedan como texto, con el punto de miles')
+
+  assert.deepEqual(
+    aAberturasOp([
+      { nombre: 'v1', observacion: ' Herraje negro ' },
+      { nombre: '', observacion: null },
+    ]),
+    [
+      { nombre: 'V1', texto: 'Herraje negro' },
+      { nombre: 'V2', texto: '' },
+    ],
+    'sin nombre: se numera por su posición; sin observación: caja vacía',
+  )
+}
+
+/* ── Completar producción ──────────────────────────────────────────────────────────────────────── */
+assert.equal(estadoDeOrden(ETIQUETA_OP.completada, true), 'completada', '"Produccion Completada" no se lee como Generada')
+assert.deepEqual(accionesDe('completada'), [], 'una OP completada no admite enviar, reenviar ni cancelar')
+assert.ok(completable('taller'), 'sólo la Enviada a taller se finaliza')
+for (const e of ['generada', 'pendiente', 'confirmada', 'completada', 'cancelada'] as const) {
+  assert.ok(!completable(e), `${e} no se finaliza`)
+}
+
+/* ── El celular para WhatsApp (el ValidarTelWsp del escenario) ─────────────────────────────────── */
+assert.deepEqual(validarTelWsp('5492494122557'), { success: true, phone: '5492494122557' })
+assert.equal(validarTelWsp('+54 9 249 412-2557').phone, '5492494122557')
+assert.equal(validarTelWsp('2494122557').phone, '5492494122557', '10 dígitos: se le pone el 549')
+assert.equal(validarTelWsp('0249 15 412-2557').phone, '5492494122557', 'sin el 0 y sin el 15')
+assert.equal(validarTelWsp('011 15 2233-4455').phone, '5491122334455', 'característica de 2 dígitos')
+assert.equal(validarTelWsp('02944 15 12-3456').phone, '5492944123456', 'característica de 4 dígitos')
+assert.equal(validarTelWsp('542494122557').phone, '5492494122557', 'con el 54 y sin el 9')
+assert.equal(validarTelWsp('12345').success, false)
+assert.equal(validarTelWsp('').success, false)
+
+/* ── El enlace de confirmación y el reenvío ────────────────────────────────────────────────────── */
+{
+  const conOp = enlaceConfirmacion({ ordenId: '123', obraId: '9', nombre: 'Juan Pérez' })
+  assert.ok(conOp.includes('itemId=123') && conOp.includes('itemIdObra=9') && !conOp.includes('nroOrden'))
+  const sinOp = enlaceConfirmacion({ ordenId: null, obraId: '9', nombre: 'Juan', numero: '2291', tipo: 'PVC' })
+  assert.ok(sinOp.includes('itemId=&') && sinOp.includes('nroOrden=2291') && sinOp.includes('tipo=PVC'), 'OP sin crear: va por obra y número')
+  assert.ok(textoReenvio('Juan', 'https://x').includes('https://x'))
+  assert.ok(!textoReenvio('Ana', null).includes('link'), 'quien no confirma no recibe el enlace')
+}

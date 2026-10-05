@@ -1,7 +1,8 @@
 import { ETIQUETA } from '@/services/monday/columns'
 import { tipoDeObra, type TipoOrden } from '@/lib/tipoObra'
 import { ETIQUETA_OP, type EstadoOrden } from '@/lib/estadosOp'
-import type { Destino, Obra, Paso } from '@/types'
+import type { ModoPresupuesto } from '@/lib/presupuesto'
+import type { Destino, Obra, Paso, Operacion } from '@/types'
 
 /**
  * El tipo de la obra, o `null` si todavía no hay obra elegida o no tiene el tipo cargado.
@@ -25,8 +26,26 @@ export function tipoDe(obra: Obra | null): TipoOrden | null {
  *
  * Sin obra elegida todavía no se sabe el tipo: se muestran los nombres genéricos.
  */
-export function etiquetaPaso(paso: Paso, destino: Destino | null, tipo: TipoOrden | null): string {
+export function etiquetaPaso(
+  paso: Paso,
+  destino: Destino | null,
+  tipo: TipoOrden | null,
+  operacion: Operacion | null = 'enviar',
+  modoPresupuesto: ModoPresupuesto | null = null,
+): string {
+  /* Presupuesto · Crear y Cargar: a quién (un cliente/constructor, o una bolsa abierta) y el
+     presupuesto con su envío. Son DOS etapas. */
+  if (operacion === 'presupuestos') {
+    if (paso === 'obra') return modoPresupuesto === 'cargar' ? 'Seleccionar Presupuesto' : 'Seleccionar Cliente'
+    return 'Cargar y Enviar Presupuesto'
+  }
+  /* Agenda · Crear Turno: el cliente, los datos del turno y el registro en la Agenda. */
+  if (operacion === 'crearTurno') {
+    return paso === 'obra' ? 'Seleccionar Cliente' : paso === 'carga' ? 'Datos del Turno' : 'Registrar Turno'
+  }
   if (paso === 'obra') return 'Seleccionar Obra'
+  /* Solicitud de cortes de vidrio: la obra, los vidrios de sus OP en el taller, la solicitud. */
+  if (operacion === 'vidrios') return paso === 'carga' ? 'Seleccionar Ordenes' : 'Solicitar Cortes'
   if (paso === 'carga') {
     if (destino === 'taller') return 'Seleccionar OP A Enviar'
     return tipo === 'PVC' ? 'Cargar OP Hetmo' : 'Cargar OP'
@@ -34,8 +53,16 @@ export function etiquetaPaso(paso: Paso, destino: Destino | null, tipo: TipoOrde
   return destino === 'cliente' && tipo === 'PVC' ? 'Emitir y Enviar OP' : 'Enviar OP'
 }
 
-export const etiquetasPasos = (destino: Destino | null, tipo: TipoOrden | null): string[] =>
-  (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo))
+export const etiquetasPasos = (
+  destino: Destino | null,
+  tipo: TipoOrden | null,
+  operacion: Operacion | null = 'enviar',
+  modoPresupuesto: ModoPresupuesto | null = null,
+): string[] =>
+  /* Presupuesto tiene dos etapas; el resto, tres. */
+  (operacion === 'presupuestos' ? (['obra', 'carga'] as const) : (['obra', 'carga', 'envio'] as const)).map((p) =>
+    etiquetaPaso(p, destino, tipo, operacion, modoPresupuesto),
+  )
 
 /** Cuántas OP de la obra están en un estado. */
 export const cuantasEn = (obra: Obra, estado: EstadoOrden): number =>
@@ -79,7 +106,8 @@ export type SituacionOrdenes = { tipo: 'sin' } | { tipo: 'asignadas'; n: number 
 
 export function situacionOrdenes(obra: Obra): SituacionOrdenes {
   const vigentes = obra.ordenes.filter((o) => o.estado !== 'cancelada')
-  if (vigentes.some((o) => o.estado === 'confirmada' || o.estado === 'taller')) return { tipo: 'confirmada' }
+  if (vigentes.some((o) => o.estado === 'confirmada' || o.estado === 'taller' || o.estado === 'completada'))
+    return { tipo: 'confirmada' }
   const n = vigentes.length
   return n === 0 ? { tipo: 'sin' } : { tipo: 'asignadas', n }
 }

@@ -13,7 +13,7 @@
 import { BOARD_OBRAS, BOARD_ORDENES, COL_OP_ARCHIVOS } from './columns'
 import { getUrlArchivo, subirArchivo } from './obras'
 import { byId, type MondayItem } from './parse'
-import { mondayApi } from './sdk'
+import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
 import { ETIQUETA_OP, estadoDeOrden, type EstadoOrden } from '@/lib/estadosOp'
 import type { ArchivoObra } from '@/types'
 
@@ -45,6 +45,8 @@ export const COL_OP = {
   recordatorio: 'date_mm7rvtw6',
   /** 🤖Destinatarios (board_relation → Clientes y Constructor/Arquitecto): a quiénes se envió. */
   destinatarios: 'board_relation_mm7refvq',
+  /** 🤖Estado Vidrios (status): Pend de Solicitar | Solicitados | Colocados | Cancelados. */
+  estadoVidrios: 'color_mm7qqbj1',
   /** Link al PDF enviado (link): la URL compartida que devuelve el envío. */
   linkPdf: 'link_mm7hmk9d',
   /** 🤖Motivo (long_text): por qué se canceló la OP. */
@@ -463,6 +465,8 @@ export interface ResumenOrden {
   envioTaller: string
   /** `🤖Responsable de Confirmar`: "Cliente", "Constructor" o vacío. */
   confirmador: string
+  /** `🤖Estado Vidrios`, tal cual: si sus vidrios ya se pidieron ("Pend de Solicitar", …). */
+  estadoVidrios: string
   /** La etiqueta de `🤖Estado OP` tal cual está en el tablero. */
   estado: string
   /** El estado de la OP ya interpretado (ver `lib/estadosOp`). Es el que manda. */
@@ -490,6 +494,7 @@ const COLS_RESUMEN = [
   COL_OP.estadoEnvio,
   COL_OP.estadoEnvioTaller,
   COL_OP.confirmador,
+  COL_OP.estadoVidrios,
   COL_OP.estado,
   COL_OP.motivo,
   COL_OP.linkPdf,
@@ -546,6 +551,7 @@ function aResumen(i: ItemOrden): ResumenOrden {
     estadoEnvio: t(COL_OP.estadoEnvio),
     envioTaller: t(COL_OP.estadoEnvioTaller),
     confirmador: t(COL_OP.confirmador),
+    estadoVidrios: t(COL_OP.estadoVidrios),
     estado,
     estadoOrden: estadoDeOrden(estado, opFinal.length > 0),
     motivo: t(COL_OP.motivo),
@@ -591,20 +597,32 @@ export async function leerOrden(ordenId: string): Promise<ResumenOrden | null> {
 
 /** Índice de la etiqueta "Enviada Pend Confirmar" en `🤖Estado OP` (ver su `settings_str`). */
 const INDICE_PEND_CONFIRMAR = 3
+/** Índice de la etiqueta "Enviada a Taller" en `🤖Estado OP`. */
+const INDICE_TALLER = 4
 
 /**
  * Las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
  * El tope de 20 páginas (4000 órdenes) es sólo para que un cursor roto no quede girando.
  *
- * `soloPendientes`: sólo las "Enviada Pend Confirmar", filtradas por Monday —no se trae el tablero
- * entero para descartar casi todo—.
+ * Los filtros se SUMAN (cualquiera de los pedidos), y los filtra Monday —no se trae el tablero
+ * entero para descartar casi todo—:
+ *  - `soloPendientes`: las "Enviada Pend Confirmar".
+ *  - `sinEtiqueta`: las que no tienen ninguna etiqueta en `🤖Estado OP` (todavía no se enviaron).
+ *  - `enTaller`: las "Enviada a Taller" (las que el equipo de producción finaliza).
+ * Sin ninguno, todas.
  */
-export async function listarOrdenes({ soloPendientes = false } = {}): Promise<ResumenOrden[]> {
+export async function listarOrdenes({
+  soloPendientes = false,
+  sinEtiqueta = false,
+  enTaller = false,
+} = {}): Promise<ResumenOrden[]> {
   type Pagina = { cursor: string | null; items: ItemOrden[] }
   const todas: ItemOrden[] = []
-  const q = soloPendientes
-    ? { rules: [{ column_id: COL_OP.estado, compare_value: [INDICE_PEND_CONFIRMAR], operator: 'any_of' }] }
-    : {}
+  const pendientes = { column_id: COL_OP.estado, compare_value: [INDICE_PEND_CONFIRMAR], operator: 'any_of' }
+  const vacias = { column_id: COL_OP.estado, compare_value: [], operator: 'is_empty' }
+  const taller = { column_id: COL_OP.estado, compare_value: [INDICE_TALLER], operator: 'any_of' }
+  const reglas = [...(soloPendientes ? [pendientes] : []), ...(sinEtiqueta ? [vacias] : []), ...(enTaller ? [taller] : [])]
+  const q = reglas.length > 1 ? { rules: reglas, operator: 'or' } : reglas.length ? { rules: reglas } : {}
   const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
     `query ($q: ItemsQuery) { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200, query_params: $q) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
     { q },
@@ -621,7 +639,13 @@ export async function listarOrdenes({ soloPendientes = false } = {}): Promise<Re
   }
   const lista = todas.filter(vigente).sort((a, b) => Number(b.id) - Number(a.id)).map(aResumen)
   /* Lo que diga el filtro de Monday, se confirma con la etiqueta leída. */
-  return soloPendientes ? lista.filter((o) => o.estadoOrden === 'pendiente') : lista
+  if (!reglas.length) return lista
+  return lista.filter(
+    (o) =>
+      (soloPendientes && o.estadoOrden === 'pendiente') ||
+      (sinEtiqueta && !o.estado.trim()) ||
+      (enTaller && o.estadoOrden === 'taller'),
+  )
 }
 
 /** Tablero de las cuentas corrientes dadas de baja: una cuenta que vive acá está INACTIVA. */
@@ -690,6 +714,27 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
 }
 
 /**
+ * Completar producción: la OP enviada al taller pasa a "Produccion Completada".
+ *
+ * No va por el proxy de Monday sino por `/api/produccion-completada`: el team Produccion no puede
+ * escribir por el proxy, y ahí la consulta la escribe el servidor, que además relee la OP y sólo la
+ * cambia si sigue "Enviada a Taller". Si ya no lo está, devuelve en qué estado quedó (`estado`).
+ */
+export async function completarProduccion(ordenId: string): Promise<{ ok: true } | { ok: false; estado: string }> {
+  const res = await fetch('/api/produccion-completada', {
+    method: 'POST',
+    headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ ordenId }),
+  })
+  if (res.status === 409 || res.status === 404) {
+    const cuerpo = (await res.json().catch(() => ({}))) as { estado?: string }
+    return { ok: false, estado: cuerpo.estado ?? '' }
+  }
+  await verificarRespuesta(res, 'Completar producción')
+  return { ok: true }
+}
+
+/**
  * Cancela una OP: la deja en "Cancelada" con el motivo escrito. NO se borra ni se archiva —una OP
  * cancelada sigue siendo la constancia de lo que se mandó y por qué dejó de valer—.
  *
@@ -744,4 +789,58 @@ export async function copiarRespuestaAOrden(ordenId: string, estadoActual: strin
     console.warn('[ordenes] no se pudo copiar la respuesta del cliente a la OP', e)
     return false
   }
+}
+
+/** Un vidrio de una OP: un subelemento con Tipo = "Vidrio" (ver `crearSubelementos`). */
+export interface VidrioDeOrden {
+  id: string
+  /** El modelo de la abertura (el nombre del subelemento: "V1", "V27/28"). */
+  modelo: string
+  /** Vidrio Comp 1 (mm o composición: "4", "3+3"). */
+  comp1: string
+  /** Cámara (mm): sólo en los DVH. */
+  camara: string
+  /** Vidrio Comp 2: sólo en los DVH. */
+  comp2: string
+  /** Ancho y alto en mm, tal cual el listado ("843", "1.013"). */
+  ancho: string
+  alto: string
+  /** Cantidad TOTAL a pedir (la de la línea por las aberturas del modelo). */
+  cantidad: number | null
+}
+
+/**
+ * Los vidrios de varias OP, por OP: sus subelementos con Tipo = "Vidrio", con todas sus columnas.
+ * Las observaciones (Tipo = "Observacion") quedan afuera.
+ */
+export async function vidriosDeOrdenes(ordenIds: string[]): Promise<Record<string, VidrioDeOrden[]>> {
+  if (ordenIds.length === 0) return {}
+  const cols = JSON.stringify([COL_OBS.estado, COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho, COL_OBS.alto, COL_OBS.cantidad])
+  const d = await mondayApi<{
+    items: { id: string; subitems: { id: string; name: string; column_values: { id: string; text: string | null }[] }[] | null }[]
+  }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { id subitems { id name column_values(ids: ${cols}) { id text } } } }`,
+    { ids: ordenIds },
+  )
+  const porOrden: Record<string, VidrioDeOrden[]> = {}
+  for (const op of d.items ?? []) {
+    porOrden[String(op.id)] = (op.subitems ?? [])
+      .map((s) => {
+        const t = (id: string) => (s.column_values.find((c) => c.id === id)?.text ?? '').trim()
+        if (t(COL_OBS.estado) !== 'Vidrio') return null
+        const cant = Number(t(COL_OBS.cantidad).replace(',', '.'))
+        return {
+          id: String(s.id),
+          modelo: s.name.trim(),
+          comp1: t(COL_OBS.comp1),
+          camara: t(COL_OBS.camara),
+          comp2: t(COL_OBS.comp2),
+          ancho: t(COL_OBS.ancho),
+          alto: t(COL_OBS.alto),
+          cantidad: t(COL_OBS.cantidad) && Number.isFinite(cant) ? cant : null,
+        }
+      })
+      .filter((v): v is VidrioDeOrden => v !== null)
+  }
+  return porOrden
 }

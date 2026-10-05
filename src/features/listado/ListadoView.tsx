@@ -3,15 +3,18 @@ import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { EstadoOrdenBadge } from '@/components/ui/EstadoOrdenBadge'
 import { Modal } from '@/components/ui/Modal'
+import { ModalCargando } from '@/components/ui/ModalCargando'
 import { DocumentoOrden } from '@/features/envio/DocumentoOrden'
 import { EnviarOp } from '@/features/envio/EnviarOp'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { nombreOrden } from '@/features/shared/nombreOrden'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
-import { VISTA_ESTADO, admite } from '@/lib/estadosOp'
+import { ETIQUETA_OP, VISTA_ESTADO, admite, completable, estadoDeOrden } from '@/lib/estadosOp'
+import { accionesConsulta, vistaConsulta } from '@/lib/permisos'
 import { normalizar } from '@/lib/texto'
 import {
   cancelarOrden,
+  completarProduccion,
   getObra,
   leerOrden,
   listarOrdenes,
@@ -37,21 +40,31 @@ const sinCeros = (s: string) => s.replace(/(\D|^)0+(\d)/g, '$1$2')
 /**
  * Consultar órdenes de producción.
  *
- * Al entrar se traen TODAS las órdenes del tablero que esperan la confirmación del cliente o del
- * constructor ("Enviada Pend Confirmar" en `🤖Estado OP`), sin tener que buscar la obra. El campo de
- * arriba filtra en vivo esas órdenes, por su ID (IDOP o id del ítem), su N° de orden o el nombre de
- * su obra.
+ * Qué órdenes se ven y qué se puede hacer con cada una depende del team del usuario (ver
+ * `vistaConsulta` y `accionesConsulta` en `lib/permisos`):
+ *  - Admin: las que esperan la confirmación del cliente o del constructor ("Enviada Pend
+ *    Confirmar"), las que todavía no tienen estado y las enviadas al taller; con todas las acciones.
+ *  - Produccion: SÓLO las enviadas al taller, y sólo para FINALIZAR su producción. No ve —ni el
+ *    servidor le permite— reenviar ni cancelar.
+ * El campo de arriba filtra en vivo, por el ID (IDOP o id del ítem), el N° de orden o la obra.
  *
  * La tabla va de a 6 órdenes por página. Desde cada fila se puede:
- *  - REENVIAR: debajo de la fila se despliegan su documento y el mismo "Enviar OP" de la operación
- *    de envío, que llama al escenario con los mismos datos.
+ *  - REENVIAR (pendientes) o ENVIAR (sin etiqueta): debajo de la fila se despliegan su documento y el
+ *    mismo "Enviar OP" de la operación de envío. Una sin etiqueta se envía sólo con la OP final.
  *  - CANCELAR: queda en "Cancelada" con el motivo escrito. Nada se borra.
+ *  - FINALIZAR (enviadas al taller): pregunta si se está seguro y la OP pasa a "Produccion
+ *    Completada" por `/api/produccion-completada`, que relee la OP y sólo la mueve si sigue en el
+ *    taller. La fila queda bloqueada ("Finalizada") por el resto de la visita.
  */
 export function ListadoView() {
   const dispatch = useDispatch()
   const { usuario, accionEnCurso } = useApp()
+  const roles = usuario?.roles
+  /** Qué órdenes trae la consulta según el team: producción sólo ve las del taller. */
+  const vista = vistaConsulta(roles)
+  const soloTaller = vista.taller && !vista.pendientes && !vista.sinEtiqueta
 
-  /** Las pendientes de confirmar. `null` = leyéndolas. */
+  /** Las pendientes de confirmar y las sin etiqueta. `null` = leyéndolas. */
   const [ordenes, setOrdenes] = useState<ResumenOrden[] | null>(null)
   const [error, setError] = useState(false)
   const [intento, setIntento] = useState(0)
@@ -79,11 +92,27 @@ export function ListadoView() {
   /** La que se está plegando: el panel sale con su animación antes de desaparecer. */
   const [cerrandoId, setCerrandoId] = useState<string | null>(null)
 
-  useAccionEnCurso('Esperá a que termine de cancelarse la orden.', cancelandoId !== null)
+  /** La que se va a finalizar: la ventana pide la confirmación. */
+  const [aFinalizar, setAFinalizar] = useState<ResumenOrden | null>(null)
+  /** La que se está finalizando en Monday: mientras tanto se ve la ventana de espera. */
+  const [finalizandoId, setFinalizandoId] = useState<string | null>(null)
+  /** Las finalizadas en esta visita: la fila queda bloqueada aunque se relea la lista. */
+  const [finalizadas, setFinalizadas] = useState<Set<string>>(new Set())
+
+  useAccionEnCurso(
+    finalizandoId !== null ? 'Esperá a que termine de finalizarse la orden.' : 'Esperá a que termine de cancelarse la orden.',
+    cancelandoId !== null || finalizandoId !== null,
+  )
 
   useEffect(() => {
     let vivo = true
-    listarOrdenes({ soloPendientes: true })
+    /* Sin ningún estado para ver (un rol sin consulta), no se pide nada: sin filtros, la lectura
+       traería el tablero entero. */
+    if (!vista.pendientes && !vista.sinEtiqueta && !vista.taller) {
+      setOrdenes([])
+      return
+    }
+    listarOrdenes({ soloPendientes: vista.pendientes, sinEtiqueta: vista.sinEtiqueta, enTaller: vista.taller })
       .then((lista) => {
         if (!vivo) return
         setOrdenes(lista)
@@ -97,7 +126,7 @@ export function ListadoView() {
     return () => {
       vivo = false
     }
-  }, [intento])
+  }, [intento, vista.pendientes, vista.sinEtiqueta, vista.taller])
 
   /* Búsqueda en vivo sobre lo traído: ID (IDOP o id del ítem), N° de orden o nombre de la obra. */
   const filtradas = useMemo(() => {
@@ -212,14 +241,61 @@ export function ListadoView() {
     }
   }
 
+  /** ¿Ya no se puede finalizar? Finalizada en esta visita, o fuera del taller según el tablero. */
+  const finalizadaLa = (o: ResumenOrden) => finalizadas.has(o.id) || o.estadoOrden === 'completada'
+
+  const finalizar = async () => {
+    const o = aFinalizar
+    if (!o || finalizandoId) return
+    setAFinalizar(null)
+    if (finalizadaLa(o) || !completable(o.estadoOrden)) return
+    setAviso(null)
+    setFinalizandoId(o.id)
+    try {
+      const r = await completarProduccion(o.id)
+      if (!r.ok) {
+        /* Mientras tanto alguien la movió: se muestra en qué estado quedó y no se toca. */
+        if (r.estado) {
+          const etiqueta = r.estado
+          setOrdenes((lista) =>
+            (lista ?? []).map((x) =>
+              x.id === o.id ? { ...x, estado: etiqueta, estadoOrden: estadoDeOrden(etiqueta, x.opFinal.length > 0) } : x,
+            ),
+          )
+        }
+        setBloqueo(
+          r.estado
+            ? `${nombreOrden(o)} ahora está «${VISTA_ESTADO[estadoDeOrden(r.estado, o.opFinal.length > 0)].rotulo}» y ya no se puede finalizar.`
+            : 'La orden ya no está en el tablero de órdenes.',
+        )
+        return
+      }
+      setOrdenes((lista) =>
+        (lista ?? []).map((x) => (x.id === o.id ? { ...x, estado: ETIQUETA_OP.completada, estadoOrden: 'completada' } : x)),
+      )
+      setFinalizadas((f) => new Set(f).add(o.id))
+      setAviso(`La producción de ${nombreOrden(o)} quedó completada.`)
+    } catch {
+      dispatch({ type: 'errorMonday', accion: 'finalizar la producción de la orden' })
+    } finally {
+      setFinalizandoId(null)
+    }
+  }
+
   const total = ordenes?.length ?? 0
+  /** Cómo se nombra lo que lista la consulta, según lo que ve el rol. */
+  const queSeLista = soloTaller ? 'enviadas al taller' : 'pendientes de confirmar, sin enviar y en el taller'
 
   return (
     <section className="view paso-layout obras-v2 anticipos-v2">
       <PasoHeader />
       <PasoTitulo
         titulo="Consultar Órdenes de Producción"
-        descripcion="Las órdenes enviadas que esperan la confirmación del cliente o del constructor. Buscalas por su ID, el N° de orden o el nombre de la obra."
+        descripcion={
+          soloTaller
+            ? 'Las órdenes enviadas al taller. Finalizá la producción de las que ya terminaron; buscalas por su ID, el N° de orden o el nombre de la obra.'
+            : 'Las órdenes que esperan la confirmación del cliente o del constructor, las que todavía no se enviaron y las que están en el taller. Buscalas por su ID, el N° de orden o el nombre de la obra.'
+        }
         sinNumero
       />
 
@@ -251,20 +327,21 @@ export function ListadoView() {
           </div>
           <span className="search-helper" role="status" aria-live="polite">
             {ordenes === null
-              ? 'Buscando las órdenes pendientes de confirmar...'
+              ? `Buscando las órdenes ${queSeLista}...`
               : busqueda.trim()
                 ? `${filtradas.length} de ${total} ${total === 1 ? 'orden' : 'órdenes'}`
-                : `${total} ${total === 1 ? 'orden pendiente' : 'órdenes pendientes'} de confirmar`}
+                : `${total} ${total === 1 ? 'orden' : 'órdenes'} ${queSeLista}`}
           </span>
         </div>
       </div>
 
       <div className="cobro-static">
         <div className="cobro-card">
-          <h3 className="cobro-card-title">Órdenes pendientes de confirmar</h3>
+          <h3 className="cobro-card-title">{soloTaller ? 'Órdenes enviadas al taller' : 'Órdenes de producción'}</h3>
           <p className="cobro-card-desc">
-            Todas las órdenes de producción enviadas que todavía no confirmó el cliente o el constructor.
-            Reenviá la que haga falta o cancelá la que ya no corresponda.
+            {soloTaller
+              ? 'Finalizá la producción de las órdenes enviadas al taller que ya terminaron de producirse.'
+              : 'Las órdenes que todavía no confirmó el cliente o el constructor, las que todavía no tienen estado y las enviadas al taller. Enviá o reenviá la que haga falta, cancelá la que ya no corresponda o finalizá la producción de las del taller.'}
           </p>
 
           <div className="ant-tabla-wrap">
@@ -291,7 +368,7 @@ export function ListadoView() {
                 {ordenes === null ? (
                   <tr>
                     <td colSpan={6} className="ant-aviso">
-                      <i className="fas fa-spinner fa-spin" /> Buscando las órdenes pendientes de confirmar...
+                      <i className="fas fa-spinner fa-spin" /> Buscando las órdenes {queSeLista}...
                     </td>
                   </tr>
                 ) : visibles.length === 0 ? (
@@ -301,7 +378,7 @@ export function ListadoView() {
                       {error
                         ? 'No se pudieron leer las órdenes desde Monday.'
                         : total === 0
-                          ? 'No hay órdenes pendientes de confirmar.'
+                          ? `No hay órdenes ${queSeLista}.`
                           : `Ninguna orden coincide con «${busqueda.trim()}».`}{' '}
                       {(error || total === 0) && (
                         <button
@@ -322,6 +399,13 @@ export function ListadoView() {
                     const cancelando = cancelandoId === o.id
                     const recien = recienCanceladas.has(o.id)
                     const abierta = reenviandoId === o.id
+                    /* Lo que este usuario puede hacer con ESTA orden (su team y el estado de la OP). */
+                    const acciones = accionesConsulta(roles, o)
+                    /* Sin etiqueta en 🤖Estado OP: todavía no se envió. Se ofrece ENVIAR (la primera
+                       vez); el envío se habilita sólo si la OP final está adjunta. */
+                    const primerEnvio = acciones.includes('enviar')
+                    const puedeEnviar = primerEnvio || acciones.includes('reenviar')
+                    const finalizada = finalizadaLa(o)
                     const fila = (
                       <tr
                         key={o.id}
@@ -346,7 +430,7 @@ export function ListadoView() {
                           <EstadoOrdenBadge estado={o.estadoOrden} chico />
                         </td>
                         <td className="ant-col-cen ant-col-acc">
-                          {admite(o.estadoOrden, 'reenviar') && (
+                          {puedeEnviar && (
                             <button
                               type="button"
                               className={`ant-reenviar ${abierta ? 'ant-reenviar--on' : ''}`}
@@ -362,17 +446,35 @@ export function ListadoView() {
                                 </>
                               ) : (
                                 <>
-                                  <i className={`fas ${abierta ? 'fa-chevron-up' : 'fa-rotate-right'}`} />{' '}
-                                  {abierta ? 'Cerrar' : 'Reenviar'}
+                                  <i
+                                    className={`fas ${abierta ? 'fa-chevron-up' : primerEnvio ? 'fa-paper-plane' : 'fa-rotate-right'}`}
+                                  />{' '}
+                                  {abierta ? 'Cerrar' : primerEnvio ? 'Enviar' : 'Reenviar'}
                                 </>
                               )}
                             </button>
                           )}
+                          {finalizada ? (
+                            <span className="ant-finalizada" title="La producción de esta orden ya se finalizó">
+                              <i className="fas fa-lock" /> Finalizada
+                            </span>
+                          ) : acciones.includes('finalizar') ? (
+                            /* Sin espera propia: mientras se finaliza, la muestra la ventana. */
+                            <button
+                              type="button"
+                              className="ant-finalizar"
+                              disabled={finalizandoId !== null || !!accionEnCurso}
+                              aria-label={`Finalizar la producción de ${o.idOp || nombreOrden(o)}`}
+                              onClick={() => setAFinalizar(o)}
+                            >
+                              <i className="fas fa-flag-checkered" /> Finalizar
+                            </button>
+                          ) : null}
                           {o.estadoOrden === 'cancelada' ? (
                             <span className="ant-cancelada">
                               <i className="fas fa-ban" /> Cancelada
                             </span>
-                          ) : admite(o.estadoOrden, 'cancelar') ? (
+                          ) : acciones.includes('cancelar') ? (
                             <button
                               type="button"
                               className="ant-cancelar"
@@ -399,7 +501,7 @@ export function ListadoView() {
                       </tr>
                     )
                     const obra = obras[o.obraId]
-                    if (!abierta || !obra) return fila
+                    if (!abierta || !obra || !puedeEnviar) return fila
                     return (
                       <Fragment key={o.id}>
                         {fila}
@@ -413,10 +515,12 @@ export function ListadoView() {
                               <EnviarOp
                                 modo="cliente"
                                 orden={o}
-                                listo={o.opFinal.length > 0 && o.estadoOrden === 'pendiente'}
+                                listo={
+                                  o.opFinal.length > 0 && (o.estadoOrden === 'pendiente' || o.estadoOrden === 'generada')
+                                }
                                 avisoNoListo={
                                   o.opFinal.length === 0
-                                    ? 'La orden no tiene la OP final adjunta'
+                                    ? 'La orden no tiene la OP final adjunta: no se puede enviar'
                                     : 'Esta orden ya no está pendiente de confirmar: no se reenvía'
                                 }
                                 contexto={{
@@ -424,7 +528,9 @@ export function ListadoView() {
                                   enviado: reenviadas.has(o.id),
                                   onEnviado: () => {
                                     setReenviadas((r) => new Set(r).add(o.id))
-                                    setAviso(`${nombreOrden(o)} se reenvió al cliente o al constructor.`)
+                                    setAviso(
+                                      `${nombreOrden(o)} se ${primerEnvio ? 'envió' : 'reenvió'} al cliente o al constructor.`,
+                                    )
                                     /* Se relee la orden: el envío pudo dejarle el link nuevo. */
                                     void leerOrden(o.id)
                                       .then((f) => f && setOrdenes((l) => (l ?? []).map((x) => (x.id === f.id ? f : x))))
@@ -480,6 +586,32 @@ export function ListadoView() {
           </div>
         </div>
       </div>
+
+      {aFinalizar && (
+        <Modal
+          title="¿Finalizar la producción?"
+          icon={<i className="fas fa-flag-checkered modal-icon--ok" />}
+          onClose={() => setAFinalizar(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setAFinalizar(null)}>
+                Volver
+              </button>
+              <button type="button" className="btn btn-green" onClick={() => void finalizar()}>
+                <i className="fas fa-check" /> Sí, finalizar producción
+              </button>
+            </>
+          }
+        >
+          <p>¿Estás seguro de finalizar la producción de la orden?</p>
+          <p className="modal-clave">{nombreOrden(aFinalizar)}</p>
+          <p className="modal-nota">La orden pasa a «Producción completada» y ya no se puede volver a finalizar.</p>
+        </Modal>
+      )}
+
+      {finalizandoId && (
+        <ModalCargando titulo="Finalizando producción..." detalle="Se está pasando la orden a Producción Completada en Monday." />
+      )}
 
       {aCancelar && (
         <Modal

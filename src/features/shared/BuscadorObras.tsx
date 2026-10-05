@@ -229,9 +229,12 @@ export function BuscadorObras({
   ayudaEnRojo,
   deshabilitado = false,
   ocupado = false,
+  tituloBuscar = 'Buscar directamente en Monday, por si la obra todavía no está en la lista rápida',
 }: {
   b: Buscador
   placeholder: string
+  /** El tooltip del botón Buscar: qué se busca (la Agenda busca clientes, no obras). */
+  tituloBuscar?: string
   ayuda: string
   /** La ayuda es lo que falta para seguir: va en rojo, con su ícono. */
   ayudaEnRojo: boolean
@@ -313,7 +316,7 @@ export function BuscadorObras({
         className="btn-buscar"
         onClick={b.onBuscar}
         disabled={b.buscando || ocupado || deshabilitado}
-        title="Buscar directamente en Monday, por si la obra todavía no está en la lista rápida"
+        title={tituloBuscar}
       >
         {b.buscando || ocupado ? (
           <>
