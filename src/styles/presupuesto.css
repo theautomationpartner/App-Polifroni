@@ -1,0 +1,58 @@
+/* ════════════════════ Presupuesto · Crear y Cargar Presupuestos ════════════════════
+   Casi todo sale de las clases de Producción (`obras-v2`): el buscador, la ficha, el recuadro de
+   carga, los campos `med-*` y el bloque de envío. Acá va sólo lo propio del área. */
+
+/* Etapa 1, crear: el cliente y el constructor, uno debajo del otro, cada uno con su buscador y su
+   ficha. */
+.presupuesto-v2 .pres-contactos {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.presupuesto-v2 .pres-contacto > .carga-sec-t {
+  margin: 0 0 10px;
+}
+.presupuesto-v2 .pres-contacto > .carga-sec-t > i {
+  color: var(--marca);
+}
+
+/* El contacto opcional sin elegir: una línea, no una ficha en esqueleto (que se leería "cargando"). */
+.presupuesto-v2 .pres-ficha-vacia {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 24px;
+  color: #94a3b8;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.presupuesto-v2 .pres-quitar {
+  margin-top: 10px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+/* Etapa 2: el recuadro de carga y los datos, uno debajo del otro, a la izquierda del envío. Lleva
+   `carga-grid` por sus colores (los de la carga de la OP); acá es de una sola columna. */
+.presupuesto-v2 .pres-carga.carga-grid {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+}
+.presupuesto-v2 .pres-carga > .cobro-lector {
+  width: 100%;
+}
+.presupuesto-v2 .pres-datos {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 760px) {
+  .presupuesto-v2 .pres-datos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Falta el dato con el PDF ya cargado: el mismo borde rojo de los campos de la Agenda. */
+.presupuesto-v2 .pres-falta .med-input {
+  border-color: var(--red);
+  background: #fff5f6;
+  box-shadow: 0 0 0 3px rgba(226, 68, 92, 0.16);
+}
