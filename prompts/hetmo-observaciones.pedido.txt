@@ -1,0 +1,1 @@
+Analizá este listado de HETMO. Prestá especial atención a los modelos y sus observaciones: contá los "Modelo:" de todo el documento y devolvé una entrada por cada uno.

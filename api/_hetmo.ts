@@ -12,6 +12,7 @@
  * parsea, y la consigna se queda con lo que importa —no inventar, copiar los números tal cual—.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { leerPrompt, type NombrePrompt } from './_prompts.js'
 
 /** El modelo de la lectura. Un número mal leído es un vidrio que se tira: va el más capaz de la línea Opus. */
 const MODELO = 'claude-opus-5-5'
@@ -46,65 +47,21 @@ export class ErrorLectura extends Error {
   }
 }
 
-const SISTEMA = `# ROL
-Sos un analizador y extractor de datos de los listados de aberturas del sistema HETMO ("LISTADO DIBUJOS"), para una fábrica de aberturas de aluminio y PVC.
-Lo que extraés se usa para pedir vidrios a medida. Un número mal leído es un vidrio que se fabrica mal y se tira. Preferimos mil veces un dato faltante (null) que un dato inventado.
-
-# TAREA
-Recibís el documento (texto y/o imágenes) de las hojas de un listado de HETMO. Cada hoja contiene uno o varios modelos (dibujos de las aberturas con sus cotas y descripciones).
-Tenés que devolver DOS listas separadas:
-  A. "observaciones": una entrada por cada modelo, con su observación.
-  B. "vidrios": una entrada por cada línea "Vid:" del documento, con sus datos desarmados.
-
-# A. OBSERVACIONES
-1. Contá exactamente cuántos modelos hay en todo el documento (cada uno arranca con la etiqueta "Modelo:").
-2. Identificá el nombre exacto de cada modelo, tal cual aparece después de "Modelo:" (ej: "v1", "v2", "V6", "M6").
-3. Buscá cualquier texto que corresponda a "Observaciones", "Notas" o comentarios adicionales de fabricación.
-4. El array "observaciones" tiene EXACTAMENTE una entrada por modelo, en el orden en que aparecen. Si contaste 7 modelos, son 7 objetos.
-5. Si el documento tiene una observación general, repetila en cada elemento. Si cada modelo tiene la suya, asignala al modelo que corresponde. Si no hay ninguna observación, "observacion" va en null en todos.
-
-# B. VIDRIOS
-Cada línea que empieza con "Vid:" es UN vidrio. Tiene esta forma:
-    Vid: 3+3/12/4 INC  696 x 1.696  ud:1
-y se desarma así:
-    composición   3+3/12/4   ->  comp1 = "3+3"   camara = "12"   comp2 = "4"
-    terminación   INC        ->  terminacion = "INC"
-    medidas       696 x 1.696 -> ancho = "696"   alto = "1.696"
-    cantidad      ud:1       ->  cant = 1
-Resultado:
-    { "modelo": "v2", "composicion": "3+3/12/4", "comp1": "3+3", "camara": "12", "comp2": "4", "terminacion": "INC", "ancho": "696", "alto": "1.696", "cant": 1 }
-
-De dónde sale cada campo:
-  modelo        el nombre del modelo al que pertenece esa línea Vid (el "Modelo:" del bloque).
-  composicion   la composición completa tal cual, sin la terminación: "3+3/12/4", "4/9/4".
-  comp1         lo que está ANTES de la primera barra "/":   "3+3", "4".
-  camara        lo que está ENTRE las dos barras:            "12", "9".
-  comp2         lo que está DESPUÉS de la segunda barra:     "4", "5".
-  terminacion   el texto que sigue a la composición, antes de las medidas: "INC". Si no hay, null.
-  ancho         el PRIMER número de la medida (antes de la "x").
-  alto          el SEGUNDO número de la medida (después de la "x").
-  cant          el número que sigue a "ud:".
-
-Reglas de vidrios:
-  a. Una entrada por CADA línea "Vid:", en el orden en que aparecen en el documento. Un mismo modelo puede tener 1, 2 o más líneas "Vid:" (por ejemplo una hoja y un paño fijo): van todas, cada una por separado.
-  b. NO unifiques líneas aunque sean iguales. NO sumes cantidades. Cada entrada lleva el "ud" de SU línea.
-  c. Las líneas "Vid:" suelen estar en la columna de la derecha, arriba de las líneas "Tap:". Revisá todo el bloque del modelo.
-  d. Los modelos sin línea "Vid:" (mosquiteros, por ejemplo) NO generan ninguna entrada en "vidrios".
-  e. Si la composición NO tiene exactamente dos barras (por ejemplo un vidrio simple "4" o un triple "4/12/4/12/4"), copiala entera en "composicion" y poné comp1, camara y comp2 en null. No la partas a la fuerza.
-  f. Si el documento no tiene ninguna línea "Vid:", "vidrios" es un array vacío [].
-
-# FORMATO DE SALIDA
-Devolvés UN objeto JSON y nada más. Sin explicaciones, sin bloques de código, sin comentarios, sin texto antes ni después.
-{ "observaciones": [ { "nombre": "v1", "observacion": null }, { "nombre": "v2", "observacion": null } ],
-  "vidrios": [ { "modelo": "v1", "composicion": "4/12/4", "comp1": "4", "camara": "12", "comp2": "4", "terminacion": "INC", "ancho": "278", "alto": "478", "cant": 1 },
-               { "modelo": "v2", "composicion": "3+3/12/4", "comp1": "3+3", "camara": "12", "comp2": "4", "terminacion": "INC", "ancho": "696", "alto": "1.696", "cant": 1 } ] }
-
-# RESTRICCIONES
-1. LA CANTIDAD ES LA CLAVE. "observaciones" tiene exactamente una entrada por modelo. "vidrios" tiene exactamente una entrada por línea "Vid:". Antes de responder, contá las dos cosas en el documento y en tu respuesta: tienen que coincidir.
-2. NÚMEROS TAL CUAL. Todas las medidas y componentes van como TEXTO, copiados exactamente como aparecen, con el punto de miles. "1.696" se escribe "1.696". Nunca 1696, nunca 1.7, nunca 1,696. El único campo numérico de los vidrios es "cant".
-3. NUNCA INVENTES. Si un dato no está o no se lee con seguridad, va null. No lo deduzcas del dibujo, de otro modelo ni de las medidas de la abertura.
-4. NO ARREGLES NADA. Si una medida te parece rara, devolvela igual. Tu trabajo es leer, no corregir.
-5. NADA DE TEXTO ADICIONAL. Tu respuesta debe ser parseable directamente con JSON.parse().`
+/**
+ * Un prompt de la carpeta `prompts/` (ver `_prompts.ts`). Si falta o está vacío, el error dice qué
+ * revisar: es un archivo que alguien editó, no una falla de la IA.
+ */
+export function prompt(nombre: NombrePrompt): string {
+  try {
+    return leerPrompt(nombre)
+  } catch (e) {
+    console.error('[hetmo] no se pudo leer el prompt', nombre, e)
+    throw new ErrorLectura(
+      `Ocurrio un error al intentar procesar el documento con IA. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_PROMPT_IA (${nombre})`,
+      500,
+    )
+  }
+}
 
 const texto = (description: string) => ({ type: ['string', 'null'], description })
 
@@ -150,11 +107,9 @@ const ESQUEMA: Record<string, unknown> = {
 }
 
 /** El foco de cada pasada. El documento y la consigna van igual: la segunda pasada lee del caché. */
-const PEDIDO: Record<ModoLectura, string> = {
-  vidrios:
-    'Analizá este listado de HETMO. Prestá especial atención a las líneas "Vid:": contalas en todo el documento y devolvé una entrada por cada una.',
-  observaciones:
-    'Analizá este listado de HETMO. Prestá especial atención a los modelos y sus observaciones: contá los "Modelo:" de todo el documento y devolvé una entrada por cada uno.',
+const PEDIDO: Record<ModoLectura, NombrePrompt> = {
+  vidrios: 'hetmo-vidrios.pedido',
+  observaciones: 'hetmo-observaciones.pedido',
 }
 
 /**
@@ -221,9 +176,9 @@ export async function consultarClaude(
 
 export async function leerHetmo(pdf: Buffer, modo: ModoLectura): Promise<LecturaHetmo> {
   const lectura = (await consultarClaude(pdf, {
-    sistema: SISTEMA,
+    sistema: prompt('hetmo-vidrios-observaciones.sistema'),
     esquema: ESQUEMA,
-    pedido: PEDIDO[modo],
+    pedido: prompt(PEDIDO[modo]),
     maxTokens: 32000,
   })) as Partial<LecturaHetmo>
   return {

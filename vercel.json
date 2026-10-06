@@ -33,7 +33,8 @@
       "maxDuration": 300
     },
     "api/hetmo.ts": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "includeFiles": "prompts/**"
     },
     "api/whatsapp.ts": {
       "maxDuration": 300
