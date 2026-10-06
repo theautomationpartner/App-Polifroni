@@ -3,8 +3,8 @@
  * servidor de Vite en desarrollo.
  *
  *   POST multipart/form-data
- *     datos    JSON: { destinos: [{ tipo, nombre, whatsapp, confirmador }], reenvio, ordenId,
- *                      obraId, numero, tipo }
+ *     datos    JSON: { destinos: [{ tipo, nombre, whatsapp, confirmador, texto? }], reenvio, ordenId,
+ *                      obraId, numero, tipo, documento?, clave }
  *     archivo  el PDF de la OP
  *
  *   200 { msj_cliente_arquitecto: "enviado", link_op, resultados }
@@ -20,10 +20,15 @@
  *  4. A cada uno: el texto (módulo 27) y después el archivo (módulo 38), por 360messenger.
  *  5. Confirma en la cola de 360messenger que cada mensaje salió: "success" es enviado; "failed",
  *     error de envío.
+ *
+ * El enlace para confirmar lo arma ACÁ el servidor, firmado (ver `_confirmacion.ts`), con la `clave`
+ * que manda la app: el navegador nunca ve el secreto ni puede armar un enlace propio. En el
+ * presupuesto el texto lo arma la app, con la marca `[[ENLACE_CONFIRMACION]]` donde va el enlace.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ErrorDrive, ErrorTokenDrive, driveConfigurado, subirYCompartir } from './_drive.js'
-import { confirmacionConfigurada, enlaceConfirmacion, textoPrimerEnvio, textoReenvio } from './_mensajeOp.js'
+import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion } from './_confirmacion.js'
+import { textoPrimerEnvio, textoReenvio } from './_mensajeOp.js'
 import { mensajeTelInvalido, validarTelWsp } from './_telWsp.js'
 import { ErrorWsp, enviarMensaje, esperarEntregas, wspConfigurado } from './_wsp360.js'
 
@@ -45,8 +50,10 @@ interface DatosPedido {
   obraId?: string
   numero?: string
   tipo?: string
-  /** `presupuesto`: sale un presupuesto, con el texto que manda la app y sin enlace de confirmación. */
+  /** `presupuesto`: sale un presupuesto, con el texto que manda la app. */
   documento?: string
+  /** La clave (UUID) del enlace de confirmación: la genera la app y queda guardada en Monday. */
+  clave?: string
 }
 
 const ERROR_INTERNO_PRESUPUESTO =
@@ -79,12 +86,16 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     if (!(archivo instanceof Blob) || archivo.size === 0) {
       return responder(res, 400, { mensajeError: presupuesto ? 'No llegó el PDF del presupuesto.' : 'No llegó el PDF de la orden.' })
     }
-    /* La OP lleva el enlace para confirmarla: sin su URL no se manda nada (el presupuesto no lo usa). */
-    if (!presupuesto && !confirmacionConfigurada()) {
+    /* Los dos documentos llevan el enlace para confirmarlos: sin su configuración no se manda nada. */
+    const falta = faltaConfiguracion()
+    if (falta) {
       return responder(res, 503, {
-        mensajeError:
-          'Ocurrio un error al intentar enviar la orden por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_CONFIRMAR_OP_URL',
+        mensajeError: `Ocurrio un error al intentar enviar ${doc} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ${falta}`,
       })
+    }
+    const clave = texto(datos.clave).toLowerCase()
+    if (!esClave(clave)) {
+      return responder(res, 400, { mensajeError: `Falta la clave del enlace para confirmar ${doc}.` })
     }
 
     /* 1. Los destinatarios. */
@@ -126,18 +137,16 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     const enviados: { nombre: string; phone: string; ids: string[] }[] = []
     for (const d of validados) {
       if (presupuesto) {
-        const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: d.texto })
+        /* Sólo el texto de quien confirma trae la marca: ahí va su enlace, con su nombre. */
+        const conEnlace = d.texto.includes(MARCA_ENLACE)
+          ? d.texto.split(MARCA_ENLACE).join(enlaceConfirmacion({ documento: 'presupuesto', clave, nombre: d.nombre }))
+          : d.texto
+        const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: conEnlace })
         const idArchivo = await enviarMensaje({ phonenumber: d.tel.phone, url: enDrive.webContentLink })
         enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, idArchivo] })
         continue
       }
-      const enlace = enlaceConfirmacion({
-        ordenId: texto(datos.ordenId) || null,
-        obraId: texto(datos.obraId),
-        nombre: d.nombre,
-        numero: texto(datos.numero),
-        tipo: texto(datos.tipo),
-      })
+      const enlace = enlaceConfirmacion({ documento: 'op', clave, nombre: d.nombre })
       /* En el reenvío el enlace va sólo a quien confirma (si no se dijo quién, a todos). */
       const mensaje = reenvio
         ? textoReenvio(d.nombre, !hayConfirmador || d.confirmador ? enlace : null)

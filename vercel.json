@@ -44,6 +44,10 @@
   },
   "rewrites": [
     {
+      "source": "/confirmar",
+      "destination": "/api/confirmar"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

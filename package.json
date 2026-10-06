@@ -16,6 +16,7 @@
     "test:produccion": "esbuild tests/produccion.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/produccion.test.mjs && node node_modules/.cache/produccion.test.mjs",
     "test:agenda": "esbuild tests/agenda.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/agenda.test.mjs && node node_modules/.cache/agenda.test.mjs",
     "test:presupuesto": "esbuild tests/presupuesto.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/presupuesto.test.mjs && node node_modules/.cache/presupuesto.test.mjs",
+    "test:confirmar": "esbuild tests/confirmar.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/confirmar.test.mjs && node node_modules/.cache/confirmar.test.mjs",
     "test:equipos": "esbuild tests/equipos.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/equipos.test.mjs && node node_modules/.cache/equipos.test.mjs",
     "test:seguridad": "npm run test:portero && npm run test:guard && npm run test:whitelist && npm run test:mfa && npm run test:equipos"
   },

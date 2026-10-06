@@ -265,4 +265,52 @@ En Monday no se escribe nada hasta que el presupuesto sale. Al enviarse, "Finali
 bolsa (sólo al crear: en "Solicitud de Presupuesto", con el cliente/constructor y `✋Enviar a:`) y el
 subelemento con tipo, color, `🤖 Estado de Envio` = Enviado, `Fecha Envio` y el PDF. La app nunca toca
 `✋Enviar` (color_mkvg4tax): es el botón del escenario de Make que manda el presupuesto.
+
+**Confirmación del presupuesto.** Como en la OP, con cliente y constructor se elige el «Responsable de
+confirmar el presupuesto». Sólo a él le llega el enlace de confirmación (ver «El enlace de
+confirmación» más abajo). La clave del enlace queda guardada en el subelemento, en
+`🤖Clave Confirmacion` (`text_mm7wn1jz`).
 Reglas en `src/lib/presupuesto.ts`, probadas con `npm run test:presupuesto`.
+
+### El enlace de confirmación (OP y presupuesto)
+
+El cliente confirma desde la app, sin Make: `https://app-polifroni.vercel.app/confirmar?d=&c=&n=&t=`.
+
+- **Al enviar**, la app genera una clave (UUID, `src/lib/claveConfirmacion.ts`) y se la manda a
+  `/api/whatsapp`. El servidor arma el enlace y lo **firma** con HMAC-SHA256 (`api/_confirmacion.ts`):
+  `d` es el documento (`op` | `presupuesto`), `c` la clave, `n` el nombre de quien confirma y `t` la
+  firma de los tres. Un reintento reusa la misma clave.
+- **La clave queda en Monday** en `🤖Clave Confirmacion`. En la OP (`text_mm7wqqm2`) se escribe al
+  finalizar la operación, o antes de mandar si la OP ya estaba en el tablero (un reenvío reusa la que
+  tenía). En el presupuesto (`text_mm7wn1jz`), al finalizar.
+- **`GET /confirmar`** verifica la firma, busca el ítem por la clave y sirve el formulario (o "ya
+  respondido"). A los bots de vista previa (WhatsApp, Telegram, …) les devuelve sólo título y logo, sin
+  consultar Monday.
+- **`POST /confirmar`** verifica la firma de nuevo, relee el estado y escribe:
+  - OP: `🤖Estado OP` → Confirmada / NO Confirmado, la confirmación de la obra (`color_mm73rxg7`) →
+    CONFIRMADO OP / NO CONFIRMADO, y un update en la OP con el motivo, o la ubicación y el coordinador.
+  - Presupuesto: `🤖 Estado de Confirmacion` → Confirmado / Rechazado y `🤖Motivo`, más un update.
+  - Sólo responde una OP en "Enviada Pend Confirmar" o un presupuesto sin respuesta: abrir el enlace
+    otra vez muestra lo que ya se respondió.
+
+Es pública (no pasa por el portero ni por el guardián): la protege la firma. Necesita
+`CONFIRMACION_URL` y `CONFIRMACION_SECRET`. Código en `api/_confirmar*.ts`, probado con
+`npm run test:confirmar`.
+
+### Consultar y Gestionar Presupuestos
+
+Una sola pantalla con los presupuestos que todavía se gestionan: `🤖Estado Presupuesto` en Presupuesto
+Enviado o Solicitud de Presupuesto ("Pend. de confirmar"), En Negociacion o Presupuesto vencido.
+
+- **Perdido** → "Perdido".
+- **Ganar** → «¿Desea confirmar el siguiente presupuesto?». Se elige el presupuesto ganado (subelemento),
+  se ve su PDF, se ingresa el Total Pactado y, opcional, el Plano de Aberturas. Reemplaza al escenario
+  de Make del botón «✋Crear Obra» (la app no lo aprieta):
+  1. crea la obra en 🪟 Obras (cuenta corriente del cliente, constructor o "SIN ARQUITECTO", asignado,
+     "Ganado/Aceptado/Anticipo", "A Medir", tipo, total, aceptación, celular, ubicación, presupuesto
+     final y plano);
+  2. la registra en la cuenta corriente: un movimiento "Venta-Sin Fact" (subelemento de la cuenta) con el
+     total y el PDF, y la obra queda "Registrado en Cta Cte";
+  3. cierra el presupuesto: tipo, color, PDF final, total, plano, "Creado", la obra y "Ganado"; el
+     subelemento ganado queda "Confirmado".
+  Si Monday falla a mitad de camino, «Reintentar» termina lo que falta sin crear otra obra.

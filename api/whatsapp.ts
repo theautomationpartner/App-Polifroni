@@ -3,8 +3,8 @@
  * el PDF compartido desde Google Drive. Reemplaza al escenario de Make de envío al cliente o al
  * constructor: ver `api/_whatsappHttp.ts`.
  *
- * Variables: WHATSAPP_360_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN y,
- * opcional, GOOGLE_DRIVE_FOLDER_ID y CONFIRMAR_OP_URL.
+ * Variables: WHATSAPP_360_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN,
+ * CONFIRMACION_URL, CONFIRMACION_SECRET y, opcional, GOOGLE_DRIVE_FOLDER_ID.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { exigirAdmin } from './_equipos.js'

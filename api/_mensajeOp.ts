@@ -7,36 +7,8 @@
  *  - Reenvío: el enlace va sólo a quien confirma; al otro, el recordatorio.
  */
 
-/**
- * El formulario de confirmación de la OP (escenario de Make, fuera de la app). Sale SÓLO de la
- * variable: el repositorio es público, y con la URL a la vista cualquiera podría mandarle respuestas
- * falsas al escenario (confirmar una orden que nadie confirmó).
- */
-const urlConfirmar = (): string => process.env.CONFIRMAR_OP_URL?.trim() ?? ''
-
-/** Sin la URL no se manda ninguna OP: saldría un mensaje sin el enlace para confirmarla. */
-export const confirmacionConfigurada = (): boolean => !!urlConfirmar()
-
-export interface DatosEnlace {
-  /** La OP del tablero. En una orden nueva todavía no existe (nace al finalizar): va vacía. */
-  ordenId: string | null
-  obraId: string
-  nombre: string
-  /** Con la OP sin crear, el formulario la reconoce por la obra, su número y su tipo. */
-  numero?: string
-  tipo?: string
-}
-
-export function enlaceConfirmacion(d: DatosEnlace): string {
-  const q = new URLSearchParams({ itemId: d.ordenId ?? '', itemIdObra: d.obraId, nombre: d.nombre })
-  if (!d.ordenId) {
-    if (d.numero) q.set('nroOrden', d.numero)
-    if (d.tipo) q.set('tipo', d.tipo)
-  }
-  const url = urlConfirmar()
-  if (!url) throw new Error('falta CONFIRMAR_OP_URL')
-  return `${url}?${q.toString()}`
-}
+/* El enlace para confirmar (firmado, a `/confirmar` de la app) lo arma `enlaceConfirmacion` de
+   `_confirmacion.ts`: acá sólo están los textos. */
 
 export function textoPrimerEnvio(nombre: string, enlace: string): string {
   return `Hola *${nombre}* 👋

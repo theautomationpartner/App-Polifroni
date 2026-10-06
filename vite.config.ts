@@ -108,7 +108,8 @@ export default defineConfig(({ mode }) => {
         'GOOGLE_CLIENT_SECRET',
         'GOOGLE_REFRESH_TOKEN',
         'GOOGLE_DRIVE_FOLDER_ID',
-        'CONFIRMAR_OP_URL',
+        'CONFIRMACION_URL',
+        'CONFIRMACION_SECRET',
       ]) {
         if (env[k]) process.env[k] = env[k]
       }
@@ -119,6 +120,13 @@ export default defineConfig(({ mode }) => {
       server.middlewares.use('/api/produccion-completada', async (req, res) => {
         const mod = await server.ssrLoadModule('/api/_produccionHttp.ts')
         await mod.manejarProduccionCompletada(req, res)
+      })
+
+      /* El enlace de confirmación de la OP y del presupuesto: la misma ruta pública que en Vercel
+         (allá, `/confirmar` se reescribe a `api/confirmar`). */
+      server.middlewares.use('/confirmar', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_confirmarHttp.ts')
+        await mod.manejarConfirmar(req, res)
       })
 
       /* Va ANTES de '/api/whatsapp': un mensaje de texto suelto (los avisos de la Agenda). */
