@@ -32,6 +32,8 @@ import {
   type Documento,
 } from '../api/_confirmarMonday'
 import { manejarConfirmar } from '../api/_confirmarHttp'
+import { MARCA_ENLACE } from '../api/_confirmacion'
+import { textoParaDestino } from '../api/_whatsappHttp'
 import { esc } from '../api/_confirmarPaginas'
 
 const CLAVE = '0f8e2a6c-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
@@ -376,6 +378,29 @@ assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firm
   assert.ok(ok.cuerpo.includes('¡Confirmación recibida<span id="nombreOk">, PEREZ JUAN</span>!'), 'el agradecimiento del presupuesto')
   assert.ok(!ok.cuerpo.includes('<h1>¡Confirmamos tu pedido'), 'no el de la OP')
   assert.ok(escritas.some((e) => e.includes('Ubicación de la obra:</b> Av. San Martín 1500')), 'el update con los datos de la obra')
+}
+
+/* ── El enlace va SÓLO a quien confirma ────────────────────────────────────────────────────────── */
+{
+  /* El caso reportado: cliente y constructor, y sólo el cliente marcado como Confirmador. */
+  const cliente = { tipo: 'Cliente', nombre: 'PEREZ JUAN', confirmador: true, texto: '' }
+  const constructor = { tipo: 'Constructor', nombre: 'ARQ. GOMEZ', confirmador: false, texto: '' }
+  const tieneEnlace = (t: string) => t.includes('/c/')
+  for (const reenvio of [false, true]) {
+    const aCliente = textoParaDestino('op', cliente, { reenvio, clave: CLAVE })
+    const aConstructor = textoParaDestino('op', constructor, { reenvio, clave: CLAVE })
+    const cuando = reenvio ? 'reenvío' : 'primer envío'
+    assert.ok(tieneEnlace(aCliente), `OP, ${cuando}: el confirmador recibe el enlace`)
+    assert.ok(!tieneEnlace(aConstructor), `OP, ${cuando}: quien no confirma NO recibe el enlace`)
+    assert.ok(!aConstructor.includes('La tenés que confirmar por acá'), `OP, ${cuando}: ni la frase del enlace`)
+    assert.ok(aConstructor.includes('Hola *ARQ. GOMEZ*'), `OP, ${cuando}: el resto del mensaje sí le llega`)
+  }
+  const textoPres = (conMarca: boolean) => `Hola${conMarca ? ' ' + MARCA_ENLACE : ''}`
+  assert.ok(tieneEnlace(textoParaDestino('presupuesto', { ...cliente, texto: textoPres(true) }, { reenvio: false, clave: CLAVE })))
+  assert.ok(!tieneEnlace(textoParaDestino('presupuesto', { ...constructor, texto: textoPres(false) }, { reenvio: false, clave: CLAVE })))
+  /* Aunque al texto del que no confirma le llegara la marca, no se le pone el enlace. */
+  const forzado = textoParaDestino('presupuesto', { ...constructor, texto: textoPres(true) }, { reenvio: false, clave: CLAVE })
+  assert.ok(!tieneEnlace(forzado) && !forzado.includes(MARCA_ENLACE))
 }
 
 console.log('confirmar: ok')

@@ -3,14 +3,19 @@
  * plantillas que la app muestra en "Ver mensaje" (`src/features/envio/MensajeEjemplo.tsx`), con el
  * formato de WhatsApp (*negrita*). Si se cambia una, hay que cambiar la otra.
  *
- *  - Primer envío: a cada destinatario, con el enlace para confirmar.
- *  - Reenvío: el enlace va sólo a quien confirma; al otro, el recordatorio.
+ *  - Primer envío y reenvío: el enlace para confirmar va SÓLO a quien confirma (el destinatario con la
+ *    etiqueta de Confirmador). Al otro le llega el mismo mensaje, sin el enlace.
+ *
+ * `enlace` es `null` para quien no confirma.
  */
 
 /* El enlace para confirmar (firmado, a `/confirmar` de la app) lo arma `enlaceConfirmacion` de
    `_confirmacion.ts`: acá sólo están los textos. */
 
-export function textoPrimerEnvio(nombre: string, enlace: string): string {
+export function textoPrimerEnvio(nombre: string, enlace: string | null): string {
+  const cierre = enlace
+    ? `Una vez aprobada, la orden pasa directamente a producción. *La tenés que confirmar por acá:* ${enlace}`
+    : 'Una vez aprobada, la orden pasa directamente a producción.'
   return `Hola *${nombre}* 👋
 
 🧾 Te adjuntamos *Orden de Producción*.
@@ -25,7 +30,7 @@ Te pedimos por favor que verifiques con atención estos ítems:
 
 Si necesitás realizar algún cambio o detectás un error, avisanos.
 
-Una vez aprobada, la orden pasa directamente a producción. *La tenés que confirmar por acá:* ${enlace}
+${cierre}
 
 ¡Gracias por tu confianza!
 🏠 Polifroni Aberturas`

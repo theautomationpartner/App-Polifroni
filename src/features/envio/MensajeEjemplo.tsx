@@ -9,10 +9,10 @@ import type { Rol } from '@/lib/destinatario'
  * sin variables: sirve para saber qué va a leer la otra persona antes de apretar "Enviar", no para
  * editarlo.
  *
- * El primer envío y el reenvío son mensajes distintos. En el reenvío el cierre depende de quién lo
- * recibe: al responsable de confirmar le llega el enlace para confirmar; al otro destinatario, sólo
- * el recordatorio (es el `if(72.confirmador = true; …)` del escenario). Con los dos destinatarios se
- * puede ver el de cada uno.
+ * El primer envío y el reenvío son mensajes distintos. En los dos, el cierre depende de quién lo
+ * recibe: SÓLO al responsable de confirmar le llega el enlace para confirmar; al otro destinatario, el
+ * mismo mensaje sin el enlace (ver `api/_mensajeOp.ts`). Con los dos destinatarios se puede ver el de
+ * cada uno.
  */
 export function MensajeEjemplo({
   destinatario,
@@ -33,7 +33,8 @@ export function MensajeEjemplo({
 }) {
   /** De quién es el mensaje que se está viendo (con dos destinatarios, se elige). */
   const [viendo, setViendo] = useState<Rol | null>(confirmador ?? roles[0] ?? null)
-  const recibeEnlace = !reenvio || !confirmador || viendo === confirmador
+  /* Con un solo destinatario, confirma ése. Con dos, sólo el marcado como Confirmador. */
+  const recibeEnlace = roles.length < 2 || viendo === confirmador
 
   return (
     <Modal
@@ -50,7 +51,7 @@ export function MensajeEjemplo({
         Ejemplo con datos de muestra. Va junto con el PDF de la Orden de Producción.
       </p>
 
-      {reenvio && roles.length === 2 && (
+      {roles.length === 2 && (
         <div className="msj-quien" role="tablist" aria-label="Ver el mensaje de">
           {roles.map((r) => (
             <button
@@ -125,13 +126,16 @@ export function MensajeEjemplo({
               <li>Si la compra incluye mosquiteros, que figuren en la orden.</li>
             </ul>
             <p>Si necesitás realizar algún cambio o detectás un error, avisanos.</p>
-            {/* El enlace va SIEMPRE, sea el cliente o el constructor quien confirme: sin él, la
-                orden se podía fabricar sin que nadie la validara. */}
-            <p>
-              Una vez aprobada, la orden pasa directamente a producción.{' '}
-              <strong>La tenés que confirmar por acá:</strong>{' '}
-              <span className="msj-link">enlace para confirmar la orden</span>
-            </p>
+            {/* El enlace va sólo a quien confirma. */}
+            {recibeEnlace ? (
+              <p>
+                Una vez aprobada, la orden pasa directamente a producción.{' '}
+                <strong>La tenés que confirmar por acá:</strong>{' '}
+                <span className="msj-link">enlace para confirmar la orden</span>
+              </p>
+            ) : (
+              <p>Una vez aprobada, la orden pasa directamente a producción.</p>
+            )}
             <p>¡Gracias por tu confianza!</p>
             <p>🏠 Polifroni Aberturas</p>
             <span className="msj-adj">
@@ -141,17 +145,15 @@ export function MensajeEjemplo({
         )}
       </div>
       <p className="msj-nota">
-        {reenvio && viendo
+        {roles.length === 2 && viendo
           ? `Así le llega al ${viendo === 'Cliente' ? 'cliente' : 'constructor'}${
-              confirmador ? (viendo === confirmador ? ', con el enlace para confirmar' : ', sin el enlace: confirma el otro destinatario') : ''
+              confirmador
+                ? viendo === confirmador
+                  ? ', con el enlace para confirmar'
+                  : ', sin el enlace: confirma el otro destinatario'
+                : '. Elegí quién confirma la orden: sólo a ése le llega el enlace'
             }.`
-          : `Le llega ${
-              destinatario === 'Ambos'
-                ? 'al cliente y al constructor, a cada uno con su enlace para confirmar'
-                : destinatario === 'Constructor'
-                  ? 'al constructor'
-                  : 'al cliente'
-            }.`}
+          : `Le llega ${destinatario === 'Constructor' ? 'al constructor' : 'al cliente'}, con el enlace para confirmar.`}
       </p>
     </Modal>
   )

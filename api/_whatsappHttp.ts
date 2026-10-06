@@ -142,6 +142,19 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
       })
     }
 
+    /* El enlace para confirmar va SÓLO a quien confirma: tiene que haber exactamente uno marcado. Sin
+       él (o con dos) no se manda nada, en vez de mandarle el enlace a quien no corresponde. */
+    const confirmadores = validados.filter((d) => d.confirmador)
+    if (confirmadores.length !== 1) {
+      return responder(res, 400, {
+        mensajeError: `Falta indicar quién es el responsable de confirmar ${doc}: no se envió nada.`,
+      })
+    }
+    /* En el presupuesto el texto lo arma la app: sólo el de quien confirma puede traer el enlace. */
+    if (presupuesto && validados.some((d) => !d.confirmador && d.texto.includes(MARCA_ENLACE))) {
+      return responder(res, 400, { mensajeError: ERROR_INTERNO_PRESUPUESTO })
+    }
+
     /* 3. El PDF, en Drive y compartido. */
     const nombreArchivo =
       archivo instanceof File && archivo.name ? archivo.name : presupuesto ? 'Presupuesto.pdf' : 'Orden de Produccion.pdf'
@@ -149,24 +162,9 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
 
     /* 4. A cada uno, el texto y después el archivo. */
     const reenvio = datos.reenvio === true
-    const hayConfirmador = validados.some((d) => d.confirmador)
     const enviados: { nombre: string; phone: string; ids: string[] }[] = []
     for (const d of validados) {
-      if (presupuesto) {
-        /* Sólo el texto de quien confirma trae la marca: ahí va su enlace, con su nombre. */
-        const conEnlace = d.texto.includes(MARCA_ENLACE)
-          ? d.texto.split(MARCA_ENLACE).join(enlaceConfirmacion({ documento: 'presupuesto', clave, rol: rolDe(d.tipo) }))
-          : d.texto
-        const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: conEnlace })
-        const idArchivo = await enviarMensaje({ phonenumber: d.tel.phone, url: enDrive.webContentLink })
-        enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, idArchivo] })
-        continue
-      }
-      const enlace = enlaceConfirmacion({ documento: 'op', clave, rol: rolDe(d.tipo) })
-      /* En el reenvío el enlace va sólo a quien confirma (si no se dijo quién, a todos). */
-      const mensaje = reenvio
-        ? textoReenvio(d.nombre, !hayConfirmador || d.confirmador ? enlace : null)
-        : textoPrimerEnvio(d.nombre, enlace)
+      const mensaje = textoParaDestino(presupuesto ? 'presupuesto' : 'op', d, { reenvio, clave })
       const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: mensaje })
       const idArchivo = await enviarMensaje({ phonenumber: d.tel.phone, url: enDrive.webContentLink })
       enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, idArchivo] })
@@ -217,6 +215,23 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     }
     return responder(res, 502, { mensajeError: presupuesto ? ERROR_INTERNO_PRESUPUESTO : ERROR_INTERNO })
   }
+}
+
+/**
+ * El texto que recibe un destinatario. El enlace para confirmar va SÓLO a quien confirma (el
+ * destinatario con la etiqueta de Confirmador), en la OP y en el presupuesto, en el primer envío y en
+ * el reenvío. Al otro le llega el mismo mensaje sin el enlace.
+ *  - OP: el texto lo arma el servidor (`_mensajeOp.ts`).
+ *  - Presupuesto: el texto lo arma la app; en el de quien confirma, la marca se cambia por el enlace.
+ */
+export function textoParaDestino(
+  documento: 'op' | 'presupuesto',
+  d: { tipo: string; nombre: string; confirmador: boolean; texto: string },
+  { reenvio, clave }: { reenvio: boolean; clave: string },
+): string {
+  const enlace = d.confirmador ? enlaceConfirmacion({ documento, clave, rol: rolDe(d.tipo) }) : null
+  if (documento === 'presupuesto') return enlace ? d.texto.split(MARCA_ENLACE).join(enlace) : d.texto.split(MARCA_ENLACE).join('')
+  return reenvio ? textoReenvio(d.nombre, enlace) : textoPrimerEnvio(d.nombre, enlace)
 }
 
 /**
