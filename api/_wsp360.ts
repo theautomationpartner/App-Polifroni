@@ -50,6 +50,28 @@ export async function enviarMensaje(p: { phonenumber: string; text?: string; url
   return String(id)
 }
 
+/**
+ * ¿El número tiene una cuenta de WhatsApp? (`POST /v2/client/isRegisteredUser`). El número va en
+ * dígitos solos: con el sufijo `@c.us` la API contesta siempre que no.
+ *
+ * `null` si no se pudo saber (la API no respondió): quien llama decide; no se frena un envío porque
+ * falló la consulta.
+ */
+export async function tieneWhatsapp(phonenumber: string): Promise<boolean | null> {
+  try {
+    const r = await fetch(`${BASE}/client/isRegisteredUser`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${clave()}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ number: phonenumber.replace(/\D/g, '') }),
+    })
+    const j = (await r.json().catch(() => ({}))) as { success?: boolean; data?: { result?: unknown }; result?: { result?: unknown } }
+    const v = j.data?.result ?? j.result?.result
+    return r.ok && j.success !== false && typeof v === 'boolean' ? v : null
+  } catch {
+    return null
+  }
+}
+
 export type Entrega = { estado: 'ok' | 'fallo' | 'pendiente'; detalle: string }
 
 /**

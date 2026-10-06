@@ -30,7 +30,7 @@ import { ErrorDrive, ErrorTokenDrive, driveConfigurado, subirYCompartir } from '
 import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion } from './_confirmacion.js'
 import { textoPrimerEnvio, textoReenvio } from './_mensajeOp.js'
 import { mensajeTelInvalido, validarTelWsp } from './_telWsp.js'
-import { ErrorWsp, enviarMensaje, esperarEntregas, wspConfigurado } from './_wsp360.js'
+import { ErrorWsp, enviarMensaje, esperarEntregas, tieneWhatsapp, wspConfigurado } from './_wsp360.js'
 
 type Pedido = IncomingMessage & { body?: unknown }
 
@@ -126,6 +126,19 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
       })
     }
 
+    /* 2b. Que cada número tenga cuenta de WhatsApp, también antes de mandar nada: si uno no tiene, no
+       sale ningún mensaje. Si la consulta no responde (`null`) no se frena el envío: la cola de
+       360messenger igual avisa si no pudo entregar. */
+    const cuentas = await Promise.all(validados.map((d) => tieneWhatsapp(d.tel.phone)))
+    const sinCuenta = validados.filter((_, i) => cuentas[i] === false)
+    if (sinCuenta.length) {
+      const lista = sinCuenta.map((d) => `${d.nombre} (${d.tel.phone})`).join(' y ')
+      return responder(res, 400, {
+        mensajeError: `${sinCuenta.length === 1 ? 'El número de' : 'Los números de'} ${lista} no ${sinCuenta.length === 1 ? 'tiene' : 'tienen'} una cuenta de WhatsApp. Corregí el celular con «Editar» y volvé a intentar: no se envió nada.`,
+        sinWhatsapp: sinCuenta.map((d) => d.tel.phone),
+      })
+    }
+
     /* 3. El PDF, en Drive y compartido. */
     const nombreArchivo =
       archivo instanceof File && archivo.name ? archivo.name : presupuesto ? 'Presupuesto.pdf' : 'Orden de Produccion.pdf'
@@ -188,8 +201,18 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
         mensajeError: `Ocurrio un error al intentar enviar ${presupuesto ? 'el presupuesto' : 'la orden'} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_TOKEN_GOOGLE_DRIVE`,
       })
     }
-    const detalle = e instanceof ErrorDrive || e instanceof ErrorWsp ? ` (${e.message})` : ''
-    return responder(res, 502, { mensajeError: presupuesto ? ERROR_INTERNO_PRESUPUESTO : ERROR_INTERNO, detalle: detalle.trim() })
+    /* Drive o 360messenger: se dice CUÁL falló con un código, así el soporte sabe dónde mirar sin
+       pedir los logs. El detalle técnico va aparte (no en el texto que lee el usuario). */
+    const codigo = e instanceof ErrorDrive ? 'ERROR_GOOGLE_DRIVE' : e instanceof ErrorWsp ? 'ERROR_360MESSENGER' : null
+    if (codigo) {
+      return responder(res, 502, {
+        mensajeError: `Ocurrio un error al intentar enviar ${presupuesto ? 'el presupuesto' : 'la orden'} por WhatsApp. ${
+          codigo === 'ERROR_GOOGLE_DRIVE' ? 'No se pudo subir el PDF a Google Drive, así que no salió ningún mensaje.' : 'El servicio de WhatsApp rechazó el mensaje.'
+        } Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ${codigo}`,
+        detalle: e instanceof Error ? e.message : '',
+      })
+    }
+    return responder(res, 502, { mensajeError: presupuesto ? ERROR_INTERNO_PRESUPUESTO : ERROR_INTERNO })
   }
 }
 
