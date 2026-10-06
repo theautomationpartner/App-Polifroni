@@ -284,17 +284,19 @@ El cliente confirma desde la app, sin Make, con un enlace corto: `https://app-po
 - **La clave queda en Monday** en `🤖Clave Confirmacion`. En la OP (`text_mm7wqqm2`) se escribe al
   finalizar la operación, o antes de mandar si la OP ya estaba en el tablero (un reenvío reusa la que
   tenía). En el presupuesto (`text_mm7wn1jz`), al finalizar.
-- **`GET /c/<código>`** verifica la firma, busca el ítem por la clave y sirve el formulario de siempre
-  (`formularios/confirmacion-op.html`, completado por el servidor). Si ya no espera respuesta, la
-  pantalla de después (`formularios/respuesta-op.html`): "¡Confirmamos tu pedido!" si ya se confirmó
-  (también si ya está en el taller o completada), "Recibimos tu observación" si se pidió una revisión,
-  o un aviso si la orden se canceló. A los bots de vista previa (WhatsApp, Telegram, …) les devuelve
-  sólo título y logo, sin consultar Monday.
-- **`POST /c/<código>`** (los campos de siempre: `estado_obra`, `motivo`) verifica la firma de nuevo,
-  relee el estado y escribe:
+- **Los HTML**, uno de confirmación y uno de agradecimiento POR DOCUMENTO, sin mezclarse, tal cual
+  los entregó el usuario: `api/_plantillasConfirmacion.ts` (`OP_*` y `PRESUPUESTO_*`). El servidor sólo
+  completa sus variables de Make (`{{…}}`) y cambia los webhooks por el enlace firmado.
+- **`GET /c/<código>`** verifica la firma, busca el ítem por la clave y sirve el formulario de
+  confirmación de ese documento. Si ya se respondió, su agradecimiento con lo que se respondió (en la
+  OP, también si ya está en el taller o completada). Orden cancelada, enlace inválido o error: un aviso
+  aparte. A los bots de vista previa (WhatsApp, …) sólo título y logo, sin consultar Monday.
+- **`POST /c/<código>`** (`estado_obra`, `motivo` y, en el presupuesto, `ubicacion` y `coordinador`)
+  verifica la firma de nuevo, relee el estado y escribe:
   - OP: `🤖Estado OP` → Confirmada / NO Confirmado, la confirmación de la obra (`color_mm73rxg7`) →
     CONFIRMADO OP / NO CONFIRMADO, y un update en la OP con quién respondió y el motivo.
-  - Presupuesto: `🤖 Estado de Confirmacion` → Confirmado / Rechazado y `🤖Motivo`, más un update.
+  - Presupuesto: `🤖 Estado de Confirmacion` → Confirmado / Rechazado y `🤖Motivo`, más un update con
+    la ubicación y el coordinador de la obra.
   - Sólo responde una OP pendiente de confirmar o un presupuesto sin respuesta.
 - Los enlaces largos del primer formato (`/confirmar?d=&c=&n=&t=`) se siguen atendiendo.
 

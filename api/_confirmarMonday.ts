@@ -100,9 +100,10 @@ export function situacionPresupuesto(etiqueta: string): SituacionRespuesta {
   return 'confirmada'
 }
 
-export const LIMITES = { motivo: 1000 } as const
+export const LIMITES = { motivo: 1000, ubicacion: 300, coordinador: 200 } as const
 
-export type Respuesta = { tipo: 'confirmar' } | { tipo: 'rechazar'; motivo: string }
+/** Presupuesto: al confirmar, su formulario pide además la ubicación y el coordinador de la obra. */
+export type Respuesta = { tipo: 'confirmar'; ubicacion?: string; coordinador?: string } | { tipo: 'rechazar'; motivo: string }
 
 /** Saca los caracteres de control (deja los saltos de línea del motivo) y los espacios de los bordes. */
 const limpio = (v: unknown, multilinea = false): string =>
@@ -111,19 +112,32 @@ const limpio = (v: unknown, multilinea = false): string =>
     .trim()
 
 /**
- * Lo que mandó el formulario (los campos del HTML de siempre: `estado_obra` = "Confirmar" | "No
- * confirmar" y `motivo`), validado. "No confirmar" exige el motivo.
+ * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar",
+ * `motivo` y, en el presupuesto, `ubicacion` y `coordinador`), validado.
+ *  - "No confirmar" exige el motivo.
+ *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario).
+ *  - Confirmar una OP no pide nada más.
  */
-export function leerRespuesta(campos: Record<string, unknown>): { ok: true; respuesta: Respuesta } | { ok: false; error: string } {
+export function leerRespuesta(
+  documento: DocumentoConfirmacion,
+  campos: Record<string, unknown>,
+): { ok: true; respuesta: Respuesta } | { ok: false; error: string } {
   const r = limpio(campos.estado_obra).toLowerCase()
   if (r === 'no confirmar') {
     const motivo = limpio(campos.motivo, true)
-    if (!motivo) return { ok: false, error: 'Contanos qué hay que corregir.' }
+    if (!motivo) return { ok: false, error: 'Falta el motivo.' }
     if (motivo.length > LIMITES.motivo) return { ok: false, error: `El motivo puede tener hasta ${LIMITES.motivo} caracteres.` }
     return { ok: true, respuesta: { tipo: 'rechazar', motivo } }
   }
-  if (r === 'confirmar') return { ok: true, respuesta: { tipo: 'confirmar' } }
-  return { ok: false, error: 'Elegí si confirmás o no.' }
+  if (r !== 'confirmar') return { ok: false, error: 'Falta la respuesta.' }
+  if (documento === 'op') return { ok: true, respuesta: { tipo: 'confirmar' } }
+  const ubicacion = limpio(campos.ubicacion)
+  const coordinador = limpio(campos.coordinador)
+  if (!ubicacion || !coordinador) return { ok: false, error: 'Falta la ubicación o el coordinador de la obra.' }
+  if (ubicacion.length > LIMITES.ubicacion || coordinador.length > LIMITES.coordinador) {
+    return { ok: false, error: 'La ubicación o el coordinador son demasiado largos.' }
+  }
+  return { ok: true, respuesta: { tipo: 'confirmar', ubicacion, coordinador } }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -298,6 +312,8 @@ export function textoUpdate(doc: Documento, nombre: string, r: Respuesta, cuando
     `<p><b>Fecha:</b> ${fechaAr(cuando)} hs</p>`,
   ]
   if (r.tipo === 'rechazar') renglones.push(`<p><b>Motivo:</b> ${escaparHtml(r.motivo).replace(/\n/g, '<br>')}</p>`)
+  if (r.tipo === 'confirmar' && r.ubicacion) renglones.push(`<p><b>Ubicación de la obra:</b> ${escaparHtml(r.ubicacion)}</p>`)
+  if (r.tipo === 'confirmar' && r.coordinador) renglones.push(`<p><b>Coordinador de la obra:</b> ${escaparHtml(r.coordinador)}</p>`)
   renglones.push('<p><i>Respondido desde el enlace de confirmación de WhatsApp.</i></p>')
   return renglones.join('')
 }

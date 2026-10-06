@@ -93,12 +93,17 @@ assert.equal(situacionPresupuesto(''), 'pendiente')
 assert.equal(situacionPresupuesto('Confirmado'), 'confirmada')
 assert.equal(situacionPresupuesto('Rechazado'), 'rechazada')
 
-/* Los campos del formulario de siempre. */
-assert.deepEqual(leerRespuesta({ estado_obra: 'Confirmar' }), { ok: true, respuesta: { tipo: 'confirmar' } })
-assert.equal(leerRespuesta({ estado_obra: 'No confirmar', motivo: '  ' }).ok, false, '"No confirmar" exige el motivo')
-assert.equal(leerRespuesta({ estado_obra: 'No confirmar', motivo: 'x'.repeat(1001) }).ok, false, 'motivo con tope')
-assert.equal(leerRespuesta({ estado_obra: 'otra' }).ok, false)
-assert.deepEqual(leerRespuesta({ estado_obra: 'No confirmar', motivo: 'línea 1\nlínea 2' }), {
+/* Los campos de los formularios. */
+assert.deepEqual(leerRespuesta('op', { estado_obra: 'Confirmar' }), { ok: true, respuesta: { tipo: 'confirmar' } })
+assert.equal(leerRespuesta('op', { estado_obra: 'No confirmar', motivo: '  ' }).ok, false, '"No confirmar" exige el motivo')
+assert.equal(leerRespuesta('op', { estado_obra: 'No confirmar', motivo: 'x'.repeat(1001) }).ok, false, 'motivo con tope')
+assert.equal(leerRespuesta('op', { estado_obra: 'otra' }).ok, false)
+assert.equal(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: 'Av. 1' }).ok, false, 'el presupuesto pide el coordinador')
+assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: ' Av. 1 ', coordinador: 'Ana' }), {
+  ok: true,
+  respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', coordinador: 'Ana' },
+})
+assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'No confirmar', motivo: 'línea 1\nlínea 2' }), {
   ok: true,
   respuesta: { tipo: 'rechazar', motivo: 'línea 1\nlínea 2' },
 })
@@ -271,9 +276,10 @@ const ruta = `/c/${codigo}`
   const r = await pedir('GET', ruta)
   assert.equal(r.status, 200)
   assert.match(r.headers['content-type'], /text\/html/)
-  assert.ok(r.cuerpo.includes('Estimado/a<span> PEREZ JUAN</span>,'), 'el saludo con el nombre de Monday')
-  assert.ok(r.cuerpo.includes('name="estado_obra" value="Confirmar"') && r.cuerpo.includes('value="No confirmar"'), 'los campos de siempre')
-  assert.ok(r.cuerpo.includes(`action="${ruta}"`), 'el formulario vuelve al mismo enlace')
+  assert.ok(r.cuerpo.includes('Estimado/a<span id="saludoNombre"> PEREZ JUAN</span>,'), 'el saludo con el nombre de Monday')
+  assert.ok(r.cuerpo.includes('<title>Confirmación de la Orden de Producción · Polifroni</title>'), 'el HTML de la OP')
+  assert.ok(!r.cuerpo.includes('Presupuesto'), 'nada del HTML del presupuesto')
+  assert.ok(r.cuerpo.includes(`<form action="${ruta}" method="POST">`), 'el formulario vuelve al mismo enlace')
   assert.ok(!/hook\.|make\.com|monday\.com|\{\{/.test(r.cuerpo), 'sin URLs internas ni variables de Make')
 }
 /* El rewrite de Vercel lo pasa como `?codigo=`; el `use` de Vite, sin el `/c`. */
@@ -287,14 +293,16 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
 }
 {
   const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=')
-  assert.equal(r.status, 422, 'sin motivo: vuelve el formulario con el error')
-  assert.ok(r.cuerpo.includes('Contanos qué hay que corregir.'))
+  assert.equal(r.status, 422, 'sin motivo: vuelve el formulario')
+  assert.ok(r.cuerpo.includes('Confirmación de la Orden de Producción'))
   assert.equal(mutaciones.length, 0, 'no se escribió nada')
 }
 {
   const r = await pedir('POST', ruta, 'estado_obra=Confirmar')
   assert.equal(r.status, 200)
-  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido, PEREZ JUAN!'), 'la pantalla de siempre')
+  assert.ok(r.cuerpo.includes('<span id="respuesta" hidden>Confirmar</span>'), 'el agradecimiento elige el bloque de confirmado')
+  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido<span id="nombreOk">, PEREZ JUAN</span>!'), 'el agradecimiento de la OP')
+  assert.ok(!r.cuerpo.includes('Confirmación recibida'), 'no el del presupuesto')
   assert.equal(mutaciones.length, 3, 'la OP, la obra y el update')
 }
 {
@@ -302,14 +310,14 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   const antes = mutaciones.length
   const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=cambio')
   assert.equal(r.status, 409)
-  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido') && r.cuerpo.includes('ya tenía tu respuesta registrada'))
+  assert.ok(r.cuerpo.includes('<span id="respuesta" hidden>Confirmar</span>'), 'muestra lo que ya se respondió')
   assert.equal(mutaciones.length, antes)
 }
 {
   /* La que ya se mandó al taller (el caso de la OP 2300): se ve como confirmada, no como un error. */
   estadoOp = 'Enviada a Taller'
   const r = await pedir('GET', ruta)
-  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido') && !r.cuerpo.includes('no espera respuesta'))
+  assert.ok(r.cuerpo.includes('<span id="respuesta" hidden>Confirmar</span>') && !r.cuerpo.includes('no espera respuesta'))
   estadoOp = 'Cancelada'
   assert.ok((await pedir('GET', ruta)).cuerpo.includes('Esta orden fue cancelada'))
 }
@@ -318,8 +326,56 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   estadoOp = 'Generada y Enviada Pend Confirmar'
   const r = await pedir('GET', `/confirmar?${largo.toString()}`)
   assert.equal(r.status, 200)
-  assert.ok(r.cuerpo.includes('Estimado/a<span> Juan Pérez</span>,'))
+  assert.ok(r.cuerpo.includes('Estimado/a<span id="saludoNombre"> Juan Pérez</span>,'))
 }
 assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firmado de una clave que no está en Monday')
+
+/* ── El presupuesto: sus dos HTML, con el paso 2 (ubicación y coordinador) ─────────────────────── */
+{
+  let estadoPres = ''
+  const escritas: string[] = []
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
+    if (query.trim().startsWith('mutation')) {
+      escritas.push(String(variables.valores ?? variables.cuerpo))
+      if (String(variables.valores ?? '').includes('Confirmado')) estadoPres = 'Confirmado'
+      return new Response(JSON.stringify({ data: { ok: true } }))
+    }
+    const sub = {
+      id: '701',
+      name: 'IDPDF-1221',
+      state: 'active',
+      parent_item: {
+        id: '700',
+        name: 'PEREZ JUAN',
+        column_values: [{ id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', display_value: 'PEREZ JUAN', linked_item_ids: ['1'] }],
+      },
+      column_values: [
+        { id: COL_SUB_PRES.clave, text: CLAVE },
+        { id: COL_SUB_PRES.confirmacion, text: estadoPres },
+      ],
+    }
+    return new Response(JSON.stringify({ data: { boards: [{ items_page: { items: [sub] } }] } }))
+  }) as typeof fetch
+
+  const rutaPres = `/c/${codigoConfirmacion({ documento: 'presupuesto', clave: CLAVE, rol: 'Cliente' })}`
+  const form = await pedir('GET', rutaPres)
+  assert.equal(form.status, 200)
+  assert.ok(form.cuerpo.includes('<title>Confirmación de Presupuesto · Polifroni</title>'), 'el HTML del presupuesto')
+  assert.ok(!form.cuerpo.includes('Orden de Producción</strong>'), 'nada del HTML de la OP')
+  assert.ok(
+    form.cuerpo.includes(`const webhookOriginal = '${rutaPres}'`) && form.cuerpo.includes(`const webhookNuevo = '${rutaPres}'`),
+    'los dos pasos vuelven al enlace',
+  )
+  assert.ok(!/hook\.|make\.com|\{\{/.test(form.cuerpo), 'sin URLs de Make ni variables')
+
+  assert.equal((await pedir('POST', rutaPres, 'estado_obra=Confirmar')).status, 422, 'falta el paso 2')
+  assert.equal(escritas.length, 0)
+  const ok = await pedir('POST', rutaPres, 'estado_obra=Confirmar&ubicacion=Av.+San+Mart%C3%ADn+1500&coordinador=Arq.+P%C3%A9rez')
+  assert.equal(ok.status, 200)
+  assert.ok(ok.cuerpo.includes('¡Confirmación recibida<span id="nombreOk">, PEREZ JUAN</span>!'), 'el agradecimiento del presupuesto')
+  assert.ok(!ok.cuerpo.includes('<h1>¡Confirmamos tu pedido'), 'no el de la OP')
+  assert.ok(escritas.some((e) => e.includes('Ubicación de la obra:</b> Av. San Martín 1500')), 'el update con los datos de la obra')
+}
 
 console.log('confirmar: ok')

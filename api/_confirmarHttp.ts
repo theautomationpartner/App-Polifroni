@@ -3,9 +3,11 @@
  * Producción o un presupuesto. La usan la función de Vercel (`api/confirmar.ts`, con los rewrites de
  * `vercel.json`) y el servidor de Vite en desarrollo.
  *
- *   GET  /c/<código>   el formulario; si ya se respondió, lo que se respondió
- *   POST /c/<código>   la respuesta (application/x-www-form-urlencoded, los campos del formulario de
- *                      siempre): estado_obra = "Confirmar" | "No confirmar", motivo
+ *   GET  /c/<código>   el formulario de confirmación del documento; si ya se respondió, su
+ *                      agradecimiento
+ *   POST /c/<código>   la respuesta (application/x-www-form-urlencoded, los campos de los formularios):
+ *                      estado_obra = "Confirmar" | "No confirmar", motivo y, en el presupuesto,
+ *                      ubicacion y coordinador
  *
  * El formato largo del primer enlace (`/confirmar?d=&c=&n=&t=`) se sigue atendiendo igual.
  *
@@ -49,14 +51,20 @@ function enlaceDe(url: URL): { enlace: EnlaceLeido; accion: string } | null {
   return largo ? { enlace: largo, accion: `/confirmar?${url.searchParams.toString()}` } : null
 }
 
-/** Lo que se muestra de un documento que ya no espera respuesta. */
+/** El formulario de confirmación del documento (el de la OP o el del presupuesto). */
+const formulario = (doc: Documento, accion: string) => paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion })
+
+/**
+ * Lo que se muestra de un documento que ya no espera respuesta: si ya se respondió, el agradecimiento
+ * de ESE documento con lo que se respondió; si no, un aviso.
+ */
 function paginaSinRespuesta(doc: Documento): string {
   const op = doc.documento === 'op'
   switch (doc.situacion) {
     case 'confirmada':
-      return paginaRespuesta(doc, 'confirmada', '', true)
+      return paginaRespuesta(doc.documento, doc.nombre, 'confirmada', '')
     case 'rechazada':
-      return paginaRespuesta(doc, 'rechazada', doc.motivo, true)
+      return paginaRespuesta(doc.documento, doc.nombre, 'rechazada', doc.motivo)
     case 'cancelada':
       return paginaAviso(
         'Esta orden fue cancelada',
@@ -101,7 +109,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
     }
 
     if (req.method !== 'POST') {
-      return html(res, 200, doc.situacion === 'pendiente' ? paginaFormulario({ doc, accion }) : paginaSinRespuesta(doc))
+      return html(res, 200, doc.situacion === 'pendiente' ? formulario(doc, accion) : paginaSinRespuesta(doc))
     }
 
     let campos: Record<string, string>
@@ -111,12 +119,17 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
       return html(res, 400, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
     }
     if (doc.situacion !== 'pendiente') return html(res, 409, paginaSinRespuesta(doc))
-    const leida = leerRespuesta(campos)
-    if (!leida.ok) return html(res, 422, paginaFormulario({ doc, accion, previo: campos, error: leida.error }))
+    const leida = leerRespuesta(enlace.documento, campos)
+    /* Los formularios ya exigen cada campo antes de enviar: si igual falta algo, se vuelve a mostrar. */
+    if (!leida.ok) return html(res, 422, formulario(doc, accion))
 
     await registrarRespuesta(doc, doc.nombre, leida.respuesta)
     const r = leida.respuesta
-    return html(res, 200, paginaRespuesta(doc, r.tipo === 'confirmar' ? 'confirmada' : 'rechazada', r.tipo === 'rechazar' ? r.motivo : ''))
+    return html(
+      res,
+      200,
+      paginaRespuesta(doc.documento, doc.nombre, r.tipo === 'confirmar' ? 'confirmada' : 'rechazada', r.tipo === 'rechazar' ? r.motivo : ''),
+    )
   } catch (e) {
     console.error('[confirmar]', e)
     return html(
