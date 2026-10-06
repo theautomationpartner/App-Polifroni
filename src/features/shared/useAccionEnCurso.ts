@@ -14,6 +14,16 @@ export function useAccionEnCurso(motivo: string, activo: boolean) {
   useEffect(() => {
     if (!activo) return
     dispatch({ type: 'setAccionEnCurso', motivo })
-    return () => dispatch({ type: 'setAccionEnCurso', motivo: null })
+    /* Recargar o cerrar la pestaña a mitad de camino deja el trabajo cortado —p. ej. una OP creada
+       en Monday sin sus archivos ni su estado—: el navegador pregunta antes de salir. */
+    const avisar = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', avisar)
+    return () => {
+      window.removeEventListener('beforeunload', avisar)
+      dispatch({ type: 'setAccionEnCurso', motivo: null })
+    }
   }, [motivo, activo, dispatch])
 }

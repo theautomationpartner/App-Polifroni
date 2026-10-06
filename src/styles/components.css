@@ -369,8 +369,12 @@
      pisos que empujaba todo el contenido. Ahora nada baja: lo que falta de ancho lo ceden los
      controles, que saben encogerse (el nombre de la obra se recorta con puntos suspensivos) y la
      barra de etapas, que en pantallas chicas se queda con los círculos y suelta los rótulos. */
-  flex-wrap: nowrap;
+  /* RED DE SEGURIDAD: si aun así no entra en una fila (un nombre de operación más largo, el zoom
+     del navegador), la barra de etapas baja a su propio renglón, pegada a la derecha. Nunca se
+     dibuja ENCIMA de los selectores: eso es lo que pasaba dentro de Monday, con el panel a ~1400 px. */
+  flex-wrap: wrap;
   gap: 24px;
+  row-gap: 4px;
   max-width: 1480px;
   margin: 0 auto;
 }
@@ -1453,7 +1457,10 @@ td {
    Antes de desaparecer o de bajar de línea, suelta lo que menos hace falta: primero los rótulos
    —el número del círculo ya identifica la etapa— y después los conectores. Así sigue estando a la
    derecha, diciendo en cuál de las cinco estás, incluso en un teléfono. */
-@media (max-width: 1180px) {
+/* 1480 px y no menos: es el ancho máximo del encabezado. Con la marca y los tres selectores
+   (Área 180, Operación 340, Usuario 290) la fila ya ocupa ~1.080 px; la barra con sus rótulos
+   suma ~330 y no entra en el panel de Monday (~1.400 px). Sin los rótulos ocupa ~150 y sí. */
+@media (max-width: 1480px) {
   .paso-header-steps .step-nro {
     display: none;
   }

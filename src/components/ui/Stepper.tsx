@@ -48,14 +48,14 @@ export function Stepper({ steps, current, className = '', maxReached, onStep, ra
               tabIndex={nav ? 0 : undefined}
               aria-disabled={bloqueado || undefined}
               aria-current={state === 'cur' ? 'step' : undefined}
-              /* El nombre ya está impreso; el rótulo accesible le suma el ordinal, que en pantalla
-                 vive en el círculo. El `title` sólo aparece cuando hay algo MÁS que decir: por qué
-                 el paso está bloqueado. Repetir el nombre en un tooltip no aporta nada. */
+              /* El rótulo accesible suma el ordinal, que en pantalla vive en el círculo. El `title`
+                 dice por qué el paso está bloqueado; si no lo está, su nombre: en pantallas
+                 angostas el encabezado oculta los rótulos y queda sólo el círculo. */
               aria-label={`Paso ${i + 1}: ${label}`}
               title={
                 bloqueado
                   ? (razonBloqueo?.(i) ?? 'Completá los pasos anteriores para llegar a esta etapa.')
-                  : undefined
+                  : label
               }
               onClick={nav ? () => onStep!(i) : undefined}
               onKeyDown={

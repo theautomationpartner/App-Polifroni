@@ -177,10 +177,24 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
     modo === 'cliente' ? rolesIniciales(obra.opDestinatario.texto) : [],
   )
   /**
-   * Quién confirma la orden cuando se envía a los DOS: lo elige el usuario. Con uno solo, confirma
-   * ése y no se pregunta.
+   * El responsable de confirmar que la OP ya tiene asignado (`🤖Responsable de Confirmar`). Sólo
+   * importa en un reenvío: la orden ya salió y alguien quedó a cargo de confirmarla.
    */
-  const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(null)
+  const confirmadorAsignado: Rol | null =
+    orden?.estadoOrden === 'pendiente' && (ROLES as readonly string[]).includes(orden.confirmador.trim())
+      ? (orden.confirmador.trim() as Rol)
+      : null
+  /**
+   * Quién confirma la orden cuando se envía a los DOS: lo elige el usuario. Con uno solo, confirma
+   * ése y no se pregunta. En un reenvío arranca con el que ya tiene asignado la orden —su etiqueta
+   * "Confirmador" se ve de entrada— y se puede reasignar.
+   */
+  const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(confirmadorAsignado)
+  /* La orden puede llegar (o cambiar) después de montar: se toma su responsable si todavía no se
+     eligió otro. */
+  useEffect(() => {
+    if (confirmadorAsignado) setConfirmadorElegido((actual) => actual ?? confirmadorAsignado)
+  }, [orden?.id, confirmadorAsignado])
   const [verMensaje, setVerMensaje] = useState(false)
   /** El destinatario cuyo celular se está corrigiendo (ver `EditarCelular`). */
   const [editandoCel, setEditandoCel] = useState<Rol | null>(null)
@@ -251,7 +265,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       if (ambos && !confirmador) {
         setFaltan({
           titulo: 'Falta indicar quién confirma la orden',
-          items: ['Elegí en «Responsable de confirmar la orden» si confirma el cliente o el constructor.'],
+          items: ['Elegí quién confirma la orden: el cliente o el constructor.'],
         })
         return
       }
@@ -502,7 +516,9 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
 
       {ambos && (
         <div className="igp">
-          <label htmlFor="op-confirmador">Responsable de confirmar la orden *</label>
+          <label htmlFor="op-confirmador">
+            {reenvio ? '¿Deseas reasignar al responsable de confirmar la orden?' : 'Responsable de confirmar la orden *'}
+          </label>
           <select
             id="op-confirmador"
             className={`full w-contactos ${faltan && !confirmador ? 'is-falta' : ''}`}

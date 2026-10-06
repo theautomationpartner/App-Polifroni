@@ -20,10 +20,34 @@ import { abrirOrdenDeObra } from './ordenDeObra'
 import { registrarEnvioLocal } from './registrarEnvioLocal'
 
 /**
+ * Los subelementos de la OP: una observación por abertura y un renglón por vidrio, con la cantidad
+ * TOTAL a pedir (la de su línea por las aberturas del modelo). `crearSubelementos` REEMPLAZA los que
+ * hubiera, así que volver a generar no duplica; `subelementosDe` evita repetirlo con la misma OP final.
+ */
+async function guardarSubelementos(
+  id: string,
+  b: BorradorOp,
+  opFinal: File,
+  avanzar: (cambios: Partial<BorradorOp>) => void,
+): Promise<void> {
+  if (b.subelementosDe === opFinal) return
+  const observaciones = b.aberturas.map((a) => ({ nombre: normalizarNombre(a.nombre), texto: a.texto.trim() }))
+  const cantidades = cantidadesPorModelo(b.lecturaOp)
+  const vidrios = b.vidrios.map((v) => {
+    const uds = cantidadDe(cantidades, v.modelo)
+    return v.cant != null && uds != null ? { ...v, cant: v.cant * uds } : v
+  })
+  await crearSubelementos(id, observaciones, vidrios)
+  avanzar({ subelementosDe: opFinal })
+}
+
+/**
  * La OP de PVC en el tablero, apenas se genera la OP final ("Generar OP final"): se crea —o, si se
  * vuelve a generar, se reusa la misma— en "Generada Pend de Enviar" (`🤖Estado OP`), con el PDF de
- * HETMO en `🤖OP OriginaL`, la OP final en `🤖Op V2 Mejorada`, los datos de la medición y su nombre
- * definitivo. Así una orden generada que no se llegó a enviar queda en el tablero, y desde
+ * HETMO en `🤖OP OriginaL`, la OP final en `🤖Op V2 Mejorada`, los datos de la medición, su nombre
+ * definitivo y sus subelementos —observaciones y VIDRIOS—. Los vidrios van acá y no recién al
+ * finalizar: una OP que se termina desde la consulta y sale al taller sin pasar por "Finalizar"
+ * tiene que llegar igual a la Solicitud de Cortes de Vidrio con sus vidrios. Así una orden generada que no se llegó a enviar queda en el tablero, y desde
  * "Consultar órdenes" se la termina de enviar ("Completar Carga").
  *
  * `avanzar` va guardando lo hecho: volver a generar no crea otra OP ni vuelve a subir el original.
@@ -52,15 +76,11 @@ export async function guardarOpGenerada({
     m = { ...m, nroOrden: nueva.numero }
     avanzar({ ordenId: id, medicion: m })
   }
-  if (b.archivoSubido !== original) {
-    await subirEtmoAOrden(id, original)
-    avanzar({ archivoSubido: original })
-  }
-  if (b.opFinalSubida !== opFinal) {
-    await subirOpFinal(id, opFinal)
-    avanzar({ opFinalSubida: opFinal })
-  }
+  /* Lo primero, apenas existe: su estado y sus datos. Si algo corta el resto (un error, la pestaña
+     que se recarga), la OP queda "Generada Pend de Enviar" y con su medición —se la encuentra y se
+     la completa desde la consulta—, no como un ítem vacío y sin estado. */
   const nro = m.nroOrden.trim()
+  await setEstadoOrden(id, ESTADO_OP.generada)
   await completarOrden(id, {
     tipo: 'PVC',
     numero: nro,
@@ -69,7 +89,16 @@ export async function guardarOpGenerada({
     observacion: m.observacion,
     fecha: m.fecha,
   })
-  await setEstadoOrden(id, ESTADO_OP.generada)
+  if (b.archivoSubido !== original) {
+    await subirEtmoAOrden(id, original)
+    avanzar({ archivoSubido: original })
+  }
+  if (b.opFinalSubida !== opFinal) {
+    await subirOpFinal(id, opFinal)
+    avanzar({ opFinalSubida: opFinal })
+  }
+  await guardarSubelementos(id, b, opFinal, avanzar)
+  if (b.nOpHetmo) await guardarNroHetmo(id, b.nOpHetmo).catch(() => {})
   await renombrarOrdenEmitida(id, obra.nombre, 'PVC', nro).catch(() => {})
   return id
 }
@@ -130,16 +159,7 @@ export async function registrarPvc({
   })
 
   if (opFinal) {
-    if (b.subelementosDe !== opFinal) {
-      const observaciones = b.aberturas.map((a) => ({ nombre: normalizarNombre(a.nombre), texto: a.texto.trim() }))
-      const cantidades = cantidadesPorModelo(b.lecturaOp)
-      const vidrios = b.vidrios.map((v) => {
-        const uds = cantidadDe(cantidades, v.modelo)
-        return v.cant != null && uds != null ? { ...v, cant: v.cant * uds } : v
-      })
-      await crearSubelementos(id, observaciones, vidrios)
-      avanzar({ subelementosDe: opFinal })
-    }
+    await guardarSubelementos(id, b, opFinal, avanzar)
     if (b.nOpHetmo) await guardarNroHetmo(id, b.nOpHetmo).catch(() => {})
     if (b.opFinalSubida !== opFinal) {
       await subirOpFinal(id, opFinal)

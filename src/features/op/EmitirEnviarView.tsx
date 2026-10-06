@@ -177,7 +177,14 @@ export function EmitirEnviarView() {
       try {
         await guardarOpGenerada({
           obra: base,
-          borrador: { ...borradorRef.current, opFinal: r.archivo, generada: true },
+          /* La lectura y el N° de HETMO recién se despacharon: todavía no están en la referencia. */
+          borrador: {
+            ...borradorRef.current,
+            opFinal: r.archivo,
+            generada: true,
+            lecturaOp: lectura,
+            nOpHetmo: (lectura.numeroListado ?? '').trim(),
+          },
           opFinal: r.archivo,
           responsableId,
           avanzar: (cambios) => dispatch({ type: 'setBorrador', cambios }),
@@ -393,7 +400,7 @@ export function EmitirEnviarView() {
       {guardando && (
         <ModalCargando
           titulo="Guardando la orden en el tablero"
-          detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO y la OP final adjuntas."
+          detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO, la OP final, sus vidrios y sus observaciones."
         />
       )}
     </section>

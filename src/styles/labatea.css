@@ -847,6 +847,14 @@
      entrar en UN renglón, y el menú mide lo mismo que la caja. */
   --sel-ancho: 340px;
 }
+/* Si la caja se achica (pantallas angostas), la operación se corta con "…" en UN renglón, como el
+   usuario: partida en dos o tres renglones se salía de la caja. */
+.topsel-op .selbox--btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* El usuario, igual: el nombre más largo de la cuenta entra entero en un renglón. */
 .topsel .sel-usuario,
 .topsel .selbox--fijo {
@@ -871,6 +879,32 @@
 .topsel .dditem + .dditem {
   margin-top: 0;
   border-top: 1px solid var(--border-suave, #e4e7ec);
+}
+/* Anchos intermedios: los selectores se achican un poco (el texto largo se corta con "…") para
+   que la barra de etapas siga entrando en la MISMA fila y el encabezado no crezca a dos pisos. */
+@media (max-width: 1380px) {
+  .topsel-op {
+    --sel-ancho: 300px;
+  }
+  .topsel .sel-usuario,
+  .topsel .selbox--fijo {
+    --sel-ancho: 250px;
+  }
+  .topsel-area {
+    --sel-ancho: 160px;
+  }
+}
+@media (max-width: 1240px) {
+  .topsel-op {
+    --sel-ancho: 260px;
+  }
+  .topsel .sel-usuario,
+  .topsel .selbox--fijo {
+    --sel-ancho: 210px;
+  }
+  .topsel-area {
+    --sel-ancho: 150px;
+  }
 }
 @media (max-width: 860px) {
   .topsel-op {

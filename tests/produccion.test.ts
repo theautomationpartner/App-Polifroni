@@ -35,7 +35,7 @@ import { etiquetasPasos, ordenesVivas, situacionOrdenes, textoSituacion, tipoDe 
 import { validarEntrada } from '../src/features/obras/validaciones'
 import { fechaRecordatorio } from '../src/lib/recordatorio'
 import { colorCancelado, porcentajeCancelado } from '../src/lib/cancelado'
-import { composicion, consolidar, ordenParaCortes, textoSolicitud } from '../src/lib/vidrios'
+import { composicion, consolidar, ordenParaCortes, ordenVisibleEnCortes, textoSolicitud } from '../src/lib/vidrios'
 import { aAberturasOp, aVidriosOp } from '../src/lib/lecturaHetmo'
 import { validarTelWsp } from '../api/_telWsp'
 import { enlaceConfirmacion } from '../api/_confirmacion'
@@ -219,11 +219,21 @@ assert.equal(colorCancelado(100), '#00c875')
 /* ── Qué órdenes entran en una solicitud de cortes ─────────────────────────────────────────────── */
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 4 }), true)
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Solicitados', vidrios: 4 }), false, 'ya pedidos')
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Recibidos', vidrios: 4 }), false, 'ya recibidos')
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Colocados', vidrios: 4 }), false)
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Cancelados', vidrios: 4 }), false)
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: '', vidrios: 4 }), false, 'sin estado: no')
 assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 0 }), false, 'sin vidrios')
 assert.equal(ordenParaCortes({ enTaller: false, estadoVidrios: 'Pend de Solicitar', vidrios: 4 }), false, 'no salió al taller')
+
+/* Se muestran también las del taller sin vidrios (sin poder elegirlas); las ya pedidas, no. */
+assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 4 }), true)
+assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 0 }), true, 'sin vidrios: se ve')
+assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: '', vidrios: 0 }), true, 'sin vidrios ni estado: se ve')
+assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar', vidrios: 0 }), false, 'pero no se elige')
+assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Solicitados', vidrios: 4 }), false, 'ya pedidos: no se ve')
+assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Recibidos', vidrios: 4 }), false)
+assert.equal(ordenVisibleEnCortes({ enTaller: false, estadoVidrios: '', vidrios: 0 }), false, 'fuera del taller: no se ve')
 
 /* ── La respuesta de la lectura de HETMO con Claude ────────────────────────────────────────────── */
 {
@@ -277,12 +287,12 @@ assert.equal(validarTelWsp('').success, false)
   const clave = '0f8e2a6c-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
   process.env.CONFIRMACION_SECRET = 'x'.repeat(40)
   delete process.env.CONFIRMACION_URL
-  assert.throws(() => enlaceConfirmacion({ documento: 'op', clave, nombre: 'Juan' }), /CONFIRMACION_URL/)
+  assert.throws(() => enlaceConfirmacion({ documento: 'op', clave, rol: 'Cliente' }), /CONFIRMACION_URL/)
   process.env.CONFIRMACION_URL = 'https://app.test/confirmar'
-  const op = new URL(enlaceConfirmacion({ documento: 'op', clave, nombre: 'Juan Pérez' }))
-  assert.equal(op.origin + op.pathname, 'https://app.test/confirmar', 'la URL sale de la variable')
-  assert.equal(op.searchParams.get('c'), clave, 'la OP va por su clave, no por su id')
-  assert.ok(op.searchParams.get('t') && !op.searchParams.has('itemId') && !op.searchParams.has('itemIdObra'))
+  const op = new URL(enlaceConfirmacion({ documento: 'op', clave, rol: 'Cliente' }))
+  assert.equal(op.origin, 'https://app.test', 'el origen sale de la variable')
+  assert.match(op.pathname, /^\/c\/[A-Za-z0-9_-]{35}$/, 'un código corto, sin el id de la OP ni el nombre')
+  assert.equal(op.search, '')
   assert.ok(textoReenvio('Juan', 'https://x').includes('https://x'))
   assert.ok(!textoReenvio('Ana', null).includes('link'), 'quien no confirma no recibe el enlace')
 }
