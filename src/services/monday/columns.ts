@@ -22,6 +22,8 @@ export const COL_OP_ARCHIVOS = {
   obra: 'board_relation_mm7e604m',
   etmo: 'file_mm7g9dnc',
   opFinal: 'file_mm7g7emd',
+  /** 🤖Orden de Compra de Vidrios (file): el Excel de la solicitud de cortes en que entró la OP. */
+  ordenCompraVidrios: 'file_mm7w21k5',
   estado: 'color_mm7g3ta4',
 } as const
 

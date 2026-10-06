@@ -10,6 +10,9 @@
 /** La etiqueta de `🤖Estado Vidrios` de una OP cuyos vidrios todavía no se pidieron. */
 export const PEND_SOLICITAR = 'Pend de Solicitar'
 
+/** La etiqueta de `🤖Estado Vidrios` de una OP cuyos vidrios ya se pidieron (al finalizar la solicitud). */
+export const SOLICITADOS = 'Solicitados'
+
 /**
  * Qué órdenes entran en una solicitud de cortes: las que ya salieron al taller, cuyos vidrios
  * todavía no se pidieron (`🤖Estado Vidrios` = "Pend de Solicitar"; las Solicitadas, Colocadas o
@@ -17,6 +20,14 @@ export const PEND_SOLICITAR = 'Pend de Solicitar'
  */
 export const ordenParaCortes = (o: { enTaller: boolean; estadoVidrios: string; vidrios: number }): boolean =>
   o.enTaller && o.estadoVidrios.trim() === PEND_SOLICITAR && o.vidrios > 0
+
+/**
+ * Qué órdenes se MUESTRAN en la solicitud: las que se pueden pedir (`ordenParaCortes`) y, además,
+ * las del taller que no tienen vidrios. Éstas se ven para que se sepa que la orden está, pero no se
+ * pueden elegir: no hay nada que pedir de ellas.
+ */
+export const ordenVisibleEnCortes = (o: { enTaller: boolean; estadoVidrios: string; vidrios: number }): boolean =>
+  ordenParaCortes(o) || (o.enTaller && o.vidrios === 0)
 
 /** Lo mínimo de un vidrio para pedirlo (ver `VidrioDeOrden`). */
 export interface VidrioPedido {

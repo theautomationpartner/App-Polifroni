@@ -15,6 +15,7 @@ import { getUrlArchivo, subirArchivo } from './obras'
 import { byId, type MondayItem } from './parse'
 import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
 import { ETIQUETA_OP, estadoDeOrden, type EstadoOrden } from '@/lib/estadosOp'
+import { SOLICITADOS } from '@/lib/vidrios'
 import type { ArchivoObra } from '@/types'
 
 export { BOARD_ORDENES }
@@ -722,6 +723,21 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
     }`,
     { id: ordenId, valor: etiqueta },
   )
+}
+
+/**
+ * Registra en la OP la solicitud de cortes en que entraron sus vidrios: sube la orden de compra (el
+ * Excel) a `🤖Orden de Compra de Vidrios` y deja `🤖Estado Vidrios` en "Solicitados", con lo que la
+ * orden deja de aparecer en la solicitud de cortes (ver `ordenParaCortes`).
+ *
+ * La columna se vacía antes de subir, como la OP final: un reintento después de una falla no deja
+ * el Excel repetido. El estado va al final: si la subida falla, la OP sigue "Pend de Solicitar" y se
+ * puede reintentar entera.
+ */
+export async function registrarSolicitudVidrios(ordenId: string, ordenCompra: File): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.ordenCompraVidrios]: { clear_all: true } }).catch(() => {})
+  await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraVidrios, ordenCompra)
+  await cambiarColumnas(ordenId, { [COL_OP.estadoVidrios]: { label: SOLICITADOS } })
 }
 
 /**

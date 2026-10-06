@@ -6,7 +6,7 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { enElTaller } from '@/lib/estadosOp'
 import { etiquetaPaso } from '@/lib/pasos'
-import { composicion, esDvh, ordenParaCortes } from '@/lib/vidrios'
+import { composicion, esDvh, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
 import { ordenesDeObra, vidriosDeOrdenes, type ResumenOrden, type VidrioDeOrden } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 
@@ -27,7 +27,8 @@ const piezas = (vs: VidrioDeOrden[]) => vs.reduce((n, v) => n + (v.cantidad ?? 0
  * Las órdenes de la obra que ya salieron al taller, en la misma tabla que "Seleccionar OP A Enviar",
  * de a 6 por página. Elegir una orden con su casilla la despliega y muestra sus vidrios —los
  * subelementos con Tipo = "Vidrio": la composición, simple o DVH con cada capa, las medidas y la
- * cantidad—; destildarla la pliega. Arrancan todas sin elegir, plegadas.
+ * cantidad—; destildarla la pliega. Arrancan todas sin elegir, plegadas. Las que no tienen vidrios
+ * se muestran apagadas, sin casilla para elegir: no hay nada que pedir de ellas.
  */
 export function VidriosSeleccionView() {
   const obra = useObra()
@@ -49,14 +50,19 @@ export function VidriosSeleccionView() {
         const enTaller = (await ordenesDeObra(obra.ordenesIds)).filter((o) => enElTaller(o.estadoOrden, o.envioTaller))
         const porOp = await vidriosDeOrdenes(enTaller.map((o) => o.id))
         if (!vivo) return
-        /* Sólo las que tienen vidrios y todavía no se pidieron (ver `ordenParaCortes`). */
-        const todas = enTaller.filter((o) =>
-          ordenParaCortes({ enTaller: true, estadoVidrios: o.estadoVidrios, vidrios: (porOp[o.id] ?? []).length }),
-        )
+        const datos = (o: ResumenOrden) => ({
+          enTaller: true,
+          estadoVidrios: o.estadoVidrios,
+          vidrios: (porOp[o.id] ?? []).length,
+        })
+        /* Las que tienen vidrios sin pedir y, sin poder elegirse, las que no tienen vidrios (ver
+           `ordenVisibleEnCortes`). Las ya solicitadas, colocadas o canceladas no se muestran. */
+        const todas = enTaller.filter((o) => ordenVisibleEnCortes(datos(o)))
+        const aptas = todas.filter((o) => ordenParaCortes(datos(o)))
         setOrdenes(todas)
-        /* Una elegida antes que ya no entra (se pidió mientras tanto) sale de la solicitud. */
-        if (vidriosOps.some((id) => !todas.some((o) => o.id === id))) {
-          dispatch({ type: 'setVidriosOps', ids: vidriosOps.filter((id) => todas.some((o) => o.id === id)) })
+        /* Una elegida antes que ya no se puede pedir (se pidió mientras tanto) sale de la solicitud. */
+        if (vidriosOps.some((id) => !aptas.some((o) => o.id === id))) {
+          dispatch({ type: 'setVidriosOps', ids: vidriosOps.filter((id) => aptas.some((o) => o.id === id)) })
         }
         setVidrios(porOp)
         setError(false)
@@ -118,8 +124,8 @@ export function VidriosSeleccionView() {
           <h3 className="cobro-card-title">Órdenes enviadas al taller</h3>
           <p className="cobro-card-desc">
             Órdenes de {obra.nombre} que ya están en el taller y tienen sus vidrios pendientes de solicitar.
-            Debajo de cada una, los vidrios que lleva: la
-            composición, las medidas y la cantidad de piezas.
+            Debajo de cada una, los vidrios que lleva: la composición, las medidas y la cantidad de piezas.
+            Las que no tienen vidrios se muestran apagadas y no se pueden elegir.
           </p>
 
           <div className="ant-tabla-wrap">
