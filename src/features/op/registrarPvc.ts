@@ -1,11 +1,13 @@
 import { registrarNumero } from '@/services/make'
 import {
   COL,
+  ESTADO_OP,
   completarOrden,
   crearSubelementos,
   guardarNroHetmo,
   limpiarEstado,
   renombrarOrdenEmitida,
+  setEstadoOrden,
   subirEtmoAOrden,
   subirOpFinal,
   terminarVisita,
@@ -18,13 +20,67 @@ import { abrirOrdenDeObra } from './ordenDeObra'
 import { registrarEnvioLocal } from './registrarEnvioLocal'
 
 /**
- * Registra en Monday la OP de PVC al tocar "Finalizar Operación". "Generar OP final" sólo arma el
- * PDF en la app: todo lo que queda escrito en el tablero se escribe acá.
+ * La OP de PVC en el tablero, apenas se genera la OP final ("Generar OP final"): se crea —o, si se
+ * vuelve a generar, se reusa la misma— en "Generada Pend de Enviar" (`🤖Estado OP`), con el PDF de
+ * HETMO en `🤖OP OriginaL`, la OP final en `🤖Op V2 Mejorada`, los datos de la medición y su nombre
+ * definitivo. Así una orden generada que no se llegó a enviar queda en el tablero, y desde
+ * "Consultar órdenes" se la termina de enviar ("Completar Carga").
  *
- * Recién ACÁ se escribe en Monday: hasta ahora la OP no existía y los documentos vivían en la app.
+ * `avanzar` va guardando lo hecho: volver a generar no crea otra OP ni vuelve a subir el original.
+ * Devuelve el id de la OP.
+ */
+export async function guardarOpGenerada({
+  obra,
+  borrador: b,
+  opFinal,
+  responsableId,
+  avanzar,
+}: {
+  obra: Obra
+  borrador: BorradorOp
+  opFinal: File
+  responsableId: string | null
+  avanzar: (cambios: Partial<BorradorOp>) => void
+}): Promise<string> {
+  const original = b.hetmo
+  if (!original) throw new Error('No hay una orden de HETMO cargada.')
+  let m = b.medicion
+  let id = b.ordenId
+  if (!id) {
+    const nueva = await abrirOrdenDeObra(obra, m, responsableId, b.numeroReservado)
+    id = nueva.id
+    m = { ...m, nroOrden: nueva.numero }
+    avanzar({ ordenId: id, medicion: m })
+  }
+  if (b.archivoSubido !== original) {
+    await subirEtmoAOrden(id, original)
+    avanzar({ archivoSubido: original })
+  }
+  if (b.opFinalSubida !== opFinal) {
+    await subirOpFinal(id, opFinal)
+    avanzar({ opFinalSubida: opFinal })
+  }
+  const nro = m.nroOrden.trim()
+  await completarOrden(id, {
+    tipo: 'PVC',
+    numero: nro,
+    personas: responsableId ? [responsableId] : obra.asignadoIds,
+    medidoPor: m.medidoPor,
+    observacion: m.observacion,
+    fecha: m.fecha,
+  })
+  await setEstadoOrden(id, ESTADO_OP.generada)
+  await renombrarOrdenEmitida(id, obra.nombre, 'PVC', nro).catch(() => {})
+  return id
+}
+
+/**
+ * Registra en Monday la OP de PVC al tocar "Finalizar Operación". La OP normalmente ya existe: se
+ * creó al generar la OP final (ver `guardarOpGenerada`), con sus dos PDF. Acá se completa.
+ *
  * En orden:
- *  0. Crea la OP en el tablero de órdenes (con el número reservado al cargar el documento) y le sube
- *     el PDF original de HETMO a `🤖OP OriginaL`.
+ *  0. Si por algún motivo la OP no existe, se crea (con el número reservado al cargar el documento)
+ *     y se le sube el PDF original de HETMO a `🤖OP OriginaL`.
  *  1. Los datos de la medición.
  *  2. Con la OP final generada: los subelementos —una observación por abertura y un renglón por
  *     vidrio, con la cantidad TOTAL a pedir: la de su línea por las aberturas del modelo—, el N° de

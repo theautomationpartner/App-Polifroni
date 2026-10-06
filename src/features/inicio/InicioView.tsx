@@ -147,6 +147,8 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   gestionarTurnos: { icono: 'fa-calendar-check', titulo: 'Consultar y Gestionar Turnos', etapas: 1 },
   /* Dos etapas: a quién es el presupuesto, y el presupuesto con su envío. */
   presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear y Cargar Presupuestos', etapas: 2 },
+  /* Una sola pantalla, como la consulta de órdenes y la de turnos. */
+  gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar y Gestionar Presupuestos', etapas: 1 },
 }
 
 /** El pie de la tarjeta de un área: cuántas operaciones tiene PARA ESTE USUARIO. */

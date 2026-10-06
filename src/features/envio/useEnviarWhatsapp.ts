@@ -22,6 +22,11 @@ export interface PedidoWsp {
   tipo: string
   /** Qué documento sale. Sin él, la Orden de Producción. */
   documento?: 'presupuesto'
+  /**
+   * La clave (UUID) del enlace de confirmación (`nuevaClave`). El servidor arma con ella el enlace
+   * firmado, y queda guardada en `🤖Clave Confirmacion` de la OP o del presupuesto.
+   */
+  clave: string
 }
 
 export type FaseWsp = 'idle' | 'corriendo' | 'listo' | 'error'

@@ -14,6 +14,7 @@ import { CrearTurnoRegistrarView } from '@/features/agenda/CrearTurnoRegistrarVi
 import { GestionarTurnosView } from '@/features/agenda/GestionarTurnosView'
 import { conDestinatario } from '@/features/presupuesto/borrador'
 import { CargarPresupuestoView } from '@/features/presupuesto/CargarPresupuestoView'
+import { GestionarPresupuestosView } from '@/features/presupuesto/GestionarPresupuestosView'
 import { PresupuestoDestinatarioView } from '@/features/presupuesto/PresupuestoDestinatarioView'
 import { VidriosObraView } from '@/features/vidrios/VidriosObraView'
 import { VidriosSeleccionView } from '@/features/vidrios/VidriosSeleccionView'
@@ -43,6 +44,8 @@ function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, 
   if (operacion === null || !puedeOperar(usuario?.roles, operacion)) return ProduccionInicioView
   /* Presupuesto · Crear y Cargar: a quién (o qué bolsa abierta), y el presupuesto con su envío. Sin
      a quién mandarlo no hay etapa 2 que dibujar. */
+  /* Presupuesto · Consultar y Gestionar: una sola pantalla, la tabla de los que siguen abiertos. */
+  if (operacion === 'gestionarPresupuestos') return GestionarPresupuestosView
   if (operacion === 'presupuestos') {
     return paso === 'obra' || !conDestinatario(presupuesto) ? PresupuestoDestinatarioView : CargarPresupuestoView
   }

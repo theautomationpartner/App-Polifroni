@@ -27,6 +27,7 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
   { id: 'crearTurno', titulo: 'CREAR TURNOS', proceso: 'agenda' },
   { id: 'gestionarTurnos', titulo: 'CONSULTAR Y GESTIONAR TURNOS', proceso: 'agenda' },
   { id: 'presupuestos', titulo: 'CREAR Y CARGAR PRESUPUESTOS', proceso: 'presupuesto' },
+  { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
 ]
 
 /**
@@ -93,6 +94,12 @@ export interface BorradorOp {
    * ANTES de que quede registrado en Monday. Se registra al finalizar la operación.
    */
   envio: EnvioLocal | null
+  /**
+   * La clave del enlace de confirmación (`nuevaClave`). Se genera al primer envío y queda fija para
+   * esta orden: un reintento manda el MISMO enlace, y al finalizar se guarda en la OP
+   * (`🤖Clave Confirmacion`).
+   */
+  claveConfirmacion: string | null
 }
 
 /** Un envío hecho con el documento de la app: a quiénes, cuándo y el link que devolvió Make. */
@@ -100,6 +107,8 @@ export interface EnvioLocal {
   roles: ('Cliente' | 'Constructor')[]
   /** El responsable de confirmar la orden (con un solo destinatario, ése). */
   confirmador: 'Cliente' | 'Constructor' | null
+  /** La clave del enlace de confirmación que salió en el mensaje. */
+  clave: string
   link: string
   /** ISO. */
   cuando: string
@@ -122,6 +131,7 @@ export const borradorInicial = (): BorradorOp => ({
   opFinalSubida: null,
   subelementosDe: null,
   envio: null,
+  claveConfirmacion: null,
 })
 
 /** El cierre de una operación: qué se hizo, en la ventana que pregunta a dónde seguir. */

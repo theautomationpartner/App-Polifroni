@@ -25,7 +25,13 @@ export interface BorradorPresupuesto {
   tipo: string
   color: string
   /** El envío ya salió: a quiénes y cuándo. Se registra al finalizar. */
-  envio: { roles: Rol[]; cuando: string } | null
+  envio: { roles: Rol[]; cuando: string; confirmador: Rol | null } | null
+  /**
+   * La clave del enlace de confirmación (ver `nuevaClave`). Se genera al primer envío y queda fija
+   * para este presupuesto: un reintento manda el MISMO enlace, y al finalizar se guarda en el
+   * subelemento.
+   */
+  clave: string | null
   /* Lo que ya quedó en Monday (para que un reintento no lo repita). */
   bolsaId: string | null
   subitemId: string | null
@@ -41,6 +47,7 @@ export const presupuestoInicial = (): BorradorPresupuesto => ({
   tipo: '',
   color: '',
   envio: null,
+  clave: null,
   bolsaId: null,
   subitemId: null,
   archivoSubido: null,

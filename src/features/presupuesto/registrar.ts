@@ -15,7 +15,8 @@ import type { BorradorPresupuesto } from './borrador'
  * En orden:
  *  1. Crear: la bolsa (el ítem), con el cliente y/o el constructor, a quién se envió y en "Solicitud
  *     de Presupuesto". Cargar otro: la bolsa ya existe; se actualiza a quién se envió esta vez.
- *  2. El subelemento del presupuesto: tipo de carpintería, color, "Enviado" y la fecha del envío.
+ *  2. El subelemento del presupuesto: tipo de carpintería, color, "Enviado", la fecha del envío y la
+ *     clave del enlace de confirmación que salió en el mensaje (`🤖Clave Confirmacion`).
  *  3. Su PDF, en `✋Presupuesto pdf`.
  *  4. Su nombre: el `🤖ID PDF` que le da el tablero.
  *
@@ -32,6 +33,7 @@ export async function registrarPresupuesto({
   const { archivo, envio, cliente, arquitecto } = borrador
   if (!archivo) throw new Error('No hay un PDF cargado.')
   if (!envio) throw new Error('El presupuesto todavía no se envió.')
+  if (!borrador.clave) throw new Error('Falta la clave del enlace de confirmación.')
   const enviarA = etiquetaEnviarA(envio.roles)
 
   let bolsaId = borrador.bolsaId ?? borrador.bolsa?.id ?? null
@@ -51,6 +53,7 @@ export async function registrarPresupuesto({
       tipo: borrador.tipo,
       color: borrador.color,
       fechaEnvio: fechaLocal(new Date(envio.cuando)),
+      clave: borrador.clave,
     })
     avanzar({ subitemId })
   }

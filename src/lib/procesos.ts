@@ -23,8 +23,8 @@ export const PROCESOS: ProcesoDef[] = [
     icono: 'fa-file-invoice-dollar',
     titulo: 'Presupuesto',
     descripcion:
-      'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp y suma nuevas versiones al mismo presupuesto.',
-    detalle: '1 operación',
+      'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp, y gana o pierde cada uno: el ganado se registra como obra.',
+    detalle: '2 operaciones',
   },
   { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
   {

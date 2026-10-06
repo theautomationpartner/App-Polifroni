@@ -125,6 +125,7 @@ export type Operacion =
   | 'crearTurno'
   | 'gestionarTurnos'
   | 'presupuestos'
+  | 'gestionarPresupuestos'
 
 /** Qué puede hacer el usuario según su team de Monday (ver `lib/permisos`). */
 export type Rol = 'admin' | 'produccion'

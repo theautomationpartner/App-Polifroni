@@ -11,6 +11,7 @@ import {
   formatoMonday,
   type Rol,
 } from '@/lib/destinatario'
+import { nuevaClave } from '@/lib/claveConfirmacion'
 import { VISTA_ESTADO, aptaParaTaller } from '@/lib/estadosOp'
 import { fechaRecordatorio } from '@/lib/recordatorio'
 import { fechaHora, htmlATexto } from '@/lib/texto'
@@ -21,6 +22,7 @@ import {
   ESTADO_OP,
   ETIQUETA,
   getUrlArchivo,
+  guardarClaveOrden,
   guardarConfirmador,
   guardarLinkOrden,
   guardarRecordatorio,
@@ -192,6 +194,8 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
     roles: Rol[]
     reenvio: boolean
     confirmador: Rol | null
+    /** La clave del enlace de confirmación que salió en el mensaje. */
+    clave: string
   } | null>(null)
   const disparando = useRef(false)
 
@@ -265,7 +269,11 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
          —ni el destinatario en la obra—. Todo eso se registra al finalizar. */
       if (local) {
         if (antesDeEnviar) await antesDeEnviar()
-        enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador }
+        /* La clave del enlace: una por orden. Un reintento manda el mismo enlace; se guarda en la OP
+           al finalizar, junto con el resto del envío. */
+        const clave = app.borrador.claveConfirmacion ?? nuevaClave()
+        if (!app.borrador.claveConfirmacion) dispatch({ type: 'setBorrador', cambios: { claveConfirmacion: clave } })
+        enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador, clave }
         /* El PDF de la app va en el pedido: Aluminio, el PDF cargado; PVC, la OP final generada. */
         void cliente.correr(
           {
@@ -275,6 +283,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             obraId: obra.id,
             numero: local.numero,
             tipo: local.tipo,
+            clave,
           },
           local.archivo,
           local.archivo.name,
@@ -306,7 +315,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       }
       const pdf = fresca.opFinal.find((a) => !a.esImagen) ?? fresca.opFinal[0]
       if (modo === 'taller') {
-        enCurso.current = { orden: fresca, roles: [], reenvio: false, confirmador: null }
+        enCurso.current = { orden: fresca, roles: [], reenvio: false, confirmador: null, clave: '' }
         void taller.correr({
           ...sobreDeLaOp(fresca.id),
           ordenId: fresca.id,
@@ -332,7 +341,11 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       if (obra.opDestinatario.texto !== etiqueta) await setEstado(obra.id, COL.opDestinatario, etiqueta)
       if (obra.opVia.texto !== VIA) await setEstado(obra.id, COL.opVia, VIA)
       const esReenvio = fresca.estadoOrden === 'pendiente'
-      enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio, confirmador }
+      /* La OP ya está en el tablero: su clave se guarda ANTES de mandar, así el enlace funciona apenas
+         llega. Un reenvío reusa la que ya tenía: el enlace del primer mensaje sigue sirviendo. */
+      const clave = fresca.clave || nuevaClave()
+      if (!fresca.clave) await guardarClaveOrden(fresca.id, clave)
+      enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio, confirmador, clave }
       await setEstadoEnvioOrden(fresca.id, ESTADO_ENVIO_OP.enviando).catch(() => {})
       void cliente.correr(
         {
@@ -342,6 +355,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           obraId: obra.id,
           numero: fresca.numero,
           tipo: fresca.tipo,
+          clave,
         },
         archivo,
         pdf.nombre || 'Orden de Produccion.pdf',
@@ -381,6 +395,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             envio: {
               roles: e.roles,
               confirmador: e.confirmador,
+              clave: e.clave,
               link: linkDeRespuesta(cuerpo),
               cuando: new Date().toISOString(),
             },

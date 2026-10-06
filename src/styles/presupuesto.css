@@ -32,15 +32,55 @@
   font-size: 12.5px;
 }
 
-/* Etapa 2: el recuadro de carga y los datos, uno debajo del otro, a la izquierda del envío. Lleva
-   `carga-grid` por sus colores (los de la carga de la OP); acá es de una sola columna. */
+/* Etapa 2: una sola card a la izquierda del envío, con tipo y color arriba y el recuadro de carga
+   abajo. La card se estira a la altura del bloque de envío y el recuadro ocupa el ancho y el alto que
+   quedan. Lleva `carga-grid` por sus colores (los de la carga de la OP); acá es una columna. */
+.presupuesto-v2 .pres-etapa {
+  align-items: stretch;
+}
 .presupuesto-v2 .pres-carga.carga-grid {
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
-.presupuesto-v2 .pres-carga > .cobro-lector {
+.presupuesto-v2 .pres-carga > .carga-datos {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+}
+.presupuesto-v2 .pres-carga .carga-sec {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+.presupuesto-v2 .pres-carga .cobro-lector {
+  flex: 1 1 auto;
+  margin-top: 16px;
   width: 100%;
+  height: auto;
+  min-height: 220px;
+}
+/* El recuadro en bordó: las mismas reglas de la carga de la OP (`.carga-grid > .cobro-lector--…`),
+   que allá aplican al recuadro suelto y acá, adentro de la card. */
+.presupuesto-v2 .pres-carga .cobro-lector--vacio {
+  border-color: var(--marca);
+  background: #f4f6f9;
+  color: var(--marca);
+}
+.presupuesto-v2 .pres-carga .cobro-lector--vacio.is-over {
+  background: #eceff4;
+}
+.presupuesto-v2 .pres-carga .cobro-lector--procesando .cobro-lector-spin {
+  border-color: var(--marca-borde);
+  border-top-color: var(--marca);
+}
+/* El desplegable sin elegir con el PDF ya cargado: el mismo borde rojo de los campos de la Agenda. */
+.presupuesto-v2 .med-sel--falta .med-input {
+  border-color: var(--red);
+  background: #fff5f6;
+  box-shadow: 0 0 0 3px rgba(226, 68, 92, 0.16);
 }
 .presupuesto-v2 .pres-datos {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -50,9 +90,114 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* Falta el dato con el PDF ya cargado: el mismo borde rojo de los campos de la Agenda. */
+/* Falta el dato: el mismo borde rojo de los campos de la Agenda. */
 .presupuesto-v2 .pres-falta .med-input {
   border-color: var(--red);
   background: #fff5f6;
   box-shadow: 0 0 0 3px rgba(226, 68, 92, 0.16);
+}
+
+/* ════════════════════ Consultar y Gestionar Presupuestos ════════════════════
+   La tabla, las pestañas y los botones son los de "Consultar y Gestionar Turnos" (`agenda-v2`). */
+.presupuesto-v2 .pres-tabla col.pres-w-fecha {
+  width: 118px;
+}
+.presupuesto-v2 .pres-tabla col.pres-w-pres {
+  width: auto;
+}
+.presupuesto-v2 .pres-tabla col.pres-w-n {
+  width: 110px;
+}
+.presupuesto-v2 .pres-tabla col.pres-w-estado {
+  width: 210px;
+}
+.presupuesto-v2 .pres-tabla col.pres-w-acc {
+  width: 260px;
+}
+
+/* La ventana de Ganar: más ancha que la de un turno, con los campos uno debajo del otro. */
+.modal-box.pres-modal {
+  max-width: 620px;
+}
+.pres-modal .pres-modal-campos {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+.pres-modal .pres-ver-fila {
+  display: flex;
+  gap: 8px;
+}
+.pres-modal .pres-modal-campos.carga-grid {
+  display: flex;
+}
+.pres-modal .pres-ver-fila .med-sel {
+  flex: 1;
+  min-width: 0;
+}
+.pres-modal .pres-ver {
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-color: var(--marca);
+  color: var(--marca);
+}
+.pres-modal .pres-ver:hover:not(:disabled) {
+  background: var(--marca-suave);
+}
+.pres-modal .pres-datos-fijos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f4f6f9;
+}
+@media (max-width: 560px) {
+  .pres-modal .pres-datos-fijos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.pres-modal .pres-dato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pres-modal .pres-dato-v {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--o-text-main, #0f172a);
+  overflow-wrap: anywhere;
+}
+.pres-modal .pres-error {
+  color: var(--red);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+/* El recuadro del plano, bajo: es un campo más de la ventana. */
+.pres-modal .pres-plano {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pres-modal .pres-plano > .cobro-lector {
+  --lector-alto: 130px;
+  width: 100%;
+  min-height: 130px;
+  padding: 14px 20px;
+  gap: 8px;
+}
+/* Los rótulos de la ventana van pegados a su campo: la separación la dan los bloques. */
+.pres-modal .pres-modal-campos .campo-l {
+  margin-top: 0;
+}
+.pres-modal .pres-modal-campos .med-campo {
+  gap: 6px;
+}
+.pres-modal .pres-plano > .cobro-lector {
+  --lector-alto: 96px;
+  min-height: 96px;
+}
+.pres-modal .pres-plano .cobro-lector-cara > .fa-cloud-arrow-up {
+  display: none;
 }

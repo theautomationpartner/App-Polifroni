@@ -51,6 +51,9 @@ export const COL_OP = {
   linkPdf: 'link_mm7hmk9d',
   /** 🤖Motivo (long_text): por qué se canceló la OP. */
   motivo: 'long_text_mm7hqq9q',
+  /** 🤖Clave Confirmacion (text): la clave del enlace de confirmación que salió por WhatsApp. Con
+      ella `/confirmar` encuentra la OP (ver `api/_confirmarMonday.ts`). */
+  clave: 'text_mm7wqqm2',
 } as const
 
 /** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
@@ -465,6 +468,8 @@ export interface ResumenOrden {
   envioTaller: string
   /** `🤖Responsable de Confirmar`: "Cliente", "Constructor" o vacío. */
   confirmador: string
+  /** `🤖Clave Confirmacion`: la clave del enlace que salió. Vacía si nunca se envió desde la app. */
+  clave: string
   /** `🤖Estado Vidrios`, tal cual: si sus vidrios ya se pidieron ("Pend de Solicitar", …). */
   estadoVidrios: string
   /** La etiqueta de `🤖Estado OP` tal cual está en el tablero. */
@@ -494,6 +499,7 @@ const COLS_RESUMEN = [
   COL_OP.estadoEnvio,
   COL_OP.estadoEnvioTaller,
   COL_OP.confirmador,
+  COL_OP.clave,
   COL_OP.estadoVidrios,
   COL_OP.estado,
   COL_OP.motivo,
@@ -551,6 +557,7 @@ function aResumen(i: ItemOrden): ResumenOrden {
     estadoEnvio: t(COL_OP.estadoEnvio),
     envioTaller: t(COL_OP.estadoEnvioTaller),
     confirmador: t(COL_OP.confirmador),
+    clave: t(COL_OP.clave),
     estadoVidrios: t(COL_OP.estadoVidrios),
     estado,
     estadoOrden: estadoDeOrden(estado, opFinal.length > 0),
@@ -599,6 +606,8 @@ export async function leerOrden(ordenId: string): Promise<ResumenOrden | null> {
 const INDICE_PEND_CONFIRMAR = 3
 /** Índice de la etiqueta "Enviada a Taller" en `🤖Estado OP`. */
 const INDICE_TALLER = 4
+/** Índice de "Generada Pend de Enviar": generada, todavía sin enviar. */
+const INDICE_PEND_ENVIAR = 6
 
 /**
  * Las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
@@ -607,7 +616,8 @@ const INDICE_TALLER = 4
  * Los filtros se SUMAN (cualquiera de los pedidos), y los filtra Monday —no se trae el tablero
  * entero para descartar casi todo—:
  *  - `soloPendientes`: las "Enviada Pend Confirmar".
- *  - `sinEtiqueta`: las que no tienen ninguna etiqueta en `🤖Estado OP` (todavía no se enviaron).
+ *  - `sinEtiqueta`: las que todavía no se enviaron: sin etiqueta en `🤖Estado OP`, o "Generada Pend
+ *    de Enviar".
  *  - `enTaller`: las "Enviada a Taller" (las que el equipo de producción finaliza).
  * Sin ninguno, todas.
  */
@@ -620,8 +630,9 @@ export async function listarOrdenes({
   const todas: ItemOrden[] = []
   const pendientes = { column_id: COL_OP.estado, compare_value: [INDICE_PEND_CONFIRMAR], operator: 'any_of' }
   const vacias = { column_id: COL_OP.estado, compare_value: [], operator: 'is_empty' }
+  const pendEnviar = { column_id: COL_OP.estado, compare_value: [INDICE_PEND_ENVIAR], operator: 'any_of' }
   const taller = { column_id: COL_OP.estado, compare_value: [INDICE_TALLER], operator: 'any_of' }
-  const reglas = [...(soloPendientes ? [pendientes] : []), ...(sinEtiqueta ? [vacias] : []), ...(enTaller ? [taller] : [])]
+  const reglas = [...(soloPendientes ? [pendientes] : []), ...(sinEtiqueta ? [vacias, pendEnviar] : []), ...(enTaller ? [taller] : [])]
   const q = reglas.length > 1 ? { rules: reglas, operator: 'or' } : reglas.length ? { rules: reglas } : {}
   const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
     `query ($q: ItemsQuery) { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200, query_params: $q) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
@@ -643,7 +654,7 @@ export async function listarOrdenes({
   return lista.filter(
     (o) =>
       (soloPendientes && o.estadoOrden === 'pendiente') ||
-      (sinEtiqueta && !o.estado.trim()) ||
+      (sinEtiqueta && (!o.estado.trim() || o.estado.trim() === ETIQUETA_OP.generada)) ||
       (enTaller && o.estadoOrden === 'taller'),
   )
 }
@@ -753,6 +764,11 @@ export async function guardarRecordatorio(ordenId: string, fecha: string): Promi
 /** Quién es el responsable de confirmar la OP (`🤖Responsable de Confirmar`). */
 export async function guardarConfirmador(ordenId: string, rol: 'Cliente' | 'Constructor'): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.confirmador]: { labels: [rol] } })
+}
+
+/** La clave del enlace de confirmación que salió en el mensaje (`🤖Clave Confirmacion`). */
+export async function guardarClaveOrden(ordenId: string, clave: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.clave]: clave })
 }
 
 export async function cancelarOrden(ordenId: string, motivo: string, autor: string): Promise<void> {

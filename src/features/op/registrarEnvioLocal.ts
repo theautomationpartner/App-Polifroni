@@ -2,6 +2,7 @@ import {
   COL,
   ESTADO_OP,
   ETIQUETA,
+  guardarClaveOrden,
   guardarConfirmador,
   guardarDestinatarios,
   guardarLinkOrden,
@@ -19,8 +20,9 @@ const VIA = 'Whatsapp'
 
 /**
  * Deja en Monday el envío que se hizo con el PDF de la app (Aluminio y PVC), al finalizar la
- * operación: la OP "Enviada Pend Confirmar"; en la obra a quiénes y por dónde, y "Pend de
- * Confirmar"; quién confirma (`🤖Responsable de Confirmar`), a quiénes se envió (`🤖Destinatarios`,
+ * operación: la OP "Enviada Pend Confirmar" con la clave del enlace de confirmación que salió en el
+ * mensaje (`🤖Clave Confirmacion`, con la que `/confirmar` la encuentra); en la obra a quiénes y por
+ * dónde, y "Pend de Confirmar"; quién confirma (`🤖Responsable de Confirmar`), a quiénes se envió (`🤖Destinatarios`,
  * vinculados a Clientes y Constructor/Arquitecto), la fecha del recordatorio (envío + 5
  * días, `🤖Fecha Recordatorio +5d`) y el link del PDF en la OP. El estado
  * de envío de la OP no se escribe: sólo se marca cuando el envío falla ("Error De Envio").
@@ -30,6 +32,8 @@ export async function registrarEnvioLocal(
   ordenId: string,
   envio: EnvioLocal,
 ): Promise<void> {
+  /* La clave primero: sin ella el enlace que ya le llegó al cliente no encuentra la OP. */
+  await guardarClaveOrden(ordenId, envio.clave)
   await setEstadoOrden(ordenId, ESTADO_OP.enviada)
   /* Es el PRIMER envío de la orden: el recordatorio va 5 días después de que salió el mensaje. */
   await guardarRecordatorio(ordenId, fechaRecordatorio(new Date(envio.cuando)))

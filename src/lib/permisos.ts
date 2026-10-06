@@ -106,3 +106,39 @@ export function accionesConsulta(
   return acciones
 }
 
+
+/** Los filtros de la tabla de la consulta. */
+export type FiltroConsulta = 'todas' | 'pendientes' | 'taller' | 'pendEnviar'
+
+export const TITULO_FILTRO: Record<FiltroConsulta, string> = {
+  todas: 'Todas',
+  pendientes: 'Generadas y enviadas pend. de confirmar',
+  taller: 'Enviadas al taller',
+  pendEnviar: 'Generadas pend. de enviar',
+}
+
+/**
+ * En qué filtro cae una orden: las que esperan la confirmación, las del taller, y las generadas
+ * que todavía no se enviaron (con "Generada Pend de Enviar" o sin estado). Otra cosa —una que se
+ * canceló o se finalizó recién— no cae en ninguno: sólo se ve en "Todas".
+ */
+export function categoriaConsulta(o: { estadoOrden: EstadoOrden }): Exclude<FiltroConsulta, 'todas'> | null {
+  if (o.estadoOrden === 'pendiente') return 'pendientes'
+  if (o.estadoOrden === 'taller') return 'taller'
+  if (o.estadoOrden === 'generada' || o.estadoOrden === 'borrador') return 'pendEnviar'
+  return null
+}
+
+/**
+ * Los filtros que tiene cada rol en la consulta.
+ *  - Admin (aunque además esté en Produccion): todos, empezando en "Todas", y los puede cambiar.
+ *  - Sólo Produccion: "Enviadas al taller", fijo: no se puede cambiar.
+ */
+export function filtrosConsulta(roles: readonly Rol[] | null | undefined): {
+  opciones: FiltroConsulta[]
+  inicial: FiltroConsulta
+  fijo: boolean
+} {
+  if ((roles ?? []).includes('admin')) return { opciones: ['todas', 'pendientes', 'taller', 'pendEnviar'], inicial: 'todas', fijo: false }
+  return { opciones: ['taller'], inicial: 'taller', fijo: true }
+}

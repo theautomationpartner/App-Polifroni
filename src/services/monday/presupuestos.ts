@@ -11,8 +11,9 @@
  *    "Cargar otro presupuesto".
  *  - El tipo de carpintería, el color, el PDF y la fecha de envío son de cada SUBELEMENTO.
  */
+import type { ArchivoObra } from '@/types'
 import { memoGlobal } from './cache'
-import { subirArchivo } from './obras'
+import { archivosDeColumna, subirArchivo } from './obras'
 import { byId, valor, type CV } from './parse'
 import { mondayApi } from './sdk'
 
@@ -47,6 +48,8 @@ export const COL_SUB = {
   estadoEnvio: 'color_mkvgch3n',
   idPdf: 'pulse_id_mkvgbfmj',
   fechaEnvio: 'date_mm1zw6h1',
+  /** 🤖Clave Confirmacion: la clave del enlace de confirmación que salió en el mensaje. */
+  clave: 'text_mm7wn1jz',
 } as const
 
 /** Etiquetas del tablero que escribe la app. */
@@ -58,7 +61,7 @@ export const ETIQUETA_PRES = {
 } as const
 
 /* La columna de celular es la misma en los dos tableros de contactos. */
-const COL_CONTACTO = { celular: 'phone_mksydcv6', email: 'email_mksynch6' } as const
+export const COL_CONTACTO = { celular: 'phone_mksydcv6', email: 'email_mksynch6' } as const
 
 const ids = (cv?: CV) => (cv?.linked_item_ids ?? []).map(String)
 /** Un espejo que refleja varios valores ("549…, 549…"): el primero. */
@@ -235,6 +238,8 @@ export interface PresupuestoEnviado {
   /** `YYYY-MM-DD`. Vacío en los que no la tienen. */
   fechaEnvio: string
   estadoEnvio: string
+  /** El PDF del presupuesto (`✋Presupuesto pdf`). `null` si no tiene. */
+  pdf: ArchivoObra | null
 }
 
 /** Una bolsa de presupuestos, con a quién pertenece y lo que ya se le mandó. */
@@ -251,7 +256,7 @@ export interface BolsaPresupuesto {
   presupuestos: PresupuestoEnviado[]
 }
 
-const CAMPOS_BOLSA = `
+export const CAMPOS_BOLSA = `
   id name
   column_values(ids: ${JSON.stringify([
     COL_PRES.cliente,
@@ -268,11 +273,11 @@ const CAMPOS_BOLSA = `
   }
   subitems {
     id name
-    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio])}) { id text }
+    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio, COL_SUB.pdf])}) { id text value }
   }
 `
 
-type ItemBolsa = { id: string; name: string; column_values: CV[]; subitems: { id: string; name: string; column_values: CV[] }[] | null }
+export type ItemBolsa = { id: string; name: string; column_values: CV[]; subitems: { id: string; name: string; column_values: CV[] }[] | null }
 
 /** El vínculo y su espejo de celular, como contacto. El e-mail no se espeja en la bolsa. */
 const contactoDe = (rel?: CV, cel?: CV): Contacto | null => {
@@ -281,7 +286,13 @@ const contactoDe = (rel?: CV, cel?: CV): Contacto | null => {
   return { id, nombre: (rel?.display_value ?? rel?.text ?? '').split(',')[0]?.trim() ?? '', celular: primero(cel).replace(/\D/g, ''), email: '' }
 }
 
-function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
+/** El PDF de una columna file (si hay varios archivos, el primero que no es imagen). */
+const pdfDe = (cv?: CV): ArchivoObra | null => {
+  const a = archivosDeColumna(cv)
+  return a.find((x) => !x.esImagen) ?? a[0] ?? null
+}
+
+export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
   const c = byId(i)
   return {
     id: String(i.id),
@@ -300,6 +311,7 @@ function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
         color: valor(sc[COL_SUB.color]),
         fechaEnvio: valor(sc[COL_SUB.fechaEnvio]),
         estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
+        pdf: pdfDe(sc[COL_SUB.pdf]),
       }
     }),
   }
@@ -392,8 +404,8 @@ export async function actualizarEnviarA(bolsaId: string, enviarA: string): Promi
 }
 
 /**
- * Crea el subelemento del presupuesto enviado: tipo de carpintería, color, "Enviado" y la fecha del
- * envío. El PDF se sube aparte (`subirPdfPresupuesto`): por `column_values` sólo viaja JSON.
+ * Crea el subelemento del presupuesto enviado: tipo de carpintería, color, "Enviado", la fecha del
+ * envío y la clave del enlace de confirmación. El PDF se sube aparte (`subirPdfPresupuesto`): por `column_values` sólo viaja JSON.
  */
 export async function crearPresupuestoEnviado(a: {
   bolsaId: string
@@ -401,12 +413,15 @@ export async function crearPresupuestoEnviado(a: {
   color: string
   /** `YYYY-MM-DD`. */
   fechaEnvio: string
+  /** La clave del enlace de confirmación (`itemId` del enlace). */
+  clave: string
 }): Promise<string> {
   const valores = {
     [COL_SUB.tipo]: { labels: [a.tipo] },
     [COL_SUB.color]: { labels: [a.color] },
     [COL_SUB.estadoEnvio]: { label: ETIQUETA_PRES.enviado },
     [COL_SUB.fechaEnvio]: { date: a.fechaEnvio },
+    [COL_SUB.clave]: a.clave,
   }
   const d = await mondayApi<{ create_subitem: { id: string } }>(
     `mutation ($padre: ID!, $valores: JSON!) {

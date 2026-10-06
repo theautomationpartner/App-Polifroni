@@ -38,7 +38,8 @@ import { colorCancelado, porcentajeCancelado } from '../src/lib/cancelado'
 import { composicion, consolidar, ordenParaCortes, textoSolicitud } from '../src/lib/vidrios'
 import { aAberturasOp, aVidriosOp } from '../src/lib/lecturaHetmo'
 import { validarTelWsp } from '../api/_telWsp'
-import { enlaceConfirmacion, textoReenvio } from '../api/_mensajeOp'
+import { enlaceConfirmacion } from '../api/_confirmacion'
+import { textoReenvio } from '../api/_mensajeOp'
 import type { Obra } from '../src/types'
 
 /* ── Un estado por OP ─────────────────────────────────────────────────────────────────────────── */
@@ -271,15 +272,17 @@ assert.equal(validarTelWsp('').success, false)
 
 /* ── El enlace de confirmación y el reenvío ────────────────────────────────────────────────────── */
 {
-  /* Sin la URL del formulario no hay enlace (no se manda la OP); con una de prueba, se arma. */
-  delete process.env.CONFIRMAR_OP_URL
-  assert.throws(() => enlaceConfirmacion({ ordenId: '1', obraId: '9', nombre: 'Juan' }), /CONFIRMAR_OP_URL/)
-  process.env.CONFIRMAR_OP_URL = 'https://formulario.test/confirmar'
-  const conOp = enlaceConfirmacion({ ordenId: '123', obraId: '9', nombre: 'Juan Pérez' })
-  assert.ok(conOp.startsWith('https://formulario.test/confirmar?'), 'la URL sale de la variable')
-  assert.ok(conOp.includes('itemId=123') && conOp.includes('itemIdObra=9') && !conOp.includes('nroOrden'))
-  const sinOp = enlaceConfirmacion({ ordenId: null, obraId: '9', nombre: 'Juan', numero: '2291', tipo: 'PVC' })
-  assert.ok(sinOp.includes('itemId=&') && sinOp.includes('nroOrden=2291') && sinOp.includes('tipo=PVC'), 'OP sin crear: va por obra y número')
+  /* Sin la URL de la app no hay enlace (no se manda la OP); con una de prueba, se arma con la clave
+     y firmado. El detalle de la firma se prueba en `tests/confirmar.test.ts`. */
+  const clave = '0f8e2a6c-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
+  process.env.CONFIRMACION_SECRET = 'x'.repeat(40)
+  delete process.env.CONFIRMACION_URL
+  assert.throws(() => enlaceConfirmacion({ documento: 'op', clave, nombre: 'Juan' }), /CONFIRMACION_URL/)
+  process.env.CONFIRMACION_URL = 'https://app.test/confirmar'
+  const op = new URL(enlaceConfirmacion({ documento: 'op', clave, nombre: 'Juan Pérez' }))
+  assert.equal(op.origin + op.pathname, 'https://app.test/confirmar', 'la URL sale de la variable')
+  assert.equal(op.searchParams.get('c'), clave, 'la OP va por su clave, no por su id')
+  assert.ok(op.searchParams.get('t') && !op.searchParams.has('itemId') && !op.searchParams.has('itemIdObra'))
   assert.ok(textoReenvio('Juan', 'https://x').includes('https://x'))
   assert.ok(!textoReenvio('Ana', null).includes('link'), 'quien no confirma no recibe el enlace')
 }

@@ -16,7 +16,7 @@ import { ErrorLecturaIA, leerListado } from '@/services/ia/hetmo'
 import { useApp, useDispatch } from '@/state/hooks'
 import { hoyLocal } from './DatosMedicion'
 import { generarOpFinal } from './opFinal/generar'
-import { registrarPvc } from './registrarPvc'
+import { guardarOpGenerada, registrarPvc } from './registrarPvc'
 
 /** "2026-09-25" → "25/09/2026". */
 const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso)
@@ -43,11 +43,13 @@ function Fila({ label, requerido = true, children }: { label: string; requerido?
  * Final"; a la derecha, el envío. El envío se habilita con la OP final generada.
  *
  * Generar le pasa el PDF de HETMO (el que se cargó en la app) a Claude para leer el listado completo
- * y arma el PDF final EN LA APP: no escribe nada en Monday. "Ver OP Final" usa ese PDF y "Confirmar
- * y Enviar" lo manda dentro del pedido al escenario de envío. En Monday no existe todavía ninguna
- * OP: "Finalizar Operación" la crea, le sube el original y la OP final, y registra los datos, los
- * subelementos (observaciones y vidrios), el N° de HETMO y el envío (ver `registrarPvc`). Se puede
- * volver a generar mientras la orden no se haya enviado.
+ * y arma el PDF final en la app. Generado, la OP se crea en el tablero como "Generada Pend de
+ * Enviar", con el original en `🤖OP OriginaL` y la OP final en `🤖Op V2 Mejorada` (ver
+ * `guardarOpGenerada`): una orden generada que no se llega a enviar se termina desde la consulta.
+ * "Ver OP Final" usa el PDF de la app y "Confirmar y Enviar" lo manda dentro del pedido. "Finalizar
+ * Operación" completa la misma OP: los subelementos (observaciones y vidrios), el N° de HETMO y el
+ * envío (ver `registrarPvc`). Se puede volver a generar mientras la orden no se haya enviado: se
+ * reusa la misma OP y se reemplaza la OP final.
  */
 export function EmitirEnviarView() {
   const obra = useObra()
@@ -58,10 +60,12 @@ export function EmitirEnviarView() {
   const [leyendo, setLeyendo] = useState(false)
   /** Armando el PDF con la lectura que devolvió la IA. */
   const [armando, setArmando] = useState(false)
+  /** Guardando en el tablero la OP generada ("Generada Pend de Enviar", con sus dos PDF). */
+  const [guardando, setGuardando] = useState(false)
   const [errorGen, setErrorGen] = useState<string | null>(null)
   const [avisos, setAvisos] = useState<string[] | null>(null)
 
-  useAccionEnCurso('Esperá a que termine la generación de la OP.', leyendo || armando)
+  useAccionEnCurso('Esperá a que termine la generación de la OP.', leyendo || armando || guardando)
 
   /* Lo último del borrador, para leerlo cuando la generación termina (fuera de este render). */
   const borradorRef = useRef(borrador)
@@ -72,7 +76,7 @@ export function EmitirEnviarView() {
     usuarios.find((u) => u.id === responsableId) ?? (usuario ? comoUsuario(usuario.id, usuario.name) : null)
   const escritas = borrador.aberturas.filter((a) => a.texto.trim()).length
   const coord = coordinador(obra)
-  const generando = leyendo || armando
+  const generando = leyendo || armando || guardando
   const opFinal = borrador.generada ? borrador.opFinal : null
   const generada = !!opFinal
   const nro = m.nroOrden
@@ -81,7 +85,8 @@ export function EmitirEnviarView() {
   /* El envío manda la OP final de la app: en Monday todavía no está. */
   const local: OrdenLocal | null = opFinal
     ? {
-        ordenId: null,
+        /* La OP ya está en el tablero (se creó al generar): el enlace de confirmación la lleva. */
+        ordenId: borrador.ordenId,
         archivo: opFinal,
         numero: nro.trim(),
         tipo: 'PVC',
@@ -165,7 +170,28 @@ export function EmitirEnviarView() {
           envio: null,
         },
       })
-      if (r.avisos.length) setAvisos(r.avisos)
+      /* La OP queda en el tablero "Generada Pend de Enviar", con el original y la OP final. Si
+         Monday falla, la OP final igual sirve para enviar: se avisa y Finalizar lo reintenta. */
+      setGuardando(true)
+      let avisos = r.avisos
+      try {
+        await guardarOpGenerada({
+          obra: base,
+          borrador: { ...borradorRef.current, opFinal: r.archivo, generada: true },
+          opFinal: r.archivo,
+          responsableId,
+          avanzar: (cambios) => dispatch({ type: 'setBorrador', cambios }),
+        })
+      } catch (err) {
+        console.warn('[pvc] no se pudo guardar la OP generada en Monday', err)
+        avisos = [
+          ...avisos,
+          'La OP final se generó, pero no se pudo guardar en el tablero de órdenes. Podés enviarla igual: al finalizar la operación se vuelve a intentar.',
+        ]
+      } finally {
+        setGuardando(false)
+      }
+      if (avisos.length) setAvisos(avisos)
     } finally {
       setArmando(false)
     }
@@ -361,7 +387,15 @@ export function EmitirEnviarView() {
       {leyendo && (
         <ModalCargando titulo="Generando la Orden de Producción final" detalle="La IA está leyendo el documento…" />
       )}
-      {armando && <ModalCargando titulo="Generando la Orden de Producción final" detalle="Armando el PDF de la orden…" />}
+      {armando && !guardando && (
+        <ModalCargando titulo="Generando la Orden de Producción final" detalle="Armando el PDF de la orden…" />
+      )}
+      {guardando && (
+        <ModalCargando
+          titulo="Guardando la orden en el tablero"
+          detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO y la OP final adjuntas."
+        />
+      )}
     </section>
   )
 }

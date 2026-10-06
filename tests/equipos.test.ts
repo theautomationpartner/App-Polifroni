@@ -20,6 +20,8 @@ import { exigirAdmin, exigirEquipo, limpiarCacheEquipos, rolesDeEquipos } from '
 import { estadoDeOrden, type EstadoOrden } from '../src/lib/estadosOp'
 import {
   accionesConsulta,
+  categoriaConsulta,
+  filtrosConsulta,
   puedeEntrar,
   puedeOperar,
   rolesDeEquipos as rolesDeEquiposUi,
@@ -129,7 +131,7 @@ assert.deepEqual(vistaConsulta([]), { pendientes: false, sinEtiqueta: false, tal
 assert.deepEqual(vistaConsulta(null), { pendientes: false, sinEtiqueta: false, taller: false })
 
 /* Cada estado posible de una OP, con y sin la OP final, para cada rol. */
-const ETIQUETAS = ['', 'Generada', 'Enviada Pend Confirmar', 'Confirmada', 'Rechazada', 'Enviada a Taller', 'Produccion Completada', 'Cancelada']
+const ETIQUETAS = ['', 'Generada', 'Enviada Pend Confirmar', 'Generada Pend de Enviar', 'Generada y Enviada Pend Confirmar', 'Confirmada', 'Rechazada', 'Enviada a Taller', 'Produccion Completada', 'Cancelada']
 const ordenDe = (estado: string, conOpFinal: boolean) => ({ estado, estadoOrden: estadoDeOrden(estado, conOpFinal) as EstadoOrden })
 for (const etiqueta of ETIQUETAS) {
   for (const conOpFinal of [true, false]) {
@@ -143,6 +145,11 @@ for (const etiqueta of ETIQUETAS) {
   }
 }
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'], 'admin: pendiente → reenviar y cancelar')
+assert.deepEqual(accionesConsulta(['admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'], 'con el nombre nuevo de la etiqueta, igual')
+assert.deepEqual(accionesConsulta(['admin'], ordenDe('Generada Pend de Enviar', true)), ['enviar', 'cancelar'], 'generada sin enviar → enviar y cancelar')
+/* Lo que se veía en la pantalla: un usuario en los teams Produccion Y Admin tiene TODAS las acciones. */
+assert.deepEqual(accionesConsulta(['produccion', 'admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'])
+assert.deepEqual(accionesConsulta(['produccion', 'admin'], ordenDe('Enviada a Taller', true)), ['finalizar'])
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('', true)), ['enviar', 'cancelar'], 'admin: sin estado → enviar y cancelar')
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('Enviada a Taller', true)), ['finalizar'], 'admin: del taller → finalizar')
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('Produccion Completada', true)), [], 'completada: nada (no se finaliza dos veces)')
@@ -151,5 +158,19 @@ assert.ok(puedeEntrar(['produccion'], 'obras', OPERACIONES), 'produccion entra a
 assert.ok(!puedeEntrar(['produccion'], 'agenda', OPERACIONES), 'produccion no ve la Agenda')
 assert.ok(puedeEntrar(['produccion', 'admin'], 'agenda', OPERACIONES), 'con Admin además, sí')
 assert.ok(puedeEntrar(['admin'], 'agenda', OPERACIONES))
+
+/* ── Los filtros de la consulta ──────────────────────────────────────────────────────────────── */
+assert.deepEqual(filtrosConsulta(['produccion']), { opciones: ['taller'], inicial: 'taller', fijo: true }, 'produccion: sólo "Enviadas al taller", fijo')
+assert.deepEqual(filtrosConsulta(['admin']).opciones, ['todas', 'pendientes', 'taller', 'pendEnviar'], 'admin: todos los filtros')
+assert.equal(filtrosConsulta(['admin']).fijo, false, 'admin los puede cambiar')
+assert.deepEqual(filtrosConsulta(['produccion', 'admin']), filtrosConsulta(['admin']), 'admin y produccion a la vez: lo del admin')
+assert.deepEqual(filtrosConsulta([]).opciones, ['taller'], 'sin roles: nada fuera del taller')
+assert.equal(categoriaConsulta(ordenDe('Generada y Enviada Pend Confirmar', true)), 'pendientes')
+assert.equal(categoriaConsulta(ordenDe('Enviada Pend Confirmar', true)), 'pendientes', 'el nombre viejo, igual')
+assert.equal(categoriaConsulta(ordenDe('Enviada a Taller', true)), 'taller')
+assert.equal(categoriaConsulta(ordenDe('Generada Pend de Enviar', true)), 'pendEnviar')
+assert.equal(categoriaConsulta(ordenDe('', true)), 'pendEnviar', 'sin estado: todavía no se envió')
+assert.equal(categoriaConsulta(ordenDe('Cancelada', true)), null)
+assert.equal(categoriaConsulta(ordenDe('Produccion Completada', true)), null)
 
 console.log('equipos (rol por team): OK')

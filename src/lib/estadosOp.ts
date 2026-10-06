@@ -23,8 +23,11 @@
 
 /** Las etiquetas de `🤖Estado OP`, tal cual están (o van a estar) en el tablero. */
 export const ETIQUETA_OP = {
-  generada: 'Generada',
-  pendiente: 'Enviada Pend Confirmar',
+  /* Renombradas en el tablero el 06/10/2026 ("Generada" y "Enviada Pend Confirmar" eran los nombres
+     de antes, que se siguen reconociendo: ver `ALIAS_OP`). Se escriben con el nombre NUEVO: con
+     `create_labels_if_missing`, el viejo crearía una etiqueta duplicada. */
+  generada: 'Generada Pend de Enviar',
+  pendiente: 'Generada y Enviada Pend Confirmar',
   confirmada: 'Confirmada',
   rechazada: 'NO Confirmado',
   /* Las dos que siguen no existían en el tablero: se crean la primera vez que se escriben
@@ -53,8 +56,15 @@ export type EstadoOrden =
  * no se llegó a generar—. Una etiqueta desconocida se lee igual que sin etiqueta: es preferible
  * ofrecer de menos que habilitar un envío sobre un estado que la app no entiende.
  */
+/** Los nombres viejos de las etiquetas, que pueden quedar en ítems o pedidos de antes del cambio. */
+const ALIAS_OP: Record<string, string> = {
+  Generada: ETIQUETA_OP.generada,
+  'Enviada Pend Confirmar': ETIQUETA_OP.pendiente,
+}
+
 export function estadoDeOrden(etiqueta: string, tieneOpFinal: boolean): EstadoOrden {
-  switch (etiqueta.trim()) {
+  const e = etiqueta.trim()
+  switch (ALIAS_OP[e] ?? e) {
     case ETIQUETA_OP.cancelada:
       return 'cancelada'
     case ETIQUETA_OP.completada:

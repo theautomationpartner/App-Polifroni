@@ -103,7 +103,7 @@ const CAMPOS_ITEM = `
 `
 
 /** Archivos de una columna `file`: vienen en `value` como JSON, no en `text`. */
-function archivos(cv?: CV): ArchivoObra[] {
+export function archivosDeColumna(cv?: CV): ArchivoObra[] {
   const raw = (cv as { value?: string | null } | undefined)?.value
   if (!raw) return []
   try {
@@ -212,9 +212,9 @@ function aObra(item: MondayItem & { group?: { title?: string } }, estructura: Re
     opFinal: [],
     ordenesIds: (c[COL.ordenes]?.linked_item_ids ?? []).map(String),
     ordenes: [],
-    planoAberturas: archivos(c[COL.planoAberturas]),
-    planoPlanta: archivos(c[COL.planoPlanta]),
-    presupuestoAceptado: archivos(c[COL.presupuestoAceptado]),
+    planoAberturas: archivosDeColumna(c[COL.planoAberturas]),
+    planoPlanta: archivosDeColumna(c[COL.planoPlanta]),
+    presupuestoAceptado: archivosDeColumna(c[COL.presupuestoAceptado]),
 
     opDestinatario: estado(c, estructura, COL.opDestinatario),
     opVia: estado(c, estructura, COL.opVia),
@@ -288,13 +288,13 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
     .map((i) => ({ id: String(i.id), nombre: i.name ?? '', c: byId(i) }))
     .sort((a, b) => Number(b.id) - Number(a.id))
   if (ordenes.length === 0) return { ...obra, ordenesIds: [], ordenes: [] }
-  const opFinal = ordenes.flatMap((o) => archivos(o.c[COL_OP_ARCHIVOS.opFinal]))
-  const etmo = archivos(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
+  const opFinal = ordenes.flatMap((o) => archivosDeColumna(o.c[COL_OP_ARCHIVOS.opFinal]))
+  const etmo = archivosDeColumna(ordenes[0].c[COL_OP_ARCHIVOS.etmo])
   /* El estado de CADA orden: es lo que decide qué acciones tiene la obra (ver `lib/pasos`). */
   /* En Aluminio el original es la orden (no tiene OP final aparte): cuenta como documento. */
   const tieneDocumento = (o: (typeof ordenes)[number]) =>
-    archivos(o.c[COL_OP_ARCHIVOS.opFinal]).length > 0 ||
-    (/alum/i.test(o.c[COL_OP_TIPO]?.text ?? '') && archivos(o.c[COL_OP_ARCHIVOS.etmo]).length > 0)
+    archivosDeColumna(o.c[COL_OP_ARCHIVOS.opFinal]).length > 0 ||
+    (/alum/i.test(o.c[COL_OP_TIPO]?.text ?? '') && archivosDeColumna(o.c[COL_OP_ARCHIVOS.etmo]).length > 0)
   const estados = ordenes.map((o) => ({
     id: o.id,
     estado: estadoDeOrden((o.c[COL_OP_ARCHIVOS.estado]?.text ?? '').trim(), tieneDocumento(o)),

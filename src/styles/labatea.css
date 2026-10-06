@@ -1902,7 +1902,7 @@
   width: 13%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-obra {
-  width: 28%;
+  width: 20%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-fecha {
   width: 10%;
@@ -2688,4 +2688,57 @@
 }
 .hl-leyendo {
   margin: 0;
+}
+
+/* ===== Consultar órdenes: los filtros de la tabla (las mismas pastillas de las gestiones) ===== */
+.anticipos-v2 .cq-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+.anticipos-v2 .cq-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.anticipos-v2 .cq-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border, #e4e7ec);
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.anticipos-v2 .cq-tab:hover:not(:disabled) {
+  border-color: var(--marca);
+}
+.anticipos-v2 .cq-tab--on {
+  border-color: var(--marca);
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+/* Fijo (team Producción): se ve activo, pero no se puede cambiar. */
+.anticipos-v2 .cq-tab--fijo {
+  cursor: default;
+}
+.anticipos-v2 .cq-tab-n {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.anticipos-v2 .cq-tab--on .cq-tab-n {
+  background: var(--marca);
+  color: #fff;
 }

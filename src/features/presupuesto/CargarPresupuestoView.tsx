@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { SoltarArchivo } from '@/components/ui/SoltarArchivo'
 import { ModalErrorConsulta, conTope } from '@/features/agenda/ModalErrorConsulta'
 import { FinalizarOperacion, type TextosFinalizar } from '@/features/shared/FinalizarOperacion'
@@ -104,20 +105,11 @@ export function CargarPresupuestoView() {
         }
       />
 
-      <div className="emision-grid emision-grid--mitades">
-        {/* `carga-grid`: el recuadro y los campos en bordó, igual que la carga de la OP. */}
+      <div className="emision-grid emision-grid--mitades pres-etapa">
+        {/* `carga-grid`: los campos y el recuadro en bordó, igual que la carga de la OP. Todo va en la
+            card de los datos: primero tipo y color, abajo el recuadro, que ocupa el ancho y el alto
+            que quedan para que la card mida lo mismo que el bloque de envío. */}
         <div className="carga-grid pres-carga">
-          <SoltarArchivo
-            id="pres-pdf"
-            archivo={archivo?.name ?? null}
-            estado={preparando ? 'procesando' : error ? 'error' : archivo ? 'listo' : 'vacio'}
-            titulo={preparando ? 'Procesando documento…' : error ? 'No se pudo cargar' : archivo ? 'Presupuesto cargado' : undefined}
-            detalle={error || (archivo ? undefined : 'Soltá en este área el PDF del presupuesto, o hacé click para elegirlo')}
-            deshabilitado={enviado || preparando}
-            onArchivo={(f) => void elegir(f)}
-            onQuitar={archivo && !enviado && !preparando ? () => cambiar({ archivo: null }) : undefined}
-          />
-
           <div className="card carga-datos">
             <section className="carga-sec">
               <h3 className="carga-sec-t">
@@ -129,53 +121,47 @@ export function CargarPresupuestoView() {
                     <label className="med-l" htmlFor={`${uid}-tipo`}>
                       Tipo de carpintería *
                     </label>
-                    <div className={`med-conic ${!enviado && !tipo && archivo ? 'pres-falta' : ''}`}>
-                      <i className="fas fa-window-maximize" aria-hidden="true" />
-                      <select
-                        id={`${uid}-tipo`}
-                        className="med-input"
-                        value={tipo}
-                        disabled={!opciones}
-                        onChange={(e) => cambiar({ tipo: e.target.value })}
-                      >
-                        <option value="" disabled>
-                          {opciones ? 'Seleccionar...' : 'Leyendo los tipos de carpintería...'}
-                        </option>
-                        {(opciones?.tipos ?? []).map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <SelectBuscable
+                      id={`${uid}-tipo`}
+                      valor={tipo}
+                      opciones={(opciones?.tipos ?? []).map((t) => ({ valor: t, texto: t }))}
+                      placeholder="Elegí el tipo de carpintería"
+                      cargando={!opciones}
+                      textoCargando="Leyendo los tipos…"
+                      disabled={enviado}
+                      falta={!enviado && !tipo && !!archivo}
+                      onElegir={(v) => cambiar({ tipo: v })}
+                    />
                   </div>
 
                   <div className="med-campo">
                     <label className="med-l" htmlFor={`${uid}-color`}>
                       Color *
                     </label>
-                    <div className={`med-conic ${!enviado && !color && archivo ? 'pres-falta' : ''}`}>
-                      <i className="fas fa-palette" aria-hidden="true" />
-                      <select
-                        id={`${uid}-color`}
-                        className="med-input"
-                        value={color}
-                        disabled={!opciones}
-                        onChange={(e) => cambiar({ color: e.target.value })}
-                      >
-                        <option value="" disabled>
-                          {opciones ? 'Seleccionar...' : 'Leyendo los colores...'}
-                        </option>
-                        {(opciones?.colores ?? []).map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <SelectBuscable
+                      id={`${uid}-color`}
+                      valor={color}
+                      opciones={(opciones?.colores ?? []).map((c) => ({ valor: c, texto: c }))}
+                      placeholder="Elegí el color"
+                      cargando={!opciones}
+                      textoCargando="Leyendo los colores…"
+                      disabled={enviado}
+                      falta={!enviado && !color && !!archivo}
+                      onElegir={(v) => cambiar({ color: v })}
+                    />
                   </div>
                 </div>
               </fieldset>
+              <SoltarArchivo
+                id="pres-pdf"
+                archivo={archivo?.name ?? null}
+                estado={preparando ? 'procesando' : error ? 'error' : archivo ? 'listo' : 'vacio'}
+                titulo={preparando ? 'Procesando documento…' : error ? 'No se pudo cargar' : archivo ? 'Presupuesto cargado' : undefined}
+                detalle={error || (archivo ? undefined : 'Soltá en este área el PDF del presupuesto, o hacé click para elegirlo')}
+                deshabilitado={enviado || preparando}
+                onArchivo={(f) => void elegir(f)}
+                onQuitar={archivo && !enviado && !preparando ? () => cambiar({ archivo: null }) : undefined}
+              />
             </section>
           </div>
         </div>

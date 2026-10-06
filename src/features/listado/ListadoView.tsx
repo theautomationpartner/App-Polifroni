@@ -10,12 +10,20 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { nombreOrden } from '@/features/shared/nombreOrden'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { ETIQUETA_OP, VISTA_ESTADO, admite, completable, estadoDeOrden } from '@/lib/estadosOp'
-import { accionesConsulta, vistaConsulta } from '@/lib/permisos'
+import {
+  TITULO_FILTRO,
+  accionesConsulta,
+  categoriaConsulta,
+  filtrosConsulta,
+  vistaConsulta,
+  type FiltroConsulta,
+} from '@/lib/permisos'
 import { normalizar } from '@/lib/texto'
 import {
   cancelarOrden,
   completarProduccion,
   getObra,
+  getUrlArchivo,
   leerOrden,
   listarOrdenes,
   mondayHabilitado,
@@ -62,6 +70,8 @@ export function ListadoView() {
   const roles = usuario?.roles
   /** Qué órdenes trae la consulta según el team: producción sólo ve las del taller. */
   const vista = vistaConsulta(roles)
+  /** Los filtros del rol: el admin elige; producción queda fija en "Enviadas al taller". */
+  const filtros = filtrosConsulta(roles)
   const soloTaller = vista.taller && !vista.pendientes && !vista.sinEtiqueta
 
   /** Las pendientes de confirmar y las sin etiqueta. `null` = leyéndolas. */
@@ -70,6 +80,15 @@ export function ListadoView() {
   const [intento, setIntento] = useState(0)
   const [busqueda, setBusqueda] = useState('')
   const [pagina, setPagina] = useState(0)
+  const [filtroElegido, setFiltro] = useState<FiltroConsulta>(filtros.inicial)
+  /* Un filtro que el rol no tiene no se aplica nunca (producción no puede salir del suyo). */
+  const filtro: FiltroConsulta = filtros.opciones.includes(filtroElegido) ? filtroElegido : filtros.inicial
+  /**
+   * En qué filtro cayó cada orden AL LEERLA. Se usa ésa y no la del momento: una orden que se
+   * finaliza o se cancela en esta visita sigue en su pestaña, con su candado o su etiqueta, en vez
+   * de desaparecer apenas se toca.
+   */
+  const [categorias, setCategorias] = useState<Record<string, FiltroConsulta | null>>({})
 
   /** La que se va a cancelar: la ventana pide el motivo. */
   const [aCancelar, setACancelar] = useState<ResumenOrden | null>(null)
@@ -116,6 +135,7 @@ export function ListadoView() {
       .then((lista) => {
         if (!vivo) return
         setOrdenes(lista)
+        setCategorias(Object.fromEntries(lista.map((o) => [o.id, categoriaConsulta(o)])))
         setError(false)
       })
       .catch(() => {
@@ -128,12 +148,22 @@ export function ListadoView() {
     }
   }, [intento, vista.pendientes, vista.sinEtiqueta, vista.taller])
 
-  /* Búsqueda en vivo sobre lo traído: ID (IDOP o id del ítem), N° de orden o nombre de la obra. */
+  const categoriaDe = (o: ResumenOrden) => (o.id in categorias ? categorias[o.id] : categoriaConsulta(o))
+  /** Las órdenes de un filtro. "Todas" es todo lo traído. */
+  const delFiltro = (f: FiltroConsulta) => (ordenes ?? []).filter((o) => f === 'todas' || categoriaDe(o) === f)
+
+  /* El filtro elegido y la búsqueda en vivo sobre lo traído: ID (IDOP o id del ítem), N° de orden o
+     nombre de la obra. */
   const filtradas = useMemo(() => {
     const t = normalizar(busqueda.trim())
     const tc = compacto(busqueda)
-    if (!tc) return ordenes ?? []
-    return (ordenes ?? []).filter((o) => {
+    const base = (ordenes ?? []).filter((o) => {
+      if (filtro === 'todas') return true
+      const c = o.id in categorias ? categorias[o.id] : categoriaConsulta(o)
+      return c === filtro
+    })
+    if (!tc) return base
+    return base.filter((o) => {
       const ids = [o.idOp, o.id, o.numero].map(compacto)
       return (
         ids.some((x) => x.includes(tc) || sinCeros(x).includes(sinCeros(tc))) ||
@@ -141,7 +171,7 @@ export function ListadoView() {
         compacto(o.obraNombre).includes(tc)
       )
     })
-  }, [ordenes, busqueda])
+  }, [ordenes, busqueda, filtro, categorias])
 
   const paginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
   /* Si la página quedó fuera de rango (la búsqueda achicó la lista), se va a la última. */
@@ -149,7 +179,7 @@ export function ListadoView() {
   const visibles = filtradas.slice(enPagina * POR_PAGINA, (enPagina + 1) * POR_PAGINA)
 
   /* Otra búsqueda, o la lista releída, vuelven a la primera página. */
-  useEffect(() => setPagina(0), [busqueda, intento])
+  useEffect(() => setPagina(0), [busqueda, intento, filtro])
 
   /** Despliega (o pliega) el reenvío de una orden. La primera vez lee su obra. */
   /**
@@ -282,6 +312,29 @@ export function ListadoView() {
     }
   }
 
+  /** La OP que se abre con "Ver": la OP final si la tiene; si no, la original (Aluminio). */
+  const pdfDe = (o: ResumenOrden) =>
+    o.opFinal.find((a) => !a.esImagen) ?? o.opFinal[0] ?? o.etmo.find((a) => !a.esImagen) ?? o.etmo[0] ?? null
+
+  /**
+   * Abre el PDF de la OP en otra pestaña. La pestaña se abre EN el clic —si se abre después de
+   * esperar a Monday, el navegador la bloquea como ventana emergente— y recién después se le carga
+   * la dirección firmada del archivo (que vence en una hora: por eso se pide en el momento).
+   */
+  const verPdf = async (o: ResumenOrden) => {
+    const pdf = pdfDe(o)
+    if (!pdf) return
+    const pestana = window.open('', '_blank')
+    try {
+      const url = await getUrlArchivo(pdf.assetId)
+      if (pestana) pestana.location.href = url
+      else window.open(url, '_blank', 'noopener')
+    } catch {
+      pestana?.close()
+      setBloqueo(`No se pudo abrir el PDF de ${nombreOrden(o)}. Probá de nuevo en unos segundos.`)
+    }
+  }
+
   const total = ordenes?.length ?? 0
   /** Cómo se nombra lo que lista la consulta, según lo que ve el rol. */
   const queSeLista = soloTaller ? 'enviadas al taller' : 'pendientes de confirmar, sin enviar y en el taller'
@@ -344,6 +397,28 @@ export function ListadoView() {
               : 'Las órdenes que todavía no confirmó el cliente o el constructor, las que todavía no tienen estado y las enviadas al taller. Enviá o reenviá la que haga falta, cancelá la que ya no corresponda o finalizá la producción de las del taller.'}
           </p>
 
+          {/* Los filtros de la tabla. Producción tiene uno solo, fijo: "Enviadas al taller". */}
+          <div className="cq-filtros">
+            <div className="cq-tabs" role="tablist" aria-label="Filtrar por estado">
+              {filtros.opciones.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  role="tab"
+                  aria-selected={filtro === f}
+                  className={`cq-tab ${filtro === f ? 'cq-tab--on' : ''} ${filtros.fijo ? 'cq-tab--fijo' : ''}`}
+                  disabled={filtros.fijo}
+                  title={filtros.fijo ? 'Tu equipo ve sólo las órdenes enviadas al taller' : undefined}
+                  onClick={() => setFiltro(f)}
+                >
+                  {filtros.fijo && <i className="fas fa-lock" aria-hidden="true" />}
+                  {TITULO_FILTRO[f]}
+                  {ordenes !== null && <span className="cq-tab-n">{delFiltro(f).length}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="ant-tabla-wrap">
             <table className="ant-tabla ant-tabla--fija consulta-tabla">
               <colgroup>
@@ -352,6 +427,7 @@ export function ListadoView() {
                 <col className="cq-w-fecha" />
                 <col className="cq-w-medido" />
                 <col className="cq-w-estado" />
+                <col className="cq-w-op" />
                 <col className="cq-w-acc" />
               </colgroup>
               <thead>
@@ -361,25 +437,28 @@ export function ListadoView() {
                   <th className="ant-col-cen">Fecha de creación</th>
                   <th className="ant-col-cen">Medido por</th>
                   <th className="ant-col-cen">Estado</th>
+                  <th className="ant-col-cen">OP</th>
                   <th className="ant-col-cen">Acción</th>
                 </tr>
               </thead>
               <tbody>
                 {ordenes === null ? (
                   <tr>
-                    <td colSpan={6} className="ant-aviso">
+                    <td colSpan={7} className="ant-aviso">
                       <i className="fas fa-spinner fa-spin" /> Buscando las órdenes {queSeLista}...
                     </td>
                   </tr>
                 ) : visibles.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="ant-aviso">
+                    <td colSpan={7} className="ant-aviso">
                       <i className="fas fa-circle-info" />{' '}
                       {error
                         ? 'No se pudieron leer las órdenes desde Monday.'
                         : total === 0
                           ? `No hay órdenes ${queSeLista}.`
-                          : `Ninguna orden coincide con «${busqueda.trim()}».`}{' '}
+                          : busqueda.trim()
+                            ? `Ninguna orden coincide con «${busqueda.trim()}».`
+                            : `No hay órdenes en «${TITULO_FILTRO[filtro]}».`}{' '}
                       {(error || total === 0) && (
                         <button
                           type="button"
@@ -404,6 +483,9 @@ export function ListadoView() {
                     /* Sin etiqueta en 🤖Estado OP: todavía no se envió. Se ofrece ENVIAR (la primera
                        vez); el envío se habilita sólo si la OP final está adjunta. */
                     const primerEnvio = acciones.includes('enviar')
+                    /* "Generada Pend de Enviar": la OP se generó y quedó en el tablero sin enviar. Se
+                       termina desde acá ("Completar Carga"): es su PRIMER envío, no un reenvío. */
+                    const completarCarga = primerEnvio && estadoDeOrden(o.estado, true) === 'generada' && !!o.estado.trim()
                     const puedeEnviar = primerEnvio || acciones.includes('reenviar')
                     const finalizada = finalizadaLa(o)
                     const fila = (
@@ -429,6 +511,22 @@ export function ListadoView() {
                         <td className="ant-col-cen">
                           <EstadoOrdenBadge estado={o.estadoOrden} chico />
                         </td>
+                        <td className="ant-col-cen">
+                          {pdfDe(o) ? (
+                            <button
+                              type="button"
+                              className="ant-ver"
+                              title={`Abrir el PDF de ${o.idOp || nombreOrden(o)} en otra pestaña`}
+                              onClick={() => void verPdf(o)}
+                            >
+                              <i className="fas fa-eye" /> Ver
+                            </button>
+                          ) : (
+                            <span className="ant-sd" title="La orden no tiene un PDF adjunto">
+                              Sin PDF
+                            </span>
+                          )}
+                        </td>
                         <td className="ant-col-cen ant-col-acc">
                           {puedeEnviar && (
                             <button
@@ -447,9 +545,9 @@ export function ListadoView() {
                               ) : (
                                 <>
                                   <i
-                                    className={`fas ${abierta ? 'fa-chevron-up' : primerEnvio ? 'fa-paper-plane' : 'fa-rotate-right'}`}
+                                    className={`fas ${abierta ? 'fa-chevron-up' : completarCarga ? 'fa-file-circle-check' : primerEnvio ? 'fa-paper-plane' : 'fa-rotate-right'}`}
                                   />{' '}
-                                  {abierta ? 'Cerrar' : primerEnvio ? 'Enviar' : 'Reenviar'}
+                                  {abierta ? 'Cerrar' : completarCarga ? 'Completar Carga' : primerEnvio ? 'Enviar' : 'Reenviar'}
                                 </>
                               )}
                             </button>
@@ -506,7 +604,7 @@ export function ListadoView() {
                       <Fragment key={o.id}>
                         {fila}
                         <tr className={`ant-reenvio ${cerrandoId === o.id ? 'ant-reenvio--cierra' : ''}`}>
-                          <td colSpan={6}>
+                          <td colSpan={7}>
                             <div className="emision-grid emision-grid--mitades">
                               <div className="card card-pad">
                                 <h3 className="resumen-title">Documento que se envía</h3>

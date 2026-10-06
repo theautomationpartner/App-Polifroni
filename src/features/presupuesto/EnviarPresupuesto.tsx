@@ -13,7 +13,7 @@ import {
   formatoMonday,
   type Rol,
 } from '@/lib/destinatario'
-import { datosContacto, rolesIniciales, textoPresupuesto } from '@/lib/presupuesto'
+import { datosContacto, nuevaClave, rolesIniciales, textoPresupuesto } from '@/lib/presupuesto'
 import { actualizarCelularContacto } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { MensajePresupuesto } from './MensajePresupuesto'
@@ -41,9 +41,11 @@ const ERROR_RED =
  * el celular sin salir, ver el mensaje, y el botón que pasa a "Enviando…", "Enviado exitosamente" o
  * "Error de Envío"—.
  *
- * Lo que cambia es lo que sale: el PDF del presupuesto con su texto, SIN enlace de confirmación. Por
- * eso no hay "Responsable de confirmar". Sale por la misma ruta que la OP (`/api/whatsapp`: el PDF a
- * Google Drive y el mensaje por 360messenger), que confirma en la cola que cada mensaje salió.
+ * Como en la OP, con los dos destinatarios se elige el "Responsable de confirmar el presupuesto"; con
+ * uno solo, confirma ése. Sólo a quien confirma le llega el enlace para confirmarlo, con la clave del
+ * presupuesto (`nuevaClave`), que al finalizar queda guardada en el subelemento. Sale por la misma ruta
+ * que la OP (`/api/whatsapp`: el PDF a Google Drive y el mensaje por 360messenger), que confirma en la
+ * cola que cada mensaje salió.
  *
  * Enviar no escribe nada en Monday: lo que salió queda en el borrador y se registra al finalizar.
  */
@@ -56,11 +58,16 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
 
   /** A quiénes se envía: los que ya tenía la bolsa o, en una nueva, los contactos elegidos. */
   const [roles, setRoles] = useState<Rol[]>(() => rolesIniciales(bolsa?.enviarA ?? '', !!cliente, !!arquitecto))
+  /**
+   * Quién confirma el presupuesto cuando se envía a los DOS: lo elige el usuario. Con uno solo,
+   * confirma ése y no se pregunta.
+   */
+  const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(null)
   const [verMensaje, setVerMensaje] = useState(false)
   const [editandoCel, setEditandoCel] = useState<Rol | null>(null)
   const [faltan, setFaltan] = useState<{ titulo: string; items: string[] } | null>(null)
   /** Los destinatarios con que salió ESTA corrida: el cierre los usa aunque la pantalla cambie. */
-  const enCurso = useRef<Rol[] | null>(null)
+  const enCurso = useRef<{ roles: Rol[]; confirmador: Rol | null } | null>(null)
 
   const enviando = wsp.enCurso
   useAccionEnCurso('Esperá a que termine el envío del presupuesto.', enviando)
@@ -70,6 +77,10 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
   const disponibles = candidatos.filter((c) => !roles.includes(c.r))
   const advertencias = [...new Set(roles.flatMap((r) => advertenciasDestino(datos, r)))]
   const sinDestinatarios = roles.length === 0
+  const ambos = roles.length === 2
+  /* El confirmador vigente: el único destinatario, o el elegido si sigue en la lista. */
+  const confirmador: Rol | null =
+    roles.length === 1 ? roles[0] : confirmadorElegido && roles.includes(confirmadorElegido) ? confirmadorElegido : null
   const sinDocumento = !listo || !archivo
   const fase = wsp.estado.fase
   const estadoBoton: 'idle' | 'enviando' | 'enviado' | 'error' = enviado
@@ -88,14 +99,29 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
       setFaltan({ titulo: 'Todavía no se puede enviar', items: f })
       return
     }
-    enCurso.current = [...roles]
+    /* A los dos sin decir quién confirma: no sale nada. */
+    if (ambos && !confirmador) {
+      setFaltan({
+        titulo: 'Falta indicar quién confirma el presupuesto',
+        items: ['Elegí en «Responsable de confirmar el presupuesto» si confirma el cliente o el constructor.'],
+      })
+      return
+    }
+    /* La clave del enlace: una por presupuesto. Un reintento manda el mismo enlace. */
+    const clave = presupuesto.clave ?? nuevaClave()
+    if (!presupuesto.clave) dispatch({ type: 'setPresupuesto', cambios: { clave } })
+    enCurso.current = { roles: [...roles], confirmador }
     void wsp.correr(
       {
         documento: 'presupuesto',
         destinos: roles.map((r) => {
           const d = destinoDe(datos, r)
-          return { tipo: d.tipo, nombre: d.nombre, whatsapp: d.whatsapp, confirmador: false, texto: textoPresupuesto(d.nombre) }
+          const confirma = r === confirmador
+          /* El texto de quien confirma lleva la marca del enlace: el servidor pone ahí el enlace
+             firmado con la clave. */
+          return { tipo: d.tipo, nombre: d.nombre, whatsapp: d.whatsapp, confirmador: confirma, texto: textoPresupuesto(d.nombre, new Date(), confirma) }
         }),
+        clave,
         reenvio: false,
         ordenId: null,
         obraId: '',
@@ -109,9 +135,12 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
 
   /* Salió: se guarda a quiénes y cuándo, para registrarlo al finalizar. Nada se escribe ahora. */
   useEffect(() => {
-    const r = enCurso.current
-    if (!r || fase !== 'listo') return
-    dispatch({ type: 'setPresupuesto', cambios: { envio: { roles: r, cuando: new Date().toISOString() } } })
+    const e = enCurso.current
+    if (!e || fase !== 'listo') return
+    dispatch({
+      type: 'setPresupuesto',
+      cambios: { envio: { roles: e.roles, confirmador: e.confirmador, cuando: new Date().toISOString() } },
+    })
     dispatch({ type: 'setEnviado' })
     // Sólo importa el cambio de fase; el resto se lee de `enCurso`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -169,6 +198,29 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
         )}
       </div>
 
+      {ambos && (
+        <div className="igp">
+          <label htmlFor="pres-confirmador">Responsable de confirmar el presupuesto *</label>
+          <select
+            id="pres-confirmador"
+            className={`full w-contactos ${faltan && !confirmador ? 'is-falta' : ''}`}
+            style={{ cursor: 'pointer' }}
+            value={confirmador ?? ''}
+            disabled={enviando || enviado}
+            onChange={(e) => setConfirmadorElegido((e.target.value || null) as Rol | null)}
+          >
+            <option value="" disabled>
+              Elegí quién confirma…
+            </option>
+            {elegidos.map(({ r, d }) => (
+              <option key={r} value={r}>
+                {r} ({d.nombre || 'sin nombre'})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="font-b" style={{ fontSize: 14, marginTop: 24 }}>
         Destinatarios seleccionados ({roles.length})
       </div>
@@ -202,6 +254,7 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
                 </div>
               </div>
               <div className="citem-right">
+                {r === confirmador && <span className="cbadge cbadge--confirmador">Confirmador</span>}
                 <span className="cbadge ok">{r}</span>
                 <button
                   type="button"
@@ -281,7 +334,7 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
             {advertencias.map((a) => (
               <p key={a} className="enviar-aviso enviar-aviso--warn">
                 <i className="fas fa-triangle-exclamation" aria-hidden="true" />
-                <span>{a.replace('Verificá que el enlace le llegue a quien tiene que confirmar.', 'Verificá que el presupuesto le llegue a quien corresponde.')}</span>
+                <span>{a}</span>
               </p>
             ))}
             {errorCorrida && (
@@ -322,6 +375,7 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
       {verMensaje && (
         <MensajePresupuesto
           nombres={elegidos.map(({ r, d }) => ({ rol: r, nombre: d.nombre }))}
+          confirmador={confirmador}
           onClose={() => setVerMensaje(false)}
         />
       )}
