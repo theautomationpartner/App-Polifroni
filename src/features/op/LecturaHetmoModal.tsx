@@ -94,8 +94,8 @@ export function LecturaHetmoModal({ vidrios, estado, onGenerarObservaciones, onC
       actions={
         leyendo ? undefined : (
           <>
-            <button type="button" className="btn btn-out" onClick={onClose}>
-              Cerrar
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              Aceptar
             </button>
             <button type="button" className="btn btn-primary btn-marca" onClick={onGenerarObservaciones}>
               <i className="fas fa-wand-magic-sparkles" /> Generar observaciones

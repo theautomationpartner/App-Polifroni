@@ -4,7 +4,6 @@ import { AvisoModal } from '@/components/ui/AvisoModal'
 import { EstadoOrdenBadge } from '@/components/ui/EstadoOrdenBadge'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
-import { DocumentoOrden } from '@/features/envio/DocumentoOrden'
 import { EnviarOp } from '@/features/envio/EnviarOp'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { nombreOrden } from '@/features/shared/nombreOrden'
@@ -605,11 +604,9 @@ export function ListadoView() {
                         {fila}
                         <tr className={`ant-reenvio ${cerrandoId === o.id ? 'ant-reenvio--cierra' : ''}`}>
                           <td colSpan={7}>
-                            <div className="emision-grid emision-grid--mitades">
-                              <div className="card card-pad">
-                                <h3 className="resumen-title">Documento que se envía</h3>
-                                <DocumentoOrden orden={o} cargando={false} />
-                              </div>
+                            {/* Sólo el envío, a todo el ancho: el PDF de la orden se abre con "Ver"
+                                (columna OP). */}
+                            <div className="cq-envio">
                               <EnviarOp
                                 modo="cliente"
                                 orden={o}
