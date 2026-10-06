@@ -44,6 +44,10 @@
   },
   "rewrites": [
     {
+      "source": "/c/:codigo",
+      "destination": "/api/confirmar?codigo=:codigo"
+    },
+    {
       "source": "/confirmar",
       "destination": "/api/confirmar"
     },

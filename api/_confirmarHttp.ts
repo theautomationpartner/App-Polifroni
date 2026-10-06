@@ -1,74 +1,107 @@
 /**
- * La ruta de `/confirmar`: el enlace que le llega por WhatsApp a quien confirma una Orden de Producción
- * o un presupuesto. La usan la función de Vercel (`api/confirmar.ts`, con el rewrite de `vercel.json`)
- * y el servidor de Vite en desarrollo.
+ * La ruta del enlace de confirmación que le llega por WhatsApp a quien confirma una Orden de
+ * Producción o un presupuesto. La usan la función de Vercel (`api/confirmar.ts`, con los rewrites de
+ * `vercel.json`) y el servidor de Vite en desarrollo.
  *
- *   GET  /confirmar?d=&c=&n=&t=   el formulario (o "ya respondido" si ya no espera respuesta)
- *   POST /confirmar?d=&c=&n=&t=   la respuesta (application/x-www-form-urlencoded):
- *                                 respuesta = confirmar | rechazar, motivo, ubicacion, coordinador
+ *   GET  /c/<código>   el formulario; si ya se respondió, lo que se respondió
+ *   POST /c/<código>   la respuesta (application/x-www-form-urlencoded, los campos del formulario de
+ *                      siempre): estado_obra = "Confirmar" | "No confirmar", motivo
+ *
+ * El formato largo del primer enlace (`/confirmar?d=&c=&n=&t=`) se sigue atendiendo igual.
  *
  * Es PÚBLICA: quien la abre es el cliente, sin sesión de Monday. La protección es el enlace mismo:
- *  1. La firma (`t`) se verifica antes de nada (ver `_confirmacion.ts`): un enlace cambiado no pasa.
+ *  1. La firma se verifica antes de nada (ver `_confirmacion.ts`): un enlace cambiado no pasa.
  *  2. El documento se busca en Monday por la clave del enlace, nunca por un id del navegador.
  *  3. Antes de escribir se relee el estado: sólo responde un documento que todavía espera respuesta,
  *     así un doble clic o un enlace abierto dos veces no escriben dos veces.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { esDocumento, leerEnlace } from './_confirmacion.js'
-import { buscarDocumento, leerRespuesta, registrarRespuesta } from './_confirmarMonday.js'
-import { paginaAviso, paginaFormulario, paginaGracias, paginaVistaPrevia, paginaYaRespondido } from './_confirmarPaginas.js'
+import { leerCodigo, leerEnlaceLargo, type EnlaceLeido } from './_confirmacion.js'
+import { buscarDocumento, leerRespuesta, registrarRespuesta, type Documento } from './_confirmarMonday.js'
+import { paginaAviso, paginaFormulario, paginaRespuesta, paginaVistaPrevia } from './_confirmarPaginas.js'
 
 type Pedido = IncomingMessage & { body?: unknown }
 
 /** Los bots que abren el enlace para armar la vista previa: no llegan a Monday. */
 const BOT = /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|skypeuripreview|googlebot|bingbot/i
 
-/** Un cuerpo de formulario no necesita más: motivo (1000) + ubicación + coordinador, codificados. */
+/** Un cuerpo de formulario no necesita más: el motivo (1000 caracteres), codificado. */
 const TOPE_CUERPO = 16 * 1024
 
-const ENLACE_INVALIDO = paginaAviso.bind(
-  null,
-  'El enlace no es válido',
-  'Puede que se haya copiado incompleto. Abrilo de nuevo desde el mensaje de WhatsApp; si sigue sin funcionar, respondé al mensaje y te ayudamos.',
-)
+const enlaceInvalido = () =>
+  paginaAviso(
+    'El enlace no es válido',
+    'Puede que se haya copiado incompleto. Abrilo de nuevo desde el mensaje de WhatsApp; si sigue sin funcionar, respondé al mensaje y te ayudamos.',
+  )
+
+/**
+ * El enlace del pedido y a dónde vuelve el formulario. El código corto llega distinto según quién
+ * atienda: en la ruta (`/c/<código>`, o sólo `/<código>` desde el `use` de Vite) o, por el rewrite de
+ * Vercel, como `?codigo=`.
+ */
+function enlaceDe(url: URL): { enlace: EnlaceLeido; accion: string } | null {
+  const codigo = url.searchParams.get('codigo') ?? url.pathname.match(/([A-Za-z0-9_-]{35})\/?$/)?.[1] ?? ''
+  if (codigo) {
+    const d = leerCodigo(codigo)
+    return d ? { enlace: { ...d, nombre: null }, accion: `/c/${codigo}` } : null
+  }
+  const largo = leerEnlaceLargo(url.searchParams)
+  return largo ? { enlace: largo, accion: `/confirmar?${url.searchParams.toString()}` } : null
+}
+
+/** Lo que se muestra de un documento que ya no espera respuesta. */
+function paginaSinRespuesta(doc: Documento): string {
+  const op = doc.documento === 'op'
+  switch (doc.situacion) {
+    case 'confirmada':
+      return paginaRespuesta(doc, 'confirmada', '', true)
+    case 'rechazada':
+      return paginaRespuesta(doc, 'rechazada', doc.motivo, true)
+    case 'cancelada':
+      return paginaAviso(
+        'Esta orden fue cancelada',
+        'Ya no hace falta confirmarla. Si había que corregir algo, te vamos a enviar la orden nueva por WhatsApp para que la confirmes.',
+        '📝',
+      )
+    default:
+      return paginaAviso(
+        `${op ? 'Esta orden' : 'Este presupuesto'} todavía no está para confirmar`,
+        'Te avisamos por WhatsApp cuando esté lista para que la revises.',
+        '📝',
+      )
+  }
+}
 
 export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promise<void> {
   if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'HEAD') {
     res.setHeader('allow', 'GET, POST')
-    return html(res, 405, paginaAviso('Método no permitido', 'Abrí el enlace desde el mensaje de WhatsApp.'))
+    return html(res, 405, paginaAviso('Abrí el enlace desde el mensaje de WhatsApp', 'Esta dirección sólo se abre desde el enlace que te enviamos.'))
   }
   const url = new URL(req.url ?? '/', 'http://local')
-  const q = url.searchParams
+  const leido = enlaceDe(url)
 
   if (req.method !== 'POST' && BOT.test(String(req.headers['user-agent'] ?? ''))) {
-    const d = q.get('d') ?? ''
-    return html(res, 200, paginaVistaPrevia(esDocumento(d) ? d : null, origenDe(req)))
+    return html(res, 200, paginaVistaPrevia(leido?.enlace.documento ?? null))
   }
-
-  const enlace = leerEnlace(q)
-  if (!enlace) return html(res, 400, ENLACE_INVALIDO())
-  /* El formulario se manda a la misma dirección, con la firma: el POST se verifica igual que el GET.
-     La ruta va fija: según quién atienda (el rewrite de Vercel, el `use` de Vite) `req.url` puede
-     traer `/api/confirmar` o sólo `/`. */
-  const accion = `/confirmar?${q.toString()}`
+  if (!leido) return html(res, 400, enlaceInvalido())
+  const { enlace, accion } = leido
   const que = enlace.documento === 'op' ? 'la orden' : 'el presupuesto'
 
   try {
-    const doc = await buscarDocumento(enlace.documento, enlace.clave)
+    const doc = await buscarDocumento(enlace.documento, enlace.clave, enlace.rol, undefined, enlace.nombre)
     if (!doc) {
       return html(
         res,
         404,
         paginaAviso(
           `No encontramos ${que}`,
-          `Puede que todavía se esté registrando: probá de nuevo en unos minutos. Si sigue sin aparecer, respondé al mensaje de WhatsApp y te ayudamos.`,
-          'revisar',
+          'Puede que todavía se esté registrando: probá de nuevo en unos minutos. Si sigue sin aparecer, respondé al mensaje de WhatsApp y te ayudamos.',
         ),
       )
     }
 
     if (req.method !== 'POST') {
-      return html(res, 200, doc.situacion === 'pendiente' ? paginaFormulario({ doc, nombre: enlace.nombre, accion }) : paginaYaRespondido(doc))
+      return html(res, 200, doc.situacion === 'pendiente' ? paginaFormulario({ doc, accion }) : paginaSinRespuesta(doc))
     }
 
     let campos: Record<string, string>
@@ -77,13 +110,13 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
     } catch {
       return html(res, 400, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
     }
-    if (doc.situacion !== 'pendiente') return html(res, 409, paginaYaRespondido(doc))
-    const leida = leerRespuesta(enlace.documento, campos)
-    if (!leida.ok) {
-      return html(res, 422, paginaFormulario({ doc, nombre: enlace.nombre, accion, previo: campos, error: leida.error }))
-    }
-    await registrarRespuesta(doc, enlace.nombre, leida.respuesta)
-    return html(res, 200, paginaGracias(doc, enlace.nombre, leida.respuesta))
+    if (doc.situacion !== 'pendiente') return html(res, 409, paginaSinRespuesta(doc))
+    const leida = leerRespuesta(campos)
+    if (!leida.ok) return html(res, 422, paginaFormulario({ doc, accion, previo: campos, error: leida.error }))
+
+    await registrarRespuesta(doc, doc.nombre, leida.respuesta)
+    const r = leida.respuesta
+    return html(res, 200, paginaRespuesta(doc, r.tipo === 'confirmar' ? 'confirmada' : 'rechazada', r.tipo === 'rechazar' ? r.motivo : ''))
   } catch (e) {
     console.error('[confirmar]', e)
     return html(
@@ -95,14 +128,6 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
       ),
     )
   }
-}
-
-/** `https://app-polifroni.vercel.app`, para el logo de la vista previa (necesita una URL absoluta). */
-function origenDe(req: Pedido): string {
-  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim()
-  if (!/^[a-z0-9.-]+(:\d+)?$/i.test(host)) return ''
-  const proto = String(req.headers['x-forwarded-proto'] ?? 'https').split(',')[0].trim()
-  return `${proto === 'http' ? 'http' : 'https'}://${host}`
 }
 
 /**

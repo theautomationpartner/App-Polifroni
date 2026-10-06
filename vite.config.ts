@@ -123,7 +123,11 @@ export default defineConfig(({ mode }) => {
       })
 
       /* El enlace de confirmación de la OP y del presupuesto: la misma ruta pública que en Vercel
-         (allá, `/confirmar` se reescribe a `api/confirmar`). */
+         (allá, `/c/<código>` y `/confirmar` se reescriben a `api/confirmar`). */
+      server.middlewares.use('/c/', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_confirmarHttp.ts')
+        await mod.manejarConfirmar(req, res)
+      })
       server.middlewares.use('/confirmar', async (req, res) => {
         const mod = await server.ssrLoadModule('/api/_confirmarHttp.ts')
         await mod.manejarConfirmar(req, res)

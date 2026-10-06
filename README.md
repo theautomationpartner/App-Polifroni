@@ -274,24 +274,29 @@ Reglas en `src/lib/presupuesto.ts`, probadas con `npm run test:presupuesto`.
 
 ### El enlace de confirmación (OP y presupuesto)
 
-El cliente confirma desde la app, sin Make: `https://app-polifroni.vercel.app/confirmar?d=&c=&n=&t=`.
+El cliente confirma desde la app, sin Make, con un enlace corto: `https://app-polifroni.vercel.app/c/<código>`.
 
 - **Al enviar**, la app genera una clave (UUID, `src/lib/claveConfirmacion.ts`) y se la manda a
-  `/api/whatsapp`. El servidor arma el enlace y lo **firma** con HMAC-SHA256 (`api/_confirmacion.ts`):
-  `d` es el documento (`op` | `presupuesto`), `c` la clave, `n` el nombre de quien confirma y `t` la
-  firma de los tres. Un reintento reusa la misma clave.
+  `/api/whatsapp`. El servidor arma el código (`api/_confirmacion.ts`), de 35 caracteres: una letra con
+  el documento y quién confirma (OP/presupuesto × Cliente/Constructor), la clave en base64url y la
+  firma HMAC-SHA256 de las dos (recortada a 72 bits). Un reintento reusa la misma clave. El nombre del
+  saludo no viaja en el enlace: el servidor lo lee de Monday (la obra o la bolsa del presupuesto).
 - **La clave queda en Monday** en `🤖Clave Confirmacion`. En la OP (`text_mm7wqqm2`) se escribe al
   finalizar la operación, o antes de mandar si la OP ya estaba en el tablero (un reenvío reusa la que
   tenía). En el presupuesto (`text_mm7wn1jz`), al finalizar.
-- **`GET /confirmar`** verifica la firma, busca el ítem por la clave y sirve el formulario (o "ya
-  respondido"). A los bots de vista previa (WhatsApp, Telegram, …) les devuelve sólo título y logo, sin
-  consultar Monday.
-- **`POST /confirmar`** verifica la firma de nuevo, relee el estado y escribe:
+- **`GET /c/<código>`** verifica la firma, busca el ítem por la clave y sirve el formulario de siempre
+  (`formularios/confirmacion-op.html`, completado por el servidor). Si ya no espera respuesta, la
+  pantalla de después (`formularios/respuesta-op.html`): "¡Confirmamos tu pedido!" si ya se confirmó
+  (también si ya está en el taller o completada), "Recibimos tu observación" si se pidió una revisión,
+  o un aviso si la orden se canceló. A los bots de vista previa (WhatsApp, Telegram, …) les devuelve
+  sólo título y logo, sin consultar Monday.
+- **`POST /c/<código>`** (los campos de siempre: `estado_obra`, `motivo`) verifica la firma de nuevo,
+  relee el estado y escribe:
   - OP: `🤖Estado OP` → Confirmada / NO Confirmado, la confirmación de la obra (`color_mm73rxg7`) →
-    CONFIRMADO OP / NO CONFIRMADO, y un update en la OP con el motivo, o la ubicación y el coordinador.
+    CONFIRMADO OP / NO CONFIRMADO, y un update en la OP con quién respondió y el motivo.
   - Presupuesto: `🤖 Estado de Confirmacion` → Confirmado / Rechazado y `🤖Motivo`, más un update.
-  - Sólo responde una OP en "Enviada Pend Confirmar" o un presupuesto sin respuesta: abrir el enlace
-    otra vez muestra lo que ya se respondió.
+  - Sólo responde una OP pendiente de confirmar o un presupuesto sin respuesta.
+- Los enlaces largos del primer formato (`/confirmar?d=&c=&n=&t=`) se siguen atendiendo.
 
 Es pública (no pasa por el portero ni por el guardián): la protege la firma. Necesita
 `CONFIRMACION_URL` y `CONFIRMACION_SECRET`. Código en `api/_confirmar*.ts`, probado con

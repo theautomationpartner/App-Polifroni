@@ -1,14 +1,24 @@
 /**
- * El enlace de confirmación (`/confirmar`) de la Orden de Producción y del presupuesto:
- *  · el enlace va firmado: otra clave, otro documento u otro nombre no pasan;
- *  · qué estado admite una respuesta y qué exige cada respuesta;
- *  · el documento se busca en Monday por la clave, y la respuesta escribe donde corresponde;
- *  · la ruta entera (GET y POST) contra un Monday simulado: formulario, "ya respondido", errores.
+ * El enlace de confirmación (`/c/<código>`) de la Orden de Producción y del presupuesto:
+ *  · el enlace es corto y va firmado: otra clave, otro documento u otro rol no pasan;
+ *  · el formato largo del primer enlace (`/confirmar?d=&c=&n=&t=`) se sigue aceptando;
+ *  · qué estado admite una respuesta, y qué se muestra si ya no la admite;
+ *  · el documento se busca en Monday por la clave, con el nombre de quien confirma;
+ *  · la ruta entera (GET y POST) contra un Monday simulado, con los campos del formulario de siempre.
  */
 import assert from 'node:assert/strict'
 import { Readable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { enlaceConfirmacion, esClave, faltaConfiguracion, firmaValida, firmar, leerEnlace } from '../api/_confirmacion'
+import {
+  codigoConfirmacion,
+  enlaceConfirmacion,
+  esClave,
+  faltaConfiguracion,
+  firmarLargo,
+  formasDeClave,
+  leerCodigo,
+  leerEnlaceLargo,
+} from '../api/_confirmacion'
 import {
   COL_OP,
   COL_SUB_PRES,
@@ -25,59 +35,70 @@ import { manejarConfirmar } from '../api/_confirmarHttp'
 import { esc } from '../api/_confirmarPaginas'
 
 const CLAVE = '0f8e2a6c-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
+const OTRA = 'aaaaaaaa-1b3d-4e5f-8a9b-0c1d2e3f4a5b'
 process.env.CONFIRMACION_URL = 'https://app.test/confirmar'
 process.env.CONFIRMACION_SECRET = 's'.repeat(48)
 process.env.MONDAY_TOKEN = 'token-de-prueba'
 
-/* ── La firma ──────────────────────────────────────────────────────────────────────────────────── */
+/* ── El enlace corto ───────────────────────────────────────────────────────────────────────────── */
 assert.equal(faltaConfiguracion(), null)
 assert.ok(esClave(CLAVE) && esClave('a'.repeat(32)) && !esClave('123') && !esClave(`${CLAVE}x`))
+assert.deepEqual(formasDeClave(CLAVE.replace(/-/g, '')), [CLAVE, CLAVE.replace(/-/g, '')], 'con y sin guiones')
 
-const enlace = new URL(enlaceConfirmacion({ documento: 'op', clave: CLAVE, nombre: '1111 - Juan Pérez' }))
-assert.equal(enlace.searchParams.get('n'), 'Juan Pérez', 'el saludo, sin el código de la cuenta')
-assert.deepEqual(leerEnlace(enlace.searchParams), { documento: 'op', clave: CLAVE, nombre: 'Juan Pérez' })
-assert.ok(!enlace.href.includes('make.com') && !enlace.href.includes('monday'), 'ninguna URL interna')
+const enlace = enlaceConfirmacion({ documento: 'op', clave: CLAVE, rol: 'Cliente' })
+const codigo = enlace.split('/c/')[1]
+assert.ok(enlace.startsWith('https://app.test/c/'), 'de la variable vale el origen')
+assert.equal(codigo.length, 35)
+assert.ok(enlace.length <= 60, `corto: ${enlace.length} caracteres`)
+assert.ok(!/make\.com|monday/.test(enlace), 'ninguna URL interna')
+assert.deepEqual(leerCodigo(codigo), { documento: 'op', rol: 'Cliente', clave: CLAVE })
+assert.deepEqual(leerCodigo(codigoConfirmacion({ documento: 'presupuesto', clave: CLAVE, rol: 'Constructor' })), {
+  documento: 'presupuesto',
+  rol: 'Constructor',
+  clave: CLAVE,
+})
+assert.equal(leerCodigo(codigoConfirmacion({ documento: 'op', clave: CLAVE.replace(/-/g, ''), rol: 'Cliente' }))?.clave, CLAVE)
 
-const cambiado = (k: string, v: string) => {
-  const q = new URLSearchParams(enlace.searchParams)
-  q.set(k, v)
-  return leerEnlace(q)
-}
-assert.equal(cambiado('c', 'aaaaaaaa-1b3d-4e5f-8a9b-0c1d2e3f4a5b'), null, 'otra clave: no pasa')
-assert.equal(cambiado('d', 'presupuesto'), null, 'otro documento: no pasa')
-assert.equal(cambiado('n', 'Otro'), null, 'otro nombre: no pasa')
-assert.equal(cambiado('t', firmar('op', CLAVE, 'Juan Pérez').slice(0, -1) + 'A'), null, 'firma cambiada: no pasa')
-assert.equal(cambiado('d', 'obra'), null, 'documento desconocido')
-assert.ok(firmaValida('op', CLAVE.toUpperCase(), 'Juan Pérez', enlace.searchParams.get('t')!), 'la clave no distingue mayúsculas')
+/* Cambiar cualquier parte del código lo invalida. */
+const otroCodigo = codigoConfirmacion({ documento: 'op', clave: OTRA, rol: 'Cliente' })
+assert.equal(leerCodigo('b' + codigo.slice(1)), null, 'otro documento/rol: no pasa')
+assert.equal(leerCodigo(codigo.slice(0, 23) + otroCodigo.slice(23)), null, 'firma de otra clave: no pasa')
+assert.equal(leerCodigo(otroCodigo.slice(0, 23) + codigo.slice(23)), null, 'otra clave con esta firma: no pasa')
+assert.equal(leerCodigo(codigo.slice(0, -1)), null, 'incompleto')
+assert.equal(leerCodigo('z' + codigo.slice(1)), null, 'prefijo desconocido')
 {
   const s = process.env.CONFIRMACION_SECRET
   process.env.CONFIRMACION_SECRET = 'otro'.repeat(10)
-  assert.equal(leerEnlace(enlace.searchParams), null, 'con otro secreto, el enlace no vale')
+  assert.equal(leerCodigo(codigo), null, 'con otro secreto, el enlace no vale')
   process.env.CONFIRMACION_SECRET = 'corto'
   assert.equal(faltaConfiguracion(), 'ERROR_CONFIRMACION_SECRET', 'un secreto corto no sirve')
   process.env.CONFIRMACION_SECRET = s
 }
 
+/* El formato largo de antes. */
+const largo = new URLSearchParams({ d: 'op', c: CLAVE, n: 'Juan Pérez', t: firmarLargo('op', CLAVE, 'Juan Pérez') })
+assert.deepEqual(leerEnlaceLargo(largo), { documento: 'op', clave: CLAVE, rol: 'Cliente', nombre: 'Juan Pérez' })
+assert.equal(leerEnlaceLargo(new URLSearchParams({ ...Object.fromEntries(largo), n: 'Otro' })), null, 'otro nombre: no pasa')
+
 /* ── Las reglas ────────────────────────────────────────────────────────────────────────────────── */
 assert.equal(situacionOp('Enviada Pend Confirmar'), 'pendiente')
 assert.equal(situacionOp('Generada y Enviada Pend Confirmar'), 'pendiente', 'el nombre nuevo de la etiqueta')
-assert.equal(situacionOp('Confirmada'), 'confirmada')
+for (const e of ['Confirmada', 'Enviada a Taller', 'Produccion Completada']) {
+  assert.equal(situacionOp(e), 'confirmada', `${e}: ya se confirmó`)
+}
 assert.equal(situacionOp('NO Confirmado'), 'rechazada')
-for (const e of ['Cancelada', 'Enviada a Taller', 'Produccion Completada', 'Generada', '']) assert.equal(situacionOp(e), 'cerrada', e)
+assert.equal(situacionOp('Cancelada'), 'cancelada')
+for (const e of ['Generada', '']) assert.equal(situacionOp(e), 'sinEnviar', e)
 assert.equal(situacionPresupuesto(''), 'pendiente')
 assert.equal(situacionPresupuesto('Confirmado'), 'confirmada')
 assert.equal(situacionPresupuesto('Rechazado'), 'rechazada')
 
-assert.deepEqual(leerRespuesta('op', { respuesta: 'confirmar', ubicacion: ' Av. 1 ', coordinador: 'Ana' }), {
-  ok: true,
-  respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', coordinador: 'Ana' },
-})
-assert.equal(leerRespuesta('op', { respuesta: 'confirmar', ubicacion: 'Av. 1' }).ok, false, 'la OP exige el coordinador')
-assert.equal(leerRespuesta('presupuesto', { respuesta: 'confirmar' }).ok, true, 'el presupuesto no pide datos de obra')
-assert.equal(leerRespuesta('op', { respuesta: 'rechazar', motivo: '  ' }).ok, false, 'rechazar exige el motivo')
-assert.equal(leerRespuesta('op', { respuesta: 'rechazar', motivo: 'x'.repeat(1001) }).ok, false, 'motivo con tope')
-assert.equal(leerRespuesta('op', { respuesta: 'otra' }).ok, false)
-assert.deepEqual(leerRespuesta('presupuesto', { respuesta: 'rechazar', motivo: 'línea 1\nlínea 2' }), {
+/* Los campos del formulario de siempre. */
+assert.deepEqual(leerRespuesta({ estado_obra: 'Confirmar' }), { ok: true, respuesta: { tipo: 'confirmar' } })
+assert.equal(leerRespuesta({ estado_obra: 'No confirmar', motivo: '  ' }).ok, false, '"No confirmar" exige el motivo')
+assert.equal(leerRespuesta({ estado_obra: 'No confirmar', motivo: 'x'.repeat(1001) }).ok, false, 'motivo con tope')
+assert.equal(leerRespuesta({ estado_obra: 'otra' }).ok, false)
+assert.deepEqual(leerRespuesta({ estado_obra: 'No confirmar', motivo: 'línea 1\nlínea 2' }), {
   ok: true,
   respuesta: { tipo: 'rechazar', motivo: 'línea 1\nlínea 2' },
 })
@@ -87,12 +108,22 @@ interface Llamada {
   query: string
   variables: Record<string, unknown>
 }
-function simulado(items: Record<string, unknown>[], conPadre = false) {
+const OBRA_CONTACTOS = {
+  column_values: [
+    { id: 'board_relation_mkthtd70', text: '1111 - PEREZ JUAN', display_value: '1111 - PEREZ JUAN', linked_item_ids: ['1'] },
+    { id: 'board_relation_mksz3v0h', text: 'ARQ. GOMEZ', display_value: 'ARQ. GOMEZ', linked_item_ids: ['2'] },
+  ],
+}
+function simulado(items: Record<string, unknown>[]) {
   const llamadas: Llamada[] = []
   const consulta: Consulta = async <T,>(query: string, variables: Record<string, unknown>) => {
     llamadas.push({ query, variables })
     if (query.trim().startsWith('mutation')) return { ok: true } as T
-    return { boards: [{ items_page: { items: items.map((i) => (conPadre ? i : { ...i, parent_item: undefined })) } }] } as T
+    if (query.includes('items(ids:')) {
+      const cols = variables.cols as string[]
+      return { items: [{ column_values: OBRA_CONTACTOS.column_values.filter((c) => cols.includes(c.id)) }] } as T
+    }
+    return { boards: [{ items_page: { items } }] } as T
   }
   return { consulta, llamadas }
 }
@@ -111,36 +142,48 @@ const op = (estado: string, clave = CLAVE) => ({
 })
 
 {
-  const m = simulado([op('Enviada Pend Confirmar')])
-  const doc = await buscarDocumento('op', CLAVE, m.consulta)
+  const m = simulado([op('Generada y Enviada Pend Confirmar')])
+  const doc = await buscarDocumento('op', CLAVE, 'Cliente', m.consulta)
   assert.ok(doc)
   assert.equal(doc.id, '501')
   assert.equal(doc.padreId, '900')
   assert.equal(doc.titulo, 'Orden de Producción N° 2291 · PVC')
   assert.equal(doc.situacion, 'pendiente')
-  assert.deepEqual(m.llamadas[0].variables.c, [CLAVE], 'se busca por la clave')
+  assert.equal(doc.nombre, 'PEREZ JUAN', 'el cliente de la obra, sin el código de la cuenta')
+  assert.deepEqual(m.llamadas[0].variables.c, formasDeClave(CLAVE), 'se busca por la clave, con y sin guiones')
   assert.ok(m.llamadas[0].query.includes('18432207111') && m.llamadas[0].query.includes(COL_OP.clave))
 
-  await registrarRespuesta(doc, 'Juan', { tipo: 'confirmar', ubicacion: 'Av. 1', coordinador: 'Ana' }, m.consulta)
-  const escrituras = m.llamadas.slice(1)
+  await registrarRespuesta(doc, doc.nombre, { tipo: 'confirmar' }, m.consulta)
+  const escrituras = m.llamadas.filter((l) => l.query.trim().startsWith('mutation'))
   const valores = (l: Llamada) => JSON.parse(String(l.variables.valores ?? '{}'))
   assert.equal(escrituras[0].variables.id, '501')
   assert.deepEqual(valores(escrituras[0]), { [COL_OP.estado]: { label: 'Confirmada' } }, 'la OP pasa a Confirmada')
   assert.equal(escrituras[1].variables.id, '900')
   assert.deepEqual(valores(escrituras[1]), { color_mm73rxg7: { label: 'CONFIRMADO OP' } }, 'la obra, CONFIRMADO OP')
-  assert.ok(String(escrituras[2].variables.cuerpo).includes('Coordinador de la obra:</b> Ana'), 'el update con los datos')
+  assert.ok(String(escrituras[2].variables.cuerpo).includes('PEREZ JUAN'), 'el update dice quién confirmó')
+}
+{
+  const m = simulado([op('Generada y Enviada Pend Confirmar')])
+  assert.equal((await buscarDocumento('op', CLAVE, 'Constructor', m.consulta))?.nombre, 'ARQ. GOMEZ', 'confirma el constructor')
 }
 {
   /* Una clave que Monday matchea "de más" no se toma: tiene que ser exactamente la del enlace. */
-  const m = simulado([op('Enviada Pend Confirmar', 'otra-clave')])
-  assert.equal(await buscarDocumento('op', CLAVE, m.consulta), null)
+  const m = simulado([op('Enviada Pend Confirmar', OTRA)])
+  assert.equal(await buscarDocumento('op', CLAVE, 'Cliente', m.consulta), null)
 }
 {
   const sub = {
     id: '701',
     name: 'IDPDF-1221',
     state: 'active',
-    parent_item: { id: '700', name: 'PEREZ JUAN' },
+    parent_item: {
+      id: '700',
+      name: 'PEREZ JUAN',
+      column_values: [
+        { id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', display_value: 'PEREZ JUAN', linked_item_ids: ['1'] },
+        { id: 'board_relation_mkvgk8yb', text: '', display_value: '', linked_item_ids: [] },
+      ],
+    },
     column_values: [
       { id: COL_SUB_PRES.clave, text: CLAVE },
       { id: COL_SUB_PRES.confirmacion, text: '' },
@@ -149,13 +192,14 @@ const op = (estado: string, clave = CLAVE) => ({
       { id: COL_SUB_PRES.motivo, text: '' },
     ],
   }
-  const m = simulado([sub], true)
-  const doc = await buscarDocumento('presupuesto', CLAVE, m.consulta)
+  const m = simulado([sub])
+  const doc = await buscarDocumento('presupuesto', CLAVE, 'Cliente', m.consulta)
   assert.ok(doc)
   assert.equal(doc.titulo, 'Presupuesto IDPDF-1221')
   assert.equal(doc.padreId, '700')
+  assert.equal(doc.nombre, 'PEREZ JUAN', 'el cliente de la bolsa')
   assert.ok(m.llamadas[0].query.includes('9984270591') && m.llamadas[0].query.includes('parent_item'))
-  await registrarRespuesta(doc, 'Juan', { tipo: 'rechazar', motivo: 'El color\nno es' }, m.consulta)
+  await registrarRespuesta(doc, doc.nombre, { tipo: 'rechazar', motivo: 'El color\nno es' }, m.consulta)
   assert.deepEqual(JSON.parse(String(m.llamadas[1].variables.valores)), {
     [COL_SUB_PRES.confirmacion]: { label: 'Rechazado' },
     [COL_SUB_PRES.motivo]: 'El color no es',
@@ -164,7 +208,17 @@ const op = (estado: string, clave = CLAVE) => ({
 
 /* El texto del cliente no entra crudo al HTML (ni del update ni de la página). */
 {
-  const doc: Documento = { documento: 'op', id: '1', padreId: '', titulo: 'OP', detalle: '', etiqueta: '', situacion: 'pendiente' }
+  const doc: Documento = {
+    documento: 'op',
+    id: '1',
+    padreId: '',
+    titulo: 'OP',
+    detalle: '',
+    etiqueta: '',
+    situacion: 'pendiente',
+    nombre: '',
+    motivo: '',
+  }
   const u = textoUpdate(doc, '<b>Juan</b>', { tipo: 'rechazar', motivo: '<script>alert(1)</script>' })
   assert.ok(!u.includes('<script>') && u.includes('&lt;script&gt;') && !u.includes('<b>Juan</b>'))
   assert.equal(esc(`"><img src=x onerror=alert(1)>`), '&quot;&gt;&lt;img src=x onerror=alert(1)&gt;')
@@ -198,7 +252,7 @@ async function pedir(metodo: string, ruta: string, cuerpo = '', ua = 'Mozilla/5.
   return r
 }
 
-let estadoOp = 'Enviada Pend Confirmar'
+let estadoOp = 'Generada y Enviada Pend Confirmar'
 const mutaciones: string[] = []
 globalThis.fetch = (async (_url: string, init: { body: string }) => {
   const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
@@ -207,49 +261,65 @@ globalThis.fetch = (async (_url: string, init: { body: string }) => {
     if (String(variables.valores ?? '').includes('Confirmada')) estadoOp = 'Confirmada'
     return new Response(JSON.stringify({ data: { ok: true } }))
   }
+  if (query.includes('items(ids:')) return new Response(JSON.stringify({ data: { items: [OBRA_CONTACTOS] } }))
   const items = (variables.c as string[])[0] === CLAVE ? [op(estadoOp)] : []
   return new Response(JSON.stringify({ data: { boards: [{ items_page: { items } }] } }))
 }) as typeof fetch
 
-const ruta = `/confirmar${enlace.search}`
+const ruta = `/c/${codigo}`
 {
   const r = await pedir('GET', ruta)
   assert.equal(r.status, 200)
   assert.match(r.headers['content-type'], /text\/html/)
-  assert.ok(r.cuerpo.includes('Estimado/a Juan Pérez') && r.cuerpo.includes('Orden de Producción N° 2291'))
-  assert.ok(r.cuerpo.includes(`action="${esc(ruta)}"`), 'el formulario vuelve a la misma dirección firmada')
-  assert.ok(!/make\.com|monday\.com/.test(r.cuerpo), 'el HTML no tiene URLs internas')
+  assert.ok(r.cuerpo.includes('Estimado/a<span> PEREZ JUAN</span>,'), 'el saludo con el nombre de Monday')
+  assert.ok(r.cuerpo.includes('name="estado_obra" value="Confirmar"') && r.cuerpo.includes('value="No confirmar"'), 'los campos de siempre')
+  assert.ok(r.cuerpo.includes(`action="${ruta}"`), 'el formulario vuelve al mismo enlace')
+  assert.ok(!/hook\.|make\.com|monday\.com|\{\{/.test(r.cuerpo), 'sin URLs internas ni variables de Make')
 }
-assert.equal((await pedir('GET', `/confirmar?d=op&c=${CLAVE}&n=Juan&t=inventado`)).status, 400, 'firma inventada')
-assert.equal((await pedir('GET', '/confirmar')).status, 400, 'sin datos')
+/* El rewrite de Vercel lo pasa como `?codigo=`; el `use` de Vite, sin el `/c`. */
+assert.equal((await pedir('GET', `/api/confirmar?codigo=${codigo}`)).status, 200)
+assert.equal((await pedir('GET', `/${codigo}`)).status, 200)
+assert.equal((await pedir('GET', `/c/${'b' + codigo.slice(1)}`)).status, 400, 'código cambiado')
+assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
 {
   const r = await pedir('GET', ruta, '', 'WhatsApp/2.23.20.0 A')
-  assert.ok(r.cuerpo.includes('og:title') && r.cuerpo.includes('https://app.test/logo-polifroni.png'), 'la vista previa, sin Monday')
+  assert.ok(r.cuerpo.includes('og:title') && r.cuerpo.includes('logo-polifroni.png'), 'la vista previa, sin Monday')
 }
 {
-  const r = await pedir('POST', ruta, 'respuesta=confirmar&ubicacion=Av.+1')
-  assert.equal(r.status, 422, 'falta el coordinador: vuelve el formulario con el error')
-  assert.ok(r.cuerpo.includes('Completá la ubicación') && r.cuerpo.includes('value="Av. 1"'))
+  const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=')
+  assert.equal(r.status, 422, 'sin motivo: vuelve el formulario con el error')
+  assert.ok(r.cuerpo.includes('Contanos qué hay que corregir.'))
   assert.equal(mutaciones.length, 0, 'no se escribió nada')
 }
 {
-  const r = await pedir('POST', ruta, 'respuesta=confirmar&ubicacion=Av.+1&coordinador=Ana')
+  const r = await pedir('POST', ruta, 'estado_obra=Confirmar')
   assert.equal(r.status, 200)
-  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido, Juan Pérez!'))
+  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido, PEREZ JUAN!'), 'la pantalla de siempre')
   assert.equal(mutaciones.length, 3, 'la OP, la obra y el update')
 }
 {
-  /* El mismo enlace otra vez: ya está respondida y no se escribe de nuevo. */
+  /* El mismo enlace otra vez: muestra que ya está confirmada y no escribe de nuevo. */
   const antes = mutaciones.length
-  const r = await pedir('POST', ruta, 'respuesta=rechazar&motivo=cambio')
+  const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=cambio')
   assert.equal(r.status, 409)
-  assert.ok(r.cuerpo.includes('ya está confirmada'))
+  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido') && r.cuerpo.includes('ya tenía tu respuesta registrada'))
   assert.equal(mutaciones.length, antes)
-  assert.ok((await pedir('GET', ruta)).cuerpo.includes('ya está confirmada'))
 }
 {
-  const otra = new URL(enlaceConfirmacion({ documento: 'op', clave: 'aaaaaaaa-1b3d-4e5f-8a9b-0c1d2e3f4a5b', nombre: 'Juan' }))
-  assert.equal((await pedir('GET', `/confirmar${otra.search}`)).status, 404, 'clave firmada que no está en Monday')
+  /* La que ya se mandó al taller (el caso de la OP 2300): se ve como confirmada, no como un error. */
+  estadoOp = 'Enviada a Taller'
+  const r = await pedir('GET', ruta)
+  assert.ok(r.cuerpo.includes('¡Confirmamos tu pedido') && !r.cuerpo.includes('no espera respuesta'))
+  estadoOp = 'Cancelada'
+  assert.ok((await pedir('GET', ruta)).cuerpo.includes('Esta orden fue cancelada'))
 }
+{
+  /* El formato largo de antes sigue funcionando, con el nombre que traía. */
+  estadoOp = 'Generada y Enviada Pend Confirmar'
+  const r = await pedir('GET', `/confirmar?${largo.toString()}`)
+  assert.equal(r.status, 200)
+  assert.ok(r.cuerpo.includes('Estimado/a<span> Juan Pérez</span>,'))
+}
+assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firmado de una clave que no está en Monday')
 
 console.log('confirmar: ok')

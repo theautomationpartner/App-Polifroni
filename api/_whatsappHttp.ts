@@ -62,6 +62,9 @@ const ERROR_INTERNO_PRESUPUESTO =
 const ERROR_INTERNO =
   'Ocurrió un error interno al intentar enviar el mensaje en la aplicacion. Dale click al boton de Finalizar Operacion para registrar la orden y no perder los datos ya cargados. Mas tarde intenta enviar la orden ya cargada nuevamente. Si el error persiste, no dude en contactarse con el soporte de TAP.'
 
+/** Quién confirma, para el enlace: el saludo del formulario se arma con su nombre en Monday. */
+const rolDe = (tipo: string) => (tipo === 'Constructor' ? 'Constructor' : 'Cliente')
+
 const texto = (v: unknown) => (v == null ? '' : String(v).trim())
 /** "1111 - CLIENTE TEST" → "CLIENTE TEST": el código de la cuenta no va en un saludo. */
 const sinCodigo = (n: string) => n.replace(/^\d+\s*-\s*/, '')
@@ -152,14 +155,14 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
       if (presupuesto) {
         /* Sólo el texto de quien confirma trae la marca: ahí va su enlace, con su nombre. */
         const conEnlace = d.texto.includes(MARCA_ENLACE)
-          ? d.texto.split(MARCA_ENLACE).join(enlaceConfirmacion({ documento: 'presupuesto', clave, nombre: d.nombre }))
+          ? d.texto.split(MARCA_ENLACE).join(enlaceConfirmacion({ documento: 'presupuesto', clave, rol: rolDe(d.tipo) }))
           : d.texto
         const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: conEnlace })
         const idArchivo = await enviarMensaje({ phonenumber: d.tel.phone, url: enDrive.webContentLink })
         enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, idArchivo] })
         continue
       }
-      const enlace = enlaceConfirmacion({ documento: 'op', clave, nombre: d.nombre })
+      const enlace = enlaceConfirmacion({ documento: 'op', clave, rol: rolDe(d.tipo) })
       /* En el reenvío el enlace va sólo a quien confirma (si no se dijo quién, a todos). */
       const mensaje = reenvio
         ? textoReenvio(d.nombre, !hayConfirmador || d.confirmador ? enlace : null)
