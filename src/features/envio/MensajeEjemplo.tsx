@@ -9,7 +9,7 @@ import type { Rol } from '@/lib/destinatario'
  * sin variables: sirve para saber qué va a leer la otra persona antes de apretar "Enviar", no para
  * editarlo.
  *
- * El primer envío y el reenvío son mensajes distintos. En los dos, el cierre depende de quién lo
+ * El primer envío, el reenvío y la OP editada son mensajes distintos. En los dos, el cierre depende de quién lo
  * recibe: SÓLO al responsable de confirmar le llega el enlace para confirmar; al otro destinatario, el
  * mismo mensaje sin el enlace (ver `api/_mensajeOp.ts`). Con los dos destinatarios se puede ver el de
  * cada uno.
@@ -19,6 +19,7 @@ export function MensajeEjemplo({
   roles = [],
   confirmador = null,
   reenvio = false,
+  edicion = false,
   onClose,
 }: {
   /** "Cliente", "Constructor" o "Ambos". */
@@ -29,6 +30,8 @@ export function MensajeEjemplo({
   confirmador?: Rol | null
   /** Se reenvía una orden que ya espera la confirmación. */
   reenvio?: boolean
+  /** La OP final nueva de una orden editada ("Editar Órdenes de Producción"). */
+  edicion?: boolean
   onClose: () => void
 }) {
   /** De quién es el mensaje que se está viendo (con dos destinatarios, se elige). */
@@ -70,7 +73,43 @@ export function MensajeEjemplo({
       )}
 
       <div className="msj-chat">
-        {reenvio ? (
+        {edicion ? (
+          <div className="msj-burbuja">
+            <p>
+              Hola <strong>Juan</strong> 👋
+            </p>
+            <p>
+              🧾 Te adjuntamos la <strong>nueva Orden de Producción</strong>.
+            </p>
+            <p>
+              Te pedimos por favor que verifiques que los cambios que nos pediste realizar sean correctos, y
+              valides que la orden contenga:
+            </p>
+            <ul>
+              <li>Datos del cliente, teléfono y dirección de obra.</li>
+              <li>Color de aberturas.</li>
+              <li>Tipologías de aberturas.</li>
+              <li>Manos de apertura (los gráficos son vistos desde el interior).</li>
+              <li>Composición de vidrios.</li>
+              <li>Si la compra incluye mosquiteros, que figuren en la orden.</li>
+            </ul>
+            <p>Cualquier cambio faltante o erroneo por favor avisanos.</p>
+            {recibeEnlace ? (
+              <p>
+                Una vez aprobada, la orden pasa directamente a producción.{' '}
+                <strong>La tenés que confirmar por acá:</strong>{' '}
+                <span className="msj-link">enlace para confirmar la orden</span>
+              </p>
+            ) : (
+              <p>Una vez aprobada, la orden pasa directamente a producción.</p>
+            )}
+            <p>¡Gracias por tu confianza!</p>
+            <p>🏠 Polifroni Aberturas</p>
+            <span className="msj-adj">
+              <i className="fas fa-file-pdf" /> Orden_de_Produccion_Final.pdf
+            </span>
+          </div>
+        ) : reenvio ? (
           <div className="msj-burbuja">
             <p>
               Hola <strong>Juan</strong> 👋

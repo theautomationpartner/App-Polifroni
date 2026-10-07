@@ -3,7 +3,7 @@
  * plantillas que la app muestra en "Ver mensaje" (`src/features/envio/MensajeEjemplo.tsx`), con el
  * formato de WhatsApp (*negrita*). Si se cambia una, hay que cambiar la otra.
  *
- *  - Primer envío y reenvío: el enlace para confirmar va SÓLO a quien confirma (el destinatario con la
+ *  - Primer envío, reenvío y OP editada ("Editar Órdenes de Producción"): el enlace para confirmar va SÓLO a quien confirma (el destinatario con la
  *    etiqueta de Confirmador). Al otro le llega el mismo mensaje, sin el enlace.
  *
  * `enlace` es `null` para quien no confirma.
@@ -34,6 +34,50 @@ ${cierre}
 
 ¡Gracias por tu confianza!
 🏠 Polifroni Aberturas`
+}
+
+/** La OP final nueva de una orden editada: se le pide que revise los cambios que pidió. */
+export function textoEdicion(nombre: string, enlace: string | null): string {
+  const cierre = enlace
+    ? `Una vez aprobada, la orden pasa directamente a producción. *La tenés que confirmar por acá:* ${enlace}`
+    : 'Una vez aprobada, la orden pasa directamente a producción.'
+  return `Hola *${nombre}* 👋
+
+🧾 Te adjuntamos la *nueva Orden de Producción*.
+
+Te pedimos por favor que verifiques que los cambios que nos pediste realizar sean correctos, y valides que la orden contenga:
+- Datos del cliente, teléfono y dirección de obra.
+- Color de aberturas.
+- Tipologías de aberturas.
+- Manos de apertura (los gráficos son vistos desde el interior).
+- Composición de vidrios.
+- Si la compra incluye mosquiteros, que figuren en la orden.
+
+Cualquier cambio faltante o erroneo por favor avisanos.
+${cierre}
+
+¡Gracias por tu confianza!
+🏠 Polifroni Aberturas`
+}
+
+/** El jefe del taller de fabricación: el mensaje al taller lo saluda por su nombre. */
+export const JEFE_TALLER = 'Alfredo'
+
+/**
+ * La OP confirmada, al taller de fabricación (con el PDF de la OP final detrás). Sin enlace: el
+ * taller no confirma nada. `obra` es el nombre de la obra y `material`, su tipo (PVC o Aluminio).
+ */
+export function textoTaller(obra: string, material: string): string {
+  return `👋 Hola *${JEFE_TALLER}*
+
+Adjunto la *orden de producción* para:
+
+- 🏗️  *Obra:* ${obra}
+- 🔨  *Material:* ${material}
+
+¡Cualquier duda comunicate con nosotros!
+Polifroni Aberturas
+Automatizado por *The Automation Partner*`
 }
 
 export function textoReenvio(nombre: string, enlace: string | null): string {

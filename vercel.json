@@ -29,9 +29,6 @@
     }
   ],
   "functions": {
-    "api/make.ts": {
-      "maxDuration": 300
-    },
     "api/hetmo.ts": {
       "maxDuration": 300,
       "includeFiles": "prompts/**"

@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
@@ -10,7 +10,6 @@ import { fileURLToPath, URL } from 'node:url'
  *  - `/monday-api`       → api.monday.com/v2            (GraphQL)
  *  - `/monday-api-file`  → api.monday.com/v2/file       (subida de archivos a columnas file)
  *  - `/monday-files`     → bucket S3 de Monday          (bytes de los PDF; S3 no manda CORS)
- *  - `/make/<escenario>` → webhooks de Make             (el hook no responde con cabeceras CORS)
  */
 export default defineConfig(({ mode }) => {
   // Prefijo vacío: también se leen las variables SIN `VITE_`, que se usan sólo acá (nunca en el bundle).
@@ -21,38 +20,9 @@ export default defineConfig(({ mode }) => {
    * firmada de Monday y la lista blanca, así que un pedido que sale del navegador de la
    * computadora vuelve con 403 ("esta app sólo funciona dentro de monday.com") y la app lo leía
    * como "usuario sin permisos". Lo que corre en local, corre ACÁ:
-   *  - los escenarios de Make, con su URL en `.env.local` (sin ella, la app avisa qué falta);
    *  - la numeración, contra la MISMA tabla de Neon que producción, con la `DATABASE_URL` de
    *    `.env.local` (ver `funcionesLocales`).
    */
-
-  /* Los escenarios leen el PDF con IA: los 30 s por defecto de http-proxy los cortarían a mitad de
-     camino. Acompaña al tope del cliente. */
-  const espera = { timeout: 180_000, proxyTimeout: 180_000 }
-
-  /**
-   * Un escenario de Make detrás de una ruta del propio origen.
-   *
-   * Con la URL del hook en `.env.local` se le pega directo. Sin ella la ruta no existe (404) y la
-   * app avisa qué variable falta, en vez de mandarlo a un lugar que lo va a rechazar.
-   */
-  const hook = (escenario: string, url: string | undefined): Record<string, ProxyOptions> => {
-    const ruta = `/make/${escenario}`
-    const limpia = url?.trim()
-
-    if (limpia) {
-      return {
-        [ruta]: {
-          target: new URL(limpia).origin,
-          changeOrigin: true,
-          rewrite: () => new URL(limpia).pathname,
-          ...espera,
-        },
-      }
-    }
-
-    return {}
-  }
 
   /**
    * Las funciones de `api/` que en local tienen que correr TAL CUAL corren en Vercel.
@@ -110,6 +80,8 @@ export default defineConfig(({ mode }) => {
         'GOOGLE_DRIVE_FOLDER_ID',
         'CONFIRMACION_URL',
         'CONFIRMACION_SECRET',
+        /* El WhatsApp del taller de fabricación: a donde sale la OP confirmada. */
+        'TALLER_WHATSAPP',
       ]) {
         if (env[k]) process.env[k] = env[k]
       }
@@ -155,13 +127,6 @@ export default defineConfig(({ mode }) => {
       port: 5192,
       strictPort: true,
       proxy: {
-        ...hook('leer-documento', env.MAKE_WEBHOOK_LEER_DOC),
-        ...hook('leer-observaciones', env.MAKE_WEBHOOK_LEER_OBSERVACIONES || env.LEER_OBSERVACIONES),
-        ...hook('enviar-op-cliente', env.MAKE_WEBHOOK_ENVIAR_OP),
-        ...hook('enviar-op-taller', env.MAKE_WEBHOOK_ENVIAR_OP_TALLER),
-        ...hook('agenda-asignacion', env.MAKE_WEBHOOK_AGENDA_ASIGNACION),
-        ...hook('agenda-cancelacion', env.MAKE_WEBHOOK_AGENDA_CANCELACION),
-        ...hook('agenda-confirmacion', env.MAKE_WEBHOOK_AGENDA_CONFIRMACION),
         /* Va ANTES de '/monday-api': Vite matchea por prefijo y '/monday-api-file' también
            empieza con '/monday-api'. */
         '/monday-api-file': {

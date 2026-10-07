@@ -20,13 +20,17 @@ export interface PedidoWsp {
   obraId: string
   numero: string
   tipo: string
-  /** Qué documento sale. Sin él, la Orden de Producción. */
-  documento?: 'presupuesto'
+  /** Qué documento sale. Sin él, la Orden de Producción al cliente o constructor; `taller`, la OP al taller. */
+  documento?: 'presupuesto' | 'taller'
+  /** El nombre de la obra (el mensaje al taller lo nombra). */
+  obra?: string
   /**
    * La clave (UUID) del enlace de confirmación (`nuevaClave`). El servidor arma con ella el enlace
    * firmado, y queda guardada en `🤖Clave Confirmacion` de la OP o del presupuesto.
    */
   clave: string
+  /** La OP final nueva de una orden editada: sale con su propio mensaje. */
+  edicion?: boolean
 }
 
 export type FaseWsp = 'idle' | 'corriendo' | 'listo' | 'error'
@@ -36,6 +40,8 @@ export interface RespuestaWsp {
   msj_cliente_arquitecto?: string
   /** El PDF compartido en Google Drive: queda guardado como link de la OP. */
   link_op?: string
+  /** A quién salió, en el orden de los destinatarios: el nombre y el celular confirmado. */
+  resultados?: { nombre?: string; phonenumber?: string }[]
 }
 
 /* El servidor sube a Drive, manda a cada destinatario y espera la confirmación de la cola (hasta
