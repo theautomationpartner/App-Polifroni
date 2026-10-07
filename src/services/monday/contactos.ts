@@ -72,3 +72,30 @@ export async function actualizarCelularCliente(clienteId: string, celular: strin
     },
   )
 }
+
+/** La actividad personalizada "envío de OP" de Emails & Activities. */
+export const ACTIVIDAD_ENVIO_OP = '755fffba-f273-4d3c-bf10-17d59a419cbb'
+
+/**
+ * Registra una actividad en Emails & Activities del ítem (`create_timeline_item`). El título y el
+ * contenido van por variables: viajan tal cual los arma `armarActividadEnvio`, sin riesgo de romper
+ * la mutation. La hora es la de ahora, en UTC ("2026-10-07T13:57:00Z").
+ */
+export async function registrarActividad(
+  itemId: string,
+  { titulo, content }: { titulo: string; content: string },
+  actividad: string = ACTIVIDAD_ENVIO_OP,
+): Promise<void> {
+  await mondayApi(
+    `mutation ($item: ID!, $actividad: String!, $titulo: String!, $content: String, $cuando: ISO8601DateTime!) {
+      create_timeline_item(item_id: $item, custom_activity_id: $actividad, title: $titulo, content: $content, timestamp: $cuando) { id }
+    }`,
+    {
+      item: itemId,
+      actividad,
+      titulo,
+      content,
+      cuando: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    },
+  )
+}
