@@ -1454,19 +1454,25 @@ td {
 
 
 /* ── La barra de etapas, cuando el ancho aprieta ──────────────────────────────
-   Antes de desaparecer o de bajar de línea, suelta lo que menos hace falta: primero los rótulos
-   —el número del círculo ya identifica la etapa— y después los conectores. Así sigue estando a la
-   derecha, diciendo en cuál de las cinco estás, incluso en un teléfono. */
-/* 1480 px y no menos: es el ancho máximo del encabezado. Con la marca y los tres selectores
-   (Área 180, Operación 340, Usuario 290) la fila ya ocupa ~1.080 px; la barra con sus rótulos
-   suma ~330 y no entra en el panel de Monday (~1.400 px). Sin los rótulos ocupa ~150 y sí. */
+   Con la marca y los tres selectores (Área 180, Operación 340, Usuario 290) la fila ya ocupa
+   ~1.080 px, y la barra con los nombres de las etapas suma ~330: por debajo de 1.480 px (el ancho
+   máximo del encabezado) no entran juntas —el panel de Monday mide ~1.300-1.400—. En vez de quedar
+   apretada a la derecha y sin los nombres, la barra baja a SU PROPIO RENGLÓN, alineada a la
+   IZQUIERDA, y SIGUE mostrando el nombre de cada etapa. */
 @media (max-width: 1480px) {
-  .paso-header-steps .step-nro {
-    display: none;
+  .paso-header-steps {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    padding: 2px 0 0;
   }
-  .paso-header-steps .sline {
-    width: 16px;
-    max-width: 16px;
+  .paso-header-steps .stepper {
+    justify-content: flex-start;
+  }
+  /* Sin etapas (la consulta, el inicio) la barra es un fantasma que reservaba el alto en la fila de
+     los selectores: en su propio renglón sólo dejaría un hueco. */
+  .paso-header-steps[aria-hidden='true'] {
+    display: none;
   }
 }
 @media (max-width: 860px) {
@@ -1476,11 +1482,9 @@ td {
   .paso-header-sel {
     --sel-ancho: 200px;
   }
-  .paso-header-steps {
-    padding: 10px 0;
-  }
   .paso-header-steps .sline {
-    display: none;
+    width: 16px;
+    max-width: 16px;
   }
   .paso-header-steps .stepper {
     gap: 4px;
@@ -1509,8 +1513,9 @@ td {
    Con menos de ~560 px la marca, los dos selectores y la barra de etapas no entran en una fila:
    se pisaban —los rótulos "Operación" y "Usuario" uno arriba del otro y los selectores encima de
    las etapas—. Acá se acomodan en dos filas con una sola lógica:
-     1. arriba, la marca a la izquierda y las etapas a la derecha (lo que ubica);
-     2. abajo, los dos selectores del MISMO ancho, lado a lado (lo que se elige).
+     1. arriba, la marca;
+     2. después, los dos selectores del MISMO ancho, lado a lado (lo que se elige);
+     3. abajo de todo, las etapas, a la izquierda y con sus nombres.
    `display: contents` saca del medio a los dos contenedores, así la marca, los selectores y las
    etapas pasan a ser hermanos y se pueden ordenar entre ellos sin tocar el markup.
    El margen de los costados baja de 24 a 12 px: en un teléfono, 48 px de aire sobre 390 es
@@ -1543,9 +1548,11 @@ td {
     padding-right: 0;
     border-right: 0;
   }
+  /* Las etapas, en su propia fila debajo de todo, a la izquierda y con sus nombres. */
   .paso-header-steps {
-    order: 2;
-    margin-left: auto;
+    order: 4;
+    flex: 1 1 100%;
+    margin-left: 0;
     padding: 0;
   }
   /* Base de MEDIA fila: así no entran junto a la marca y las etapas, y bajan juntos a la segunda. */
