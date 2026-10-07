@@ -8,7 +8,7 @@ import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { etiquetasPasos, tipoDe } from '@/lib/pasos'
 import { comoUsuario } from '@/services/monday'
 import { presupuestoEnCurso } from '@/features/presupuesto/borrador'
-import { OPERACIONES, PASOS, areaPermitida, conEtapas, indiceDe, operacionesDe } from '@/state/appState'
+import { OPERACIONES, PASOS, areaVisible, conEtapas, indiceDe, operacionesDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Operacion, Proceso, Rol } from '@/types'
 
@@ -152,11 +152,11 @@ const PROXIMAMENTE = 'pronto:'
 type OpcionArea = string
 /**
  * Las opciones del selector de área: Inicio primero, después las áreas en su orden. Las que el team
- * del usuario no habilita no se listan; las que todavía no están, sí (apagadas).
+ * del usuario no habilita no se listan; las que todavía no están, sólo al admin (apagadas).
  */
 const opcionesArea = (roles: readonly Rol[] | undefined): OpcionArea[] => [
   INICIO,
-  ...PROCESOS.filter((p) => !p.id || areaPermitida(p.id, roles)).map((p) => p.id ?? `${PROXIMAMENTE}${p.titulo}`),
+  ...PROCESOS.filter((p) => areaVisible(p.id, roles)).map((p) => p.id ?? `${PROXIMAMENTE}${p.titulo}`),
 ]
 
 /**

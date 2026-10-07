@@ -12,34 +12,43 @@ import { cerrarAvisoSeguridad, type ErrorSeguridad } from '@/lib/errorSeguridad'
  * Por eso cada caso ofrece SÓLO lo que sirve. El rechazo por dominio no lleva "Recargar": recargar
  * desde afuera de Monday da exactamente el mismo rechazo, y ese botón sería una invitación a
  * insistir con algo que no depende de quien lo aprieta.
+ *
+ * Es también el ÚNICO formato del rechazo: cuando la app no se puede usar, se muestra esta misma
+ * ventana `fija` sobre el fondo de la marca, en vez de una tarjeta aparte con otro texto. Fija no se
+ * cierra —no hay X ni "Entendido"—: cerrarla dejaría la pantalla vacía, sin decir qué pasó.
  */
-export function ModalErrorSeguridad({ error }: { error: ErrorSeguridad }) {
+export function ModalErrorSeguridad({ error, fijo = false }: { error: ErrorSeguridad; fijo?: boolean }) {
   const { titulo, cuerpo, recargar, mostrarCodigo } = TEXTOS[error.clase]
 
   return (
     <Modal
       title={titulo}
       icon={<i className="fas fa-shield-halved modal-icon--warn" />}
-      onClose={cerrarAvisoSeguridad}
+      onClose={fijo ? () => {} : cerrarAvisoSeguridad}
+      cerrable={!fijo}
       actions={
-        <>
-          {recargar && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => window.location.reload()}
-            >
-              Recargar
-            </button>
-          )}
-          <button
-            type="button"
-            className={recargar ? 'btn btn-secundario' : 'btn btn-primary'}
-            onClick={cerrarAvisoSeguridad}
-          >
-            Entendido
-          </button>
-        </>
+        recargar || !fijo ? (
+          <>
+            {recargar && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => window.location.reload()}
+              >
+                Recargar
+              </button>
+            )}
+            {!fijo && (
+              <button
+                type="button"
+                className={recargar ? 'btn btn-secundario' : 'btn btn-primary'}
+                onClick={cerrarAvisoSeguridad}
+              >
+                Entendido
+              </button>
+            )}
+          </>
+        ) : undefined
       }
     >
       {cuerpo}
@@ -139,29 +148,20 @@ const TEXTOS: Record<
     ),
   },
   /* Está dado de alta, pero sin team: los permisos de la app salen del team de Monday. */
+  /* El team es el de la CUENTA de Monday del usuario: es lo único que autoriza qué puede hacer en
+     la app. "Recargar" sirve: en cuanto un administrador lo agrega a un team, la app entra (el "no"
+     se recuerda sólo 30 segundos). */
   sinEquipo: {
-    titulo: 'ERROR 403 · Sin team asignado',
-    recargar: false,
+    titulo: 'ERROR 403 · Sin permisos',
+    recargar: true,
     mostrarCodigo: false,
     cuerpo: (
       <>
         <p>
-          Tu usuario <strong>no está asignado a ningún team</strong> dentro de la aplicación.
+          Tu usuario <strong>no tiene un equipo asignado</strong> en su cuenta de Monday, y sin
+          equipo no se pueden autorizar los permisos dentro de la aplicación.
         </p>
-        <p>Pedile a un administrador que te agregue al team que corresponde en Monday.</p>
-      </>
-    ),
-  },
-  sinRol: {
-    titulo: 'ERROR 403 · Team sin permisos',
-    recargar: false,
-    mostrarCodigo: false,
-    cuerpo: (
-      <>
-        <p>
-          Tu team de Monday <strong>no tiene permisos asignados</strong> en la aplicación.
-        </p>
-        <p>Pedile a un administrador que te agregue al team que corresponde en Monday.</p>
+        <p>Pedile a un administrador que te agregue al equipo que corresponde en Monday y recargá.</p>
       </>
     ),
   },

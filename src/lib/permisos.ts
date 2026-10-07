@@ -4,6 +4,10 @@
  *  · Admin       todas las funcionalidades.
  *  · Produccion  sólo "Consultar órdenes de producción", y ahí sólo las enviadas al taller, para
  *                finalizar su producción (ver `vistaConsulta` y `accionesConsulta`).
+ *  · Administracion  el área Agenda, con todas sus operaciones.
+ *  · Ventas      el área Presupuesto, con todas sus operaciones.
+ *
+ * Hardcodeado por ahora (regla del cliente, 2026-10-07).
  *
  * Un usuario puede estar en VARIOS teams: tiene el rol de cada uno, y puede hacer la SUMA de lo que
  * da cada rol. Los teams sin permisos definidos no suman ni restan.
@@ -25,6 +29,8 @@ import type { Operacion, Proceso, Rol } from '@/types'
 const ROL_DEL_EQUIPO: Record<string, Rol> = {
   admin: 'admin',
   produccion: 'produccion',
+  administracion: 'administracion',
+  ventas: 'ventas',
 }
 
 /**
@@ -40,6 +46,10 @@ export function rolesDeEquipos(nombres: string[]): Rol[] {
 const OPERACIONES_DEL_ROL: Record<Rol, readonly Operacion[] | 'todas'> = {
   admin: 'todas',
   produccion: ['consultar'],
+  /* Todas las de Agenda. */
+  administracion: ['crearTurno', 'gestionarTurnos'],
+  /* Todas las de Presupuesto. */
+  ventas: ['presupuestos', 'gestionarPresupuestos'],
 }
 
 /** ¿Alguno de sus roles habilita la operación? Es la suma de lo que da cada team. */

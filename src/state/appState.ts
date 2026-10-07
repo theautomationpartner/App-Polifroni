@@ -40,6 +40,13 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
 export const operacionesDe = (proceso: Proceso | null, roles: readonly Rol[] | null | undefined) =>
   OPERACIONES.filter((o) => o.proceso === proceso && puedeOperar(roles, o.id))
 
+/**
+ * ¿Se le muestra el área? Una construida, si alguno de sus roles tiene alguna operación en ella;
+ * una "Próximamente" (`id` null), sólo al admin: el resto no ve áreas que no son las suyas.
+ */
+export const areaVisible = (id: Proceso | null, roles: readonly Rol[] | null | undefined): boolean =>
+  id ? areaPermitida(id, roles) : Boolean(roles?.includes('admin'))
+
 /** ¿Puede entrar al área? Sólo si alguno de sus roles tiene alguna operación en ella. */
 export const areaPermitida = (proceso: Proceso, roles: readonly Rol[] | null | undefined): boolean =>
   puedeEntrar(roles, proceso, OPERACIONES)

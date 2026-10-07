@@ -10,7 +10,7 @@
  * `ANTHROPIC_API_KEY` en las variables del proyecto.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { exigirAdmin } from './_equipos.js'
+import { exigirRuta } from './_equipos.js'
 import { autorizarPedido, respuestaDeError } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 import { manejarHetmo } from './_hetmoHttp.js'
@@ -20,8 +20,7 @@ type Pedido = IncomingMessage & { body?: unknown }
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {
   /* El guardián antes que nada: firma del session token, lista blanca y segundo factor. */
   try {
-    // Sólo el team Admin: el team Produccion no usa esta ruta.
-    exigirAdmin(await autorizarPedido(req.headers.authorization, deviceTokenDe(req)))
+    exigirRuta(await autorizarPedido(req.headers.authorization, deviceTokenDe(req)), 'ia')
   } catch (e) {
     const { status, cuerpo } = respuestaDeError(e)
     res.statusCode = status

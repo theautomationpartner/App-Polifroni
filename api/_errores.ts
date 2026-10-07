@@ -15,7 +15,6 @@
  *  · `no_habilitado` el usuario no está dado de alta. Lo arregla un administrador.
  *  · `mfa`           falta el segundo factor. Lo arregla el propio usuario.
  *  · `sin_equipo`    el usuario no está en ningún team de Monday. Lo arregla un administrador.
- *  · `sin_rol`       sus teams no tienen permisos definidos en la app.
  *  · `operacion_no_permitida` su team no habilita ESTA operación (ver `_equipos.ts`).
  */
 export type CodigoRechazo =
@@ -25,11 +24,10 @@ export type CodigoRechazo =
   | 'no_habilitado'
   | 'mfa'
   | 'sin_equipo'
-  | 'sin_rol'
   | 'operacion_no_permitida'
 
 /** Qué puede hacer el usuario adentro de la app, según su team de Monday (ver `_equipos.ts`). */
-export type Rol = 'admin' | 'produccion'
+export type Rol = 'admin' | 'produccion' | 'administracion' | 'ventas'
 
 /** Quién es el usuario, según lo que la firma de Monday deja probar. */
 export interface Sesion {
@@ -51,6 +49,8 @@ export interface Sesion {
    * `autorizarSinMfa`; sin él, la sesión no pasó ese control.
    */
   roles?: Rol[]
+  /** Los teams de Monday del usuario, tal cual. Con al menos uno, entra (ver `_equipos.ts`). */
+  equipos?: string[]
 }
 
 /**

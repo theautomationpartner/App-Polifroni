@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CargandoAcceso, MuroAcceso } from '@/components/ui/PantallaAcceso'
+import { CargandoAcceso } from '@/components/ui/PantallaAcceso'
 import { MfaGuard } from '@/components/ui/MfaGuard'
 import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ModalErrorSeguridad } from '@/components/ui/ModalErrorSeguridad'
@@ -29,7 +29,7 @@ import { EditarEnviarView } from '@/features/editar/EditarEnviarView'
 import { tipoDe } from '@/lib/pasos'
 import { puedeOperar } from '@/lib/permisos'
 import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
-import { bloqueaLaApp, notificarErrorSeguridad } from '@/lib/errorSeguridad'
+import { bloqueaLaApp, notificarErrorSeguridad, type ErrorSeguridad } from '@/lib/errorSeguridad'
 import { enMonday, getSessionToken, resumenSessionToken } from '@/lib/mondayAuth'
 import { estadoSegundoFactor } from '@/services/mfa'
 import { getUsuarioActual, getUsuarios } from '@/services/monday'
@@ -82,6 +82,12 @@ function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, 
   }
   return destino === 'cliente' && pvc ? EmitirEnviarView : EnviarOpView
 }
+
+/**
+ * El rechazo cuando nadie dijo el motivo (el pedido no llegó a contestar): se muestra igual en la
+ * ventana única de seguridad, como un problema de sesión, que se intenta recargando.
+ */
+const RECHAZO_SIN_DETALLE: ErrorSeguridad = { clase: 'sesion', status: 401 }
 
 export function App() {
   const estado = useApp()
@@ -139,10 +145,11 @@ export function App() {
            el segundo factor: es el paso 1, y exigir el 3 acá haría imposible llegar al muro. */
         const usuario = await getUsuarioActual()
         if (!vivo) return
-        /* Sin team con permisos la app no se abre. En producción ya lo cortó el servidor con un 403;
-           esto lo cubre en local, donde los roles salen de los teams de `me`. */
-        if (!usuario?.roles.length) {
-          notificarErrorSeguridad(usuario?.equipos.length ? 'sinRol' : 'sinEquipo', 403)
+        /* Sin NINGÚN team la app no se abre. En producción ya lo cortó el servidor con un 403; esto
+           lo cubre en local, donde los teams salen de `me`. Con un team sin permisos (Ventas) se
+           entra igual: el inicio le dice que su equipo todavía no tiene áreas. */
+        if (!usuario?.equipos.length) {
+          notificarErrorSeguridad('sinEquipo', 403)
           setAcceso('rechazado')
           return
         }
@@ -196,26 +203,21 @@ export function App() {
   }, [paso, proceso])
 
   const Vista = vistaDe(estado)
+  /** La app no se puede usar: se muestra sólo el rechazo. */
+  const rechazada = acceso === 'rechazado' || (acceso === 'permitido' && bloqueada)
 
   return (
     <div className="scroll" ref={scrollRef}>
       {/* La app se dibuja SÓLO con los tres pasos superados. */}
       {acceso === 'permitido' && !bloqueada && <Vista />}
       {acceso === 'verificando' && <CargandoAcceso mensaje="Verificando acceso" />}
-      {/* Rechazado: el aviso de seguridad va sobre el mismo fondo con la marca, no sobre una pantalla
-          en blanco que parece rota. */}
-      {(acceso === 'rechazado' || (acceso === 'permitido' && bloqueada)) && (
-        /* Si se cierra el aviso, la tarjeta no queda vacía: dice qué pasó y qué hacer. */
-        <MuroAcceso>
-          <h2 className="mfa-titulo">Acceso no disponible</h2>
-          <p className="mfa-texto">
-            {errorSeguridad?.clase === 'sinEquipo'
-              ? 'Tu usuario no está asignado a ningún team dentro de la aplicación. Pedile a un administrador que te agregue en Monday.'
-              : errorSeguridad?.clase === 'sinRol'
-                ? 'Tu team de Monday no tiene permisos asignados en la aplicación. Pedile a un administrador que te agregue al team que corresponde.'
-                : 'Abrí la aplicación desde Monday. Si ya estás ahí, recargá la página.'}
-          </p>
-        </MuroAcceso>
+      {/* Rechazado: UN solo mensaje, la ventana del aviso de seguridad, fija sobre el fondo de la
+          marca —no una pantalla en blanco que parece rota, ni una segunda tarjeta con otro texto—. */}
+      {rechazada && (
+        <>
+          <div className="mfa-muro" aria-hidden="true" />
+          <ModalErrorSeguridad error={errorSeguridad ?? RECHAZO_SIN_DETALLE} fijo />
+        </>
       )}
       {acceso === 'mfa' && <MfaGuard onListo={() => setAcceso('permitido')} />}
       {/* Cada operación termina acá: qué se hizo, y a dónde seguir. Lo cargado se descarta en los dos
@@ -230,7 +232,7 @@ export function App() {
       )}
       {/* Un solo aviso a la vez, y el de seguridad manda: el otro invita a reintentar, y un rechazo
           del borde no se arregla reintentando. */}
-      {errorSeguridad && avisoVisible ? <ModalErrorSeguridad error={errorSeguridad} /> : <ModalErrorMonday />}
+      {!rechazada && errorSeguridad && avisoVisible ? <ModalErrorSeguridad error={errorSeguridad} /> : !rechazada && <ModalErrorMonday />}
     </div>
   )
 }

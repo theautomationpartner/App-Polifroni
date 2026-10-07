@@ -43,7 +43,7 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
          suma de lo de cada team. Sin ninguno, el guardián ya habría cortado con 403. */
       roles: sesion.roles ?? [],
       /* Los equipos de Monday, tal cual. El permiso lo dan `roles`. */
-      equipos: perfil?.equipos ?? [],
+      equipos: sesion.equipos ?? perfil?.equipos ?? [],
       /* Los IDS de esos equipos, como texto. */
       equipoIds: perfil?.equipoIds ?? [],
     }

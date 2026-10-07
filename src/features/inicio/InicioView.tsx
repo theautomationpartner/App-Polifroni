@@ -3,7 +3,7 @@ import { PasoHeader } from '@/features/shared/PasoHeader'
 import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { normalizar } from '@/lib/texto'
 import { puedeOperar } from '@/lib/permisos'
-import { OPERACIONES, PASOS, areaPermitida, operacionesDe } from '@/state/appState'
+import { OPERACIONES, PASOS, areaVisible, operacionesDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Operacion, Proceso, Rol } from '@/types'
 
@@ -62,11 +62,13 @@ export function InicioView() {
 
   /* Las áreas y operaciones que el team del usuario no habilita no se muestran. Las que todavía no
      están construidas se ven apagadas para todos. */
-  const areas = PROCESOS.filter((p) => (!p.id || areaPermitida(p.id, roles)) && (!t || normalizar(p.titulo).includes(t)))
+  const areas = PROCESOS.filter((p) => areaVisible(p.id, roles) && (!t || normalizar(p.titulo).includes(t)))
   const operaciones = t
     ? OPERACIONES.filter((o) => puedeOperar(roles, o.id) && normalizar(TARJETA_OPERACION[o.id].titulo).includes(t))
     : []
   const nada = areas.length === 0 && operaciones.length === 0
+  /** Su equipo no tiene ningún área: no es la búsqueda la que no encuentra nada. */
+  const sinAreas = !PROCESOS.some((p) => areaVisible(p.id, roles))
 
   return (
     <section className="view paso-layout obras-v2">
@@ -96,8 +98,18 @@ export function InicioView() {
 
       {nada ? (
         <div className="inicio-vacio" role="status">
-          <i className="fas fa-magnifying-glass" aria-hidden="true" /> No hay áreas ni operaciones que coincidan con
-          «{busqueda.trim()}».
+          {sinAreas ? (
+            /* Un equipo sin permisos todavía (Ventas): entra, pero no hay área ni operación para él. */
+            <>
+              <i className="fas fa-circle-info" aria-hidden="true" /> Tu equipo todavía no tiene áreas ni
+              operaciones habilitadas en la aplicación.
+            </>
+          ) : (
+            <>
+              <i className="fas fa-magnifying-glass" aria-hidden="true" /> No hay áreas ni operaciones que
+              coincidan con «{busqueda.trim()}».
+            </>
+          )}
         </div>
       ) : (
         <div className="procesos-grid">

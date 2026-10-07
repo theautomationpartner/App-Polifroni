@@ -30,8 +30,6 @@ export type ClaseErrorSeguridad =
   | 'sinPermiso'
   /** 403 · está dado de alta, pero no está asignado a ningún team de Monday. */
   | 'sinEquipo'
-  /** 403 · tiene team, pero ninguno con permisos en la app. */
-  | 'sinRol'
   /** 403 · su team no habilita la operación que intentó. No tapa la app: el resto sigue andando. */
   | 'operacionNoPermitida'
   /** 403 · falta el segundo factor. */
@@ -66,7 +64,6 @@ export function bloqueaLaApp(clase: ClaseErrorSeguridad): boolean {
     clase === 'configuracion' ||
     clase === 'sinPermiso' ||
     clase === 'sinEquipo' ||
-    clase === 'sinRol' ||
     clase === 'segundoFactor'
   )
 }

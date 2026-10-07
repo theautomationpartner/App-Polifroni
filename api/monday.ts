@@ -15,12 +15,12 @@
  * lo necesita.
  *
  * ── El rol ──
- * Quien esté en el team Admin —aunque también esté en otros— pasa cualquier consulta. Sin él (hoy,
- * sólo Produccion) se LEE: una `mutation` se rechaza con 403. Su única escritura —marcar la producción completada— no pasa por
+ * Escriben (una `mutation`) los roles con un área que escribe: Admin, Administracion (Agenda) y
+ * Ventas (Presupuesto). El resto —Produccion, o un team sin permisos— sólo LEE: 403. Su única escritura —marcar la producción completada— no pasa por
  * acá sino por `/api/produccion-completada`, donde la consulta la escribe el servidor.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { esAdmin } from './_equipos.js'
+import { puedeUsar } from './_equipos.js'
 import { autorizarPedido, respuestaDeError, type Sesion } from './_guard.js'
 import { deviceTokenDe } from './_http.js'
 
@@ -60,8 +60,8 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
     /* El cuerpo se reenvía tal cual (query + variables). La Authorization que haya mandado el
        cliente NO se usa: contra Monday sólo vale el token del servidor. */
     const body = await leerCuerpo(req)
-    if (!esAdmin(sesion) && esMutacion(body)) {
-      console.warn(`[api/monday] 403 · mutation sin rol admin (${sesion.roles?.join(', ') || 'ninguno'}, usuario ${sesion.userId})`)
+    if (!puedeUsar(sesion, 'escribir') && esMutacion(body)) {
+      console.warn(`[api/monday] 403 · mutation sin permiso de escritura (${sesion.roles?.join(', ') || 'ninguno'}, usuario ${sesion.userId})`)
       return responder(res, 403, {
         errors: [{ message: 'Forbidden' }],
         codigo: 'operacion_no_permitida',

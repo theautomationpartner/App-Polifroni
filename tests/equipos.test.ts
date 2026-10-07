@@ -2,7 +2,7 @@
  * El rol por team de Monday (Capa 2, después de la lista blanca) y lo que habilita cada rol.
  *
  * Lo que se fija acá:
- *  · sin ningún team, 403 `sin_equipo`; con teams pero ninguno con permisos, 403 `sin_rol`;
+ *  · sin ningún team, 403 `sin_equipo`; con un team sin permisos (Reparto) ENTRA, sin roles;
  *  · un usuario puede estar en VARIOS teams: tiene un rol por cada team que da uno, y puede la
  *    SUMA de lo que da cada rol; los teams sin permisos no suman ni restan;
  *    "Administracion" NO es "Admin";
@@ -16,7 +16,7 @@
  */
 import assert from 'node:assert/strict'
 import { ErrorAuth } from '../api/_guard'
-import { exigirAdmin, exigirEquipo, limpiarCacheEquipos, rolesDeEquipos } from '../api/_equipos'
+import { exigirAdmin, exigirEquipo, exigirRuta, limpiarCacheEquipos, puedeUsar, rolesDeEquipos } from '../api/_equipos'
 import { estadoDeOrden, type EstadoOrden } from '../src/lib/estadosOp'
 import {
   accionesConsulta,
@@ -70,10 +70,12 @@ for (const roles of [rolesDeEquipos, rolesDeEquiposUi]) {
   assert.deepEqual(roles(['Produccion']), ['produccion'])
   assert.deepEqual(roles(['Producción']), ['produccion'], 'con tilde es el mismo team')
   assert.deepEqual(roles(['Produccion', 'Admin']).sort(), ['admin', 'produccion'], 'en dos teams, los dos roles')
-  assert.deepEqual(roles(['Ventas', 'Produccion', 'Reparto']), ['produccion'], 'los teams sin permisos no restan')
+  assert.deepEqual(roles(['Colocacion', 'Produccion', 'Reparto']), ['produccion'], 'los teams sin permisos no restan')
+  assert.deepEqual(roles(['Administracion']), ['administracion'])
+  assert.deepEqual(roles(['Ventas']), ['ventas'])
   assert.deepEqual(roles(['Produccion', 'PRODUCCION']), ['produccion'], 'sin repetir')
-  assert.deepEqual(roles(['Administracion']), [], '"Administracion" no es "Admin"')
-  assert.deepEqual(roles(['Ventas', 'Reparto']), [])
+  assert.ok(!roles(['Administracion']).includes('admin'), '"Administracion" no es "Admin"')
+  assert.deepEqual(roles(['Colocacion', 'Reparto']), [])
   assert.deepEqual(roles([]), [])
 }
 
@@ -87,24 +89,28 @@ responderTeams([])
 }
 
 limpiarCacheEquipos()
-responderTeams(['Ventas'])
-assert.equal((await rechazo(exigirEquipo(sesion))).codigo, 'sin_rol', 'team sin permisos: 403 sin_rol')
+responderTeams(['Reparto'])
+assert.deepEqual(
+  await exigirEquipo(sesion),
+  { roles: [], equipos: ['Reparto'] },
+  'un team sin permisos (Reparto) entra: no ve nada, pero no es un 403',
+)
 
 limpiarCacheEquipos()
 responderTeams(['Produccion'])
-assert.deepEqual(await exigirEquipo(sesion), ['produccion'])
-assert.deepEqual(await exigirEquipo(sesion), ['produccion'])
+assert.deepEqual((await exigirEquipo(sesion)).roles, ['produccion'])
+assert.deepEqual((await exigirEquipo(sesion)).roles, ['produccion'])
 assert.equal(viajes, 1, 'la segunda vez sale de la caché')
 
 limpiarCacheEquipos()
 responderTeams(['Colocacion', 'Produccion', 'Admin'])
-assert.deepEqual((await exigirEquipo(sesion)).sort(), ['admin', 'produccion'], 'varios teams: un rol por cada uno')
+assert.deepEqual((await exigirEquipo(sesion)).roles.sort(), ['admin', 'produccion'], 'varios teams: un rol por cada uno')
 
 limpiarCacheEquipos()
 responderTeams('falla')
 assert.equal((await rechazo(exigirEquipo(sesion))).status, 403, 'Monday caído: nadie entra')
 responderTeams(['Admin'])
-assert.deepEqual(await exigirEquipo(sesion), ['admin'], 'el fallo no quedó cacheado')
+assert.deepEqual((await exigirEquipo(sesion)).roles, ['admin'], 'el fallo no quedó cacheado')
 
 assert.doesNotThrow(() => exigirAdmin({ ...sesion, roles: ['admin'] }))
 assert.doesNotThrow(() => exigirAdmin({ ...sesion, roles: ['produccion', 'admin'] }), 'admin entre otros roles')
@@ -177,3 +183,73 @@ assert.equal(categoriaConsulta(ordenDe('Cancelada', true)), null)
 assert.equal(categoriaConsulta(ordenDe('Produccion Completada', true)), null)
 
 console.log('equipos (rol por team): OK')
+
+/* ── El recorrido de Produccion, de punta a punta ─────────────────────────────────────────────── */
+{
+  const AREAS = ['obras', 'agenda', 'presupuesto'] as const
+  const TODAS = [
+    { id: 'enviar', proceso: 'obras' },
+    { id: 'consultar', proceso: 'obras' },
+    { id: 'editar', proceso: 'obras' },
+    { id: 'vidrios', proceso: 'obras' },
+    { id: 'crearTurno', proceso: 'agenda' },
+    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'presupuestos', proceso: 'presupuesto' },
+    { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
+  ] as const
+  const p = ['produccion'] as const
+  assert.deepEqual(
+    AREAS.filter((a) => puedeEntrar(p, a, TODAS)),
+    ['obras'],
+    'Produccion sólo ve el área Producción: ni Agenda ni Presupuesto',
+  )
+  assert.deepEqual(
+    TODAS.filter((o) => puedeOperar(p, o.id)).map((o) => o.id),
+    ['consultar'],
+    'y en ella sólo Consultar: ni cargar y enviar, ni editar, ni vidrios',
+  )
+  assert.deepEqual(AREAS.filter((a) => puedeEntrar(['admin'], a, TODAS)), [...AREAS], 'Admin, todas')
+}
+
+/* Un team sin permisos (Reparto) entra, pero no ve ningún área ni operación. */
+{
+  const AREAS = ['obras', 'agenda', 'presupuesto'] as const
+  assert.deepEqual(AREAS.filter((a) => puedeEntrar([], a, OPERACIONES)), [], 'sin roles: ningún área')
+  assert.ok(!OPERACIONES.some((o) => puedeOperar([], o.id)), 'sin roles: ninguna operación')
+}
+
+/* ── Los permisos hardcodeados por team (2026-10-07) ──────────────────────────────────────────── */
+{
+  const AREAS = ['obras', 'agenda', 'presupuesto'] as const
+  const TODAS = [
+    { id: 'enviar', proceso: 'obras' },
+    { id: 'consultar', proceso: 'obras' },
+    { id: 'editar', proceso: 'obras' },
+    { id: 'vidrios', proceso: 'obras' },
+    { id: 'crearTurno', proceso: 'agenda' },
+    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'presupuestos', proceso: 'presupuesto' },
+    { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
+  ] as const
+  const ve = (roles: Parameters<typeof puedeOperar>[0]) => ({
+    areas: AREAS.filter((a) => puedeEntrar(roles, a, TODAS)),
+    ops: TODAS.filter((o) => puedeOperar(roles, o.id)).map((o) => o.id),
+  })
+  assert.deepEqual(ve(['admin']).ops.length, TODAS.length, 'Admin: todas las operaciones')
+  assert.deepEqual(ve(['administracion']), { areas: ['agenda'], ops: ['crearTurno', 'gestionarTurnos'] }, 'Administracion: Agenda entera')
+  assert.deepEqual(ve(['ventas']), { areas: ['presupuesto'], ops: ['presupuestos', 'gestionarPresupuestos'] }, 'Ventas: Presupuesto entero')
+  assert.deepEqual(ve(['produccion']), { areas: ['obras'], ops: ['consultar'] }, 'Produccion: sólo Consultar')
+  assert.deepEqual(ve(['administracion', 'ventas']).areas, ['agenda', 'presupuesto'], 'en dos teams, las dos áreas')
+
+  /* El servidor: cada rol, sólo las rutas de su área. */
+  const con = (roles: ('admin' | 'produccion' | 'administracion' | 'ventas')[]) => ({ ...sesion, roles })
+  assert.ok(puedeUsar(con(['ventas']), 'subir') && puedeUsar(con(['ventas']), 'escribir'))
+  assert.ok(puedeUsar(con(['administracion']), 'whatsapp') && !puedeUsar(con(['administracion']), 'subir'))
+  assert.ok(!puedeUsar(con(['produccion']), 'escribir'), 'Produccion no escribe por el proxy')
+  assert.ok(puedeUsar(con(['produccion']), 'finalizar'))
+  assert.ok(!puedeUsar(con(['ventas']), 'finalizar'), 'Ventas no finaliza OP')
+  assert.ok(!puedeUsar(con([]), 'finalizar'), 'un team sin permisos tampoco')
+  assert.ok(!puedeUsar(con(['ventas', 'administracion']), 'ia') && !puedeUsar(con(['ventas']), 'numeracion'), 'IA y numeración: sólo admin')
+  assert.ok(puedeUsar(con(['admin']), 'ia'))
+  assert.throws(() => exigirRuta(con(['ventas']), 'finalizar'), (e: ErrorAuth) => e.codigo === 'operacion_no_permitida')
+}

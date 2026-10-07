@@ -129,7 +129,7 @@ export type Operacion =
   | 'gestionarPresupuestos'
 
 /** Qué puede hacer el usuario según su team de Monday (ver `lib/permisos`). */
-export type Rol = 'admin' | 'produccion'
+export type Rol = 'admin' | 'produccion' | 'administracion' | 'ventas'
 
 /** A quién se le envía la orden: al cliente o constructor (para que la confirme) o al taller. */
 export type Destino = 'cliente' | 'taller'

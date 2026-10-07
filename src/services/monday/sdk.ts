@@ -204,7 +204,6 @@ function claseDeRechazo(status: number, codigo: string | undefined): ClaseErrorS
   if (codigo === 'mfa') return 'segundoFactor'
   if (codigo === 'no_habilitado') return 'sinPermiso'
   if (codigo === 'sin_equipo') return 'sinEquipo'
-  if (codigo === 'sin_rol') return 'sinRol'
   if (codigo === 'operacion_no_permitida') return 'operacionNoPermitida'
   if (codigo === 'config') return 'configuracion'
   if (status === 429) return 'demasiadosIntentos'

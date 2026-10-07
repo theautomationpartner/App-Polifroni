@@ -133,7 +133,9 @@ export async function autorizarSinMfa(authorization: string | undefined): Promis
   const sesion = verificarSesion(authorization)
   await exigirListaBlanca(sesion)
   /* Después de la lista blanca: a quien no está habilitado no se le cuenta si tiene team o no. */
-  sesion.roles = await exigirEquipo(sesion)
+  const { roles, equipos } = await exigirEquipo(sesion)
+  sesion.roles = roles
+  sesion.equipos = equipos
   return sesion
 }
 
