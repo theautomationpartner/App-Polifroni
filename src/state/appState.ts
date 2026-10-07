@@ -11,6 +11,8 @@ import type { Abertura } from '@/features/op/observaciones'
 import type { VidrioLeido } from '@/services/monday/ordenes'
 import { turnoInicial, type BorradorTurno } from '@/features/agenda/borrador'
 import { presupuestoInicial, type BorradorPresupuesto } from '@/features/presupuesto/borrador'
+import { edicionInicial, type BorradorEdicion } from '@/features/editar/borrador'
+import type { OrdenEditable } from '@/services/monday/edicionOp'
 import { puedeEntrar, puedeOperar } from '@/lib/permisos'
 import type { Destino, Obra, Operacion, Paso, Proceso, Rol, Usuario, UsuarioActual } from '@/types'
 
@@ -23,6 +25,7 @@ export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))
 export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Proceso }[] = [
   { id: 'enviar', titulo: 'CARGAR Y ENVIAR ORDENES DE PRODUCCION', proceso: 'obras' },
   { id: 'consultar', titulo: 'CONSULTAR ORDENES DE PRODUCCION', proceso: 'obras' },
+  { id: 'editar', titulo: 'EDITAR ORDENES DE PRODUCCION', proceso: 'obras' },
   { id: 'vidrios', titulo: 'SOLICITUD DE CORTES DE VIDRIO', proceso: 'obras' },
   { id: 'crearTurno', titulo: 'CREAR TURNOS', proceso: 'agenda' },
   { id: 'gestionarTurnos', titulo: 'CONSULTAR Y GESTIONAR TURNOS', proceso: 'agenda' },
@@ -43,7 +46,11 @@ export const areaPermitida = (proceso: Proceso, roles: readonly Rol[] | null | u
 
 /** Las operaciones que se recorren por etapas, con el stepper del encabezado. */
 export const conEtapas = (operacion: Operacion | null): boolean =>
-  operacion === 'enviar' || operacion === 'vidrios' || operacion === 'crearTurno' || operacion === 'presupuestos'
+  operacion === 'enviar' ||
+  operacion === 'editar' ||
+  operacion === 'vidrios' ||
+  operacion === 'crearTurno' ||
+  operacion === 'presupuestos'
 
 /** A quién se envía, tal como lo lista la pregunta de la primera etapa. */
 export const DESTINOS: readonly { id: Destino; titulo: string }[] = [
@@ -72,7 +79,10 @@ export interface BorradorOp {
   /** El original que ya se subió a la OP al finalizar, para no volver a subirlo en un reintento. */
   archivoSubido: File | null
   medicion: Medicion
+  /** PVC: las aberturas que leyó la IA en la orden de HETMO, cada una con su caja de observación. */
   aberturas: Abertura[]
+  /** PVC: el usuario abrió las cajas de observación ("Cargar observaciones"). Si no, no van a la OP. */
+  obsHabilitadas: boolean
   vidrios: VidrioLeido[]
   /** La OP final ya existe (PVC: se generó; Aluminio: se cargó). Habilita el envío. */
   generada: boolean
@@ -123,6 +133,7 @@ export const borradorInicial = (): BorradorOp => ({
   archivoSubido: null,
   medicion: medicionInicial(),
   aberturas: [],
+  obsHabilitadas: false,
   vidrios: [],
   generada: false,
   opFinal: null,
@@ -162,6 +173,8 @@ export interface AppState {
   turno: BorradorTurno
   /** Presupuesto · Crear y Cargar: lo elegido y cargado del presupuesto. */
   presupuesto: BorradorPresupuesto
+  /** Editar Órdenes de Producción: la orden elegida y sus subelementos. */
+  edicion: BorradorEdicion
   /** Con valor, se muestra el cierre de la operación (y después se vuelve al inicio). */
   exito: Exito | null
   /** Hay un envío o una generación corriendo: no se puede salir a mitad de camino. */
@@ -185,6 +198,7 @@ export const initialState: AppState = {
   vidriosOps: [],
   turno: turnoInicial(),
   presupuesto: presupuestoInicial(),
+  edicion: edicionInicial(),
   exito: null,
   accionEnCurso: null,
   errorMonday: null,
@@ -203,6 +217,9 @@ export type Action =
   | { type: 'setTurno'; cambios: Partial<BorradorTurno> }
   /** Presupuesto · Crear y Cargar: lo elegido en cada etapa. */
   | { type: 'setPresupuesto'; cambios: Partial<BorradorPresupuesto> }
+  /** Editar OP: elegir la orden es terminar la etapa 1. Otra orden descarta lo leído de la anterior. */
+  | { type: 'elegirOrdenEdicion'; orden: OrdenEditable }
+  | { type: 'setEdicion'; cambios: Partial<BorradorEdicion> }
   /**
    * Presupuesto: cambiar entre crear uno nuevo y cargar otro empieza de nuevo (lo elegido era para
    * el otro camino).
@@ -243,6 +260,7 @@ const sinTrabajo = {
   vidriosOps: [] as string[],
   turno: turnoInicial(),
   presupuesto: presupuestoInicial(),
+  edicion: edicionInicial(),
   paso: 'obra' as Paso,
   pasoMax: 0,
 }
@@ -266,6 +284,19 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'setPresupuesto':
       return { ...state, presupuesto: { ...state.presupuesto, ...action.cambios } }
+
+    case 'elegirOrdenEdicion': {
+      const otra = state.edicion.orden?.id !== action.orden.id
+      return {
+        ...state,
+        edicion: otra ? { ...edicionInicial(), orden: action.orden } : { ...state.edicion, orden: action.orden },
+        paso: 'carga',
+        pasoMax: otra ? 1 : Math.max(state.pasoMax, 1),
+      }
+    }
+
+    case 'setEdicion':
+      return { ...state, edicion: { ...state.edicion, ...action.cambios } }
 
     case 'setModoPresupuesto':
       if (state.accionEnCurso || state.presupuesto.modo === action.modo) return state

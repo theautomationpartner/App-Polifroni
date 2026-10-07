@@ -45,6 +45,8 @@ export interface ModeloOp {
   /** Hoja del listado HETMO donde está el dibujo, desde 0. `null` si la IA no lo dijo. */
   hojaIdx: number | null
   slot: Slot
+  /** De qué documento sale el dibujo: 0 el listado original; una OP editada suma el dibujo nuevo. */
+  archivoIdx: number
   observacion: string | null
 }
 
@@ -209,6 +211,7 @@ function aModelo(v: unknown): ModeloOp | null {
       .map((x) => ({ cod: texto(x.cod), medida: texto(x.medida) })),
     hojaIdx: entero(m.hojaIdx),
     slot: slot === 'a' || slot === 'b' || slot === 'none' ? slot : 'full',
+    archivoIdx: entero(m.archivoIdx) ?? 0,
     observacion: null,
   }
 }
@@ -442,7 +445,8 @@ export function armarDatosOp(e: EntradaOp): ResultadoDatos {
 
   const observacionesSueltas = sueltas.length ? sueltas.join('\n') : null
   const paginas = enPaginas(modelos, observacionesSueltas)
-  const hojasNecesarias = Math.max(0, ...modelos.map((m) => (m.hojaIdx == null ? 0 : m.hojaIdx + 1)))
+  /* Las hojas del listado original (el documento 0); las del dibujo nuevo de una edición se miden aparte. */
+  const hojasNecesarias = Math.max(0, ...modelos.map((m) => (m.hojaIdx == null || m.archivoIdx ? 0 : m.hojaIdx + 1)))
 
   if (errores.length) return { datos: null, errores, avisos }
   return {

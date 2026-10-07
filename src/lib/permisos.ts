@@ -80,12 +80,13 @@ export function vistaConsulta(roles: readonly Rol[] | null | undefined): VistaCo
   return { pendientes: admin, sinEtiqueta: admin, taller: admin || produccion }
 }
 
-export type AccionConsulta = 'enviar' | 'reenviar' | 'cancelar' | 'finalizar'
+export type AccionConsulta = 'enviar' | 'reenviar' | 'confirmar' | 'cancelar' | 'finalizar'
 
 /**
  * Las acciones que tiene una fila de la consulta para estos roles.
- *  - Admin: enviar (una sin estado o generada), reenviar (pendiente), cancelar (lo que el estado
- *    admita) y finalizar (enviada al taller).
+ *  - Admin: enviar (una sin estado o generada), reenviar y confirmar a mano (pendiente de
+ *    confirmar: el cliente respondió por mensaje en vez de usar el enlace), cancelar (lo que el
+ *    estado admita) y finalizar (enviada al taller).
  *  - Produccion: sólo finalizar, y sólo una enviada al taller. NUNCA reenviar ni cancelar.
  * El servidor lo hace cumplir igual: el envío y las escrituras por el proxy son sólo de admin; la
  * finalización tiene su ruta, que sólo mueve una OP que sigue en el taller.
@@ -100,6 +101,7 @@ export function accionesConsulta(
   if (admin) {
     if (admite(orden.estadoOrden, 'reenviar')) acciones.push('reenviar')
     else if (!orden.estado.trim() || admite(orden.estadoOrden, 'enviar')) acciones.push('enviar')
+    if (orden.estadoOrden === 'pendiente') acciones.push('confirmar')
     if (admite(orden.estadoOrden, 'cancelar')) acciones.push('cancelar')
   }
   if ((admin || produccion) && completable(orden.estadoOrden)) acciones.push('finalizar')
@@ -112,7 +114,7 @@ export type FiltroConsulta = 'todas' | 'pendientes' | 'taller' | 'pendEnviar'
 
 export const TITULO_FILTRO: Record<FiltroConsulta, string> = {
   todas: 'Todas',
-  pendientes: 'Generadas y enviadas pend. de confirmar',
+  pendientes: 'Enviadas pend. de confirmar',
   taller: 'Enviadas al taller',
   pendEnviar: 'Generadas pend. de enviar',
 }

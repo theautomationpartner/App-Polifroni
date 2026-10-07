@@ -10,7 +10,7 @@ import { memoGlobal } from './cache'
 import { BOARD_OBRAS, BOARD_ORDENES, COL, COL_OP_ARCHIVOS } from './columns'
 import { byId, num, sumaMirror, valor, type CV, type MondayItem } from './parse'
 import { mondayApi, mondaySubirArchivo, urlArchivo } from './sdk'
-import { estadoDeOrden } from '@/lib/estadosOp'
+import { estadoDeOrden, etiquetaOp, indiceDeValor } from '@/lib/estadosOp'
 import type { Actividad, ArchivoObra, EstadoObra, Obra, ObraFila } from '@/types'
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -297,7 +297,10 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
     (/alum/i.test(o.c[COL_OP_TIPO]?.text ?? '') && archivosDeColumna(o.c[COL_OP_ARCHIVOS.etmo]).length > 0)
   const estados = ordenes.map((o) => ({
     id: o.id,
-    estado: estadoDeOrden((o.c[COL_OP_ARCHIVOS.estado]?.text ?? '').trim(), tieneDocumento(o)),
+    estado: estadoDeOrden(
+      etiquetaOp((o.c[COL_OP_ARCHIVOS.estado]?.text ?? '').trim(), indiceDeValor(o.c[COL_OP_ARCHIVOS.estado]?.value)),
+      tieneDocumento(o),
+    ),
     envioTaller: (o.c[COL_OP_ENVIO_TALLER]?.text ?? '').trim(),
     nombre: o.nombre,
   }))

@@ -20,7 +20,11 @@ import {
 import { normalizar } from '@/lib/texto'
 import {
   cancelarOrden,
+  COL,
+  ETIQUETA,
   completarProduccion,
+  confirmarOrdenManual,
+  setEstado,
   getObra,
   getUrlArchivo,
   leerOrden,
@@ -63,6 +67,9 @@ const sinCeros = (s: string) => s.replace(/(\D|^)0+(\d)/g, '$1$2')
  *    Completada" por `/api/produccion-completada`, que relee la OP y sólo la mueve si sigue en el
  *    taller. La fila queda bloqueada ("Finalizada") por el resto de la visita.
  */
+/** Cómo confirmó el responsable, por defecto, al confirmar a mano desde la consulta. */
+const ASUNTO_CONFIRMACION = 'Confirmó el usuario con respuesta al mensaje'
+
 export function ListadoView() {
   const dispatch = useDispatch()
   const { usuario, accionEnCurso } = useApp()
@@ -110,6 +117,14 @@ export function ListadoView() {
   /** La que se está plegando: el panel sale con su animación antes de desaparecer. */
   const [cerrandoId, setCerrandoId] = useState<string | null>(null)
 
+  /** La que se va a confirmar a mano: la ventana pide el asunto y la fecha. */
+  const [aConfirmar, setAConfirmar] = useState<ResumenOrden | null>(null)
+  const [asunto, setAsunto] = useState('')
+  /** La fecha y hora de la confirmación, como la escribe el campo (`YYYY-MM-DDTHH:mm`, hora local). */
+  const [fechaConfirmacion, setFechaConfirmacion] = useState('')
+  /** La que se está confirmando en Monday: mientras tanto se ve la ventana de espera. */
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null)
+
   /** La que se va a finalizar: la ventana pide la confirmación. */
   const [aFinalizar, setAFinalizar] = useState<ResumenOrden | null>(null)
   /** La que se está finalizando en Monday: mientras tanto se ve la ventana de espera. */
@@ -118,8 +133,12 @@ export function ListadoView() {
   const [finalizadas, setFinalizadas] = useState<Set<string>>(new Set())
 
   useAccionEnCurso(
-    finalizandoId !== null ? 'Esperá a que termine de finalizarse la orden.' : 'Esperá a que termine de cancelarse la orden.',
-    cancelandoId !== null || finalizandoId !== null,
+    finalizandoId !== null
+      ? 'Esperá a que termine de finalizarse la orden.'
+      : confirmandoId !== null
+        ? 'Esperá a que termine de confirmarse la orden.'
+        : 'Esperá a que termine de cancelarse la orden.',
+    cancelandoId !== null || finalizandoId !== null || confirmandoId !== null,
   )
 
   useEffect(() => {
@@ -267,6 +286,57 @@ export function ListadoView() {
       dispatch({ type: 'errorMonday', accion: 'cancelar la orden' })
     } finally {
       setCancelandoId(null)
+    }
+  }
+
+  /** Abre la ventana de confirmar, con el asunto por defecto y la fecha y hora del click. */
+  const pedirConfirmacion = (o: ResumenOrden) => {
+    const ahora = new Date()
+    const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+    setAsunto(ASUNTO_CONFIRMACION)
+    setFechaConfirmacion(local)
+    setAConfirmar(o)
+  }
+
+  /**
+   * Confirma la orden a mano: "Confirmada", con la fecha y cómo confirmó el responsable. Se relee
+   * antes: si mientras tanto la confirmó el cliente con el enlace o se canceló, no se toca.
+   */
+  const confirmar = async () => {
+    const o = aConfirmar
+    if (!o || !asunto.trim() || !fechaConfirmacion || confirmandoId) return
+    const cuando = new Date(fechaConfirmacion)
+    if (Number.isNaN(cuando.getTime())) return
+    setAConfirmar(null)
+    setAviso(null)
+    if (reenviandoId === o.id) cerrarReenvio(false)
+    setConfirmandoId(o.id)
+    try {
+      const fresca = await leerOrden(o.id)
+      if (!fresca || fresca.estadoOrden !== 'pendiente') {
+        setBloqueo(
+          fresca
+            ? `${nombreOrden(fresca)} ahora está «${VISTA_ESTADO[fresca.estadoOrden].rotulo}» y ya no se puede confirmar.`
+            : 'La orden ya no está en el tablero.',
+        )
+        if (fresca) setOrdenes((lista) => (lista ?? []).map((x) => (x.id === fresca.id ? fresca : x)))
+        return
+      }
+      await confirmarOrdenManual(o.id, { asunto, cuando })
+      /* La obra también: es lo que mira la ficha de la obra (como cuando confirma con el enlace). */
+      if (o.obraId) {
+        void setEstado(o.obraId, COL.confirmacionOp, ETIQUETA.confirmado).catch((e) =>
+          console.warn('[consulta] no se pudo marcar la confirmación en la obra', e),
+        )
+      }
+      setOrdenes((lista) =>
+        (lista ?? []).map((x) => (x.id === o.id ? { ...x, estado: ETIQUETA_OP.confirmada, estadoOrden: 'confirmada' } : x)),
+      )
+      setAviso(`${nombreOrden(o)} quedó confirmada.`)
+    } catch {
+      dispatch({ type: 'errorMonday', accion: 'confirmar la orden' })
+    } finally {
+      setConfirmandoId(null)
     }
   }
 
@@ -551,6 +621,19 @@ export function ListadoView() {
                               )}
                             </button>
                           )}
+                          {acciones.includes('confirmar') && (
+                            /* Confirmar a mano: el responsable respondió por mensaje. */
+                            <button
+                              type="button"
+                              className="ant-confirmar"
+                              disabled={confirmandoId !== null || !!accionEnCurso}
+                              aria-busy={confirmandoId === o.id}
+                              aria-label={`Confirmar ${o.idOp || nombreOrden(o)}`}
+                              onClick={() => pedirConfirmacion(o)}
+                            >
+                              <i className="fas fa-check" /> Confirmar
+                            </button>
+                          )}
                           {finalizada ? (
                             <span className="ant-finalizada" title="La producción de esta orden ya se finalizó">
                               <i className="fas fa-lock" /> Finalizada
@@ -703,6 +786,57 @@ export function ListadoView() {
           <p className="modal-nota">La orden pasa a «Producción completada» y ya no se puede volver a finalizar.</p>
         </Modal>
       )}
+
+      {aConfirmar && (
+        <Modal
+          title="¿Seguro que deseás confirmar la orden?"
+          icon={<i className="fas fa-circle-check modal-icon--ok" />}
+          onClose={() => setAConfirmar(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setAConfirmar(null)}>
+                Volver
+              </button>
+              <button
+                type="button"
+                className="btn btn-green"
+                disabled={!asunto.trim() || !fechaConfirmacion}
+                title={!asunto.trim() ? 'Escribí el asunto' : !fechaConfirmacion ? 'Elegí la fecha de confirmación' : undefined}
+                onClick={() => void confirmar()}
+              >
+                <i className="fas fa-check" /> Sí, confirmar orden
+              </button>
+            </>
+          }
+        >
+          <p className="modal-clave">{nombreOrden(aConfirmar)}</p>
+          <p className="modal-nota">
+            La orden pasa a «Confirmada», con la fecha de confirmación y cómo confirmó el responsable.
+          </p>
+          <label className="campo-l" htmlFor="asunto-confirmar">
+            Asunto
+          </label>
+          <input
+            id="asunto-confirmar"
+            className="motivo-in"
+            maxLength={200}
+            value={asunto}
+            onChange={(e) => setAsunto(e.target.value)}
+          />
+          <label className="campo-l" htmlFor="fecha-confirmar">
+            Fecha de confirmación
+          </label>
+          <input
+            id="fecha-confirmar"
+            type="datetime-local"
+            className="motivo-in"
+            value={fechaConfirmacion}
+            onChange={(e) => setFechaConfirmacion(e.target.value)}
+          />
+        </Modal>
+      )}
+
+      {confirmandoId && <ModalCargando titulo="Confirmando orden..." detalle="Se está pasando la orden a Confirmada en Monday." />}
 
       {finalizandoId && (
         <ModalCargando titulo="Finalizando producción..." detalle="Se está pasando la orden a Producción Completada en Monday." />

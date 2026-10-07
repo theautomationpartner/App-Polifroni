@@ -4,10 +4,18 @@ import { EstadoOrdenBadge } from '@/components/ui/EstadoOrdenBadge'
 import { useObra } from '@/features/obras/useObra'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
+import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { enElTaller } from '@/lib/estadosOp'
 import { etiquetaPaso } from '@/lib/pasos'
-import { composicion, esDvh, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
-import { ordenesDeObra, vidriosDeOrdenes, type ResumenOrden, type VidrioDeOrden } from '@/services/monday'
+import { cantidadValida, composicion, esDvh, medidaValida, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
+import {
+  actualizarVidrios,
+  ordenesDeObra,
+  vidriosDeOrdenes,
+  type CambioVidrio,
+  type ResumenOrden,
+  type VidrioDeOrden,
+} from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 
 const fecha = (iso: string) =>
@@ -21,14 +29,23 @@ const CIERRE_MS = 220
 /** Las piezas de una OP: la suma de las cantidades de sus vidrios. */
 const piezas = (vs: VidrioDeOrden[]) => vs.reduce((n, v) => n + (v.cantidad ?? 0), 0)
 
+/** Lo que se está escribiendo en un vidrio en edición: los tres campos como texto. */
+type Borrador = { ancho: string; alto: string; cantidad: string }
+const borradorDe = (v: VidrioDeOrden): Borrador => ({ ancho: v.ancho, alto: v.alto, cantidad: v.cantidad == null ? '' : String(v.cantidad) })
+const borradorValido = (b: Borrador) => medidaValida(b.ancho) && medidaValida(b.alto) && cantidadValida(b.cantidad)
+
 /**
  * Solicitud de cortes de vidrio · Etapa 2: qué vidrios se piden.
  *
  * Las órdenes de la obra que ya salieron al taller, en la misma tabla que "Seleccionar OP A Enviar",
  * de a 6 por página. Elegir una orden con su casilla la despliega y muestra sus vidrios —los
- * subelementos con Tipo = "Vidrio": la composición, simple o DVH con cada capa, las medidas y la
+ * subelementos con datos de vidrio: la composición, simple o DVH con cada capa, las medidas y la
  * cantidad—; destildarla la pliega. Arrancan todas sin elegir, plegadas. Las que no tienen vidrios
- * se muestran apagadas, sin casilla para elegir: no hay nada que pedir de ellas.
+ * (`🤖Tiene Vidrios` sin tildar) se muestran apagadas, sin casilla para elegir: no hay nada que pedir de ellas.
+ *
+ * Cada orden desplegada se puede corregir: "Editar" abre el ancho, el alto y la cantidad de sus
+ * vidrios para escribirlos, y el mismo botón —ahora "Guardar"— escribe en Monday sólo los vidrios
+ * que cambiaron (sus subelementos, ver `actualizarVidrios`).
  */
 export function VidriosSeleccionView() {
   const obra = useObra()
@@ -42,18 +59,26 @@ export function VidriosSeleccionView() {
   const [pagina, setPagina] = useState(0)
   /** Las que se acaban de destildar: sus vidrios salen con su animación antes de desaparecer. */
   const [cerrando, setCerrando] = useState<Set<string>>(new Set())
+  /** Las órdenes en edición: por orden, lo escrito en cada uno de sus vidrios (por id). */
+  const [edicion, setEdicion] = useState<Record<string, Record<string, Borrador>>>({})
+  /** La orden que se está guardando en Monday. */
+  const [guardando, setGuardando] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
+
+  useAccionEnCurso('Esperá a que se guarden los vidrios.', guardando !== null)
 
   useEffect(() => {
     let vivo = true
     void (async () => {
       try {
         const enTaller = (await ordenesDeObra(obra.ordenesIds)).filter((o) => enElTaller(o.estadoOrden, o.envioTaller))
-        const porOp = await vidriosDeOrdenes(enTaller.map((o) => o.id))
+        /* `🤖Tiene Vidrios` dice cuáles traen vidrios: sólo de ésas se leen los subelementos. */
+        const porOp = await vidriosDeOrdenes(enTaller.filter((o) => o.tieneVidrios).map((o) => o.id))
         if (!vivo) return
         const datos = (o: ResumenOrden) => ({
           enTaller: true,
           estadoVidrios: o.estadoVidrios,
-          vidrios: (porOp[o.id] ?? []).length,
+          vidrios: o.tieneVidrios ? (porOp[o.id] ?? []).length : 0,
         })
         /* Las que tienen vidrios sin pedir y, sin poder elegirse, las que no tienen vidrios (ver
            `ordenVisibleEnCortes`). Las ya solicitadas, colocadas o canceladas no se muestran. */
@@ -103,7 +128,71 @@ export function VidriosSeleccionView() {
     )
   }
 
+  const editar = (id: string) =>
+    setEdicion((e) => ({ ...e, [id]: Object.fromEntries((vidrios[id] ?? []).map((v) => [v.id, borradorDe(v)])) }))
+
+  const escribir = (op: string, vidrio: string, campo: keyof Borrador, valor: string) =>
+    setEdicion((e) => ({ ...e, [op]: { ...e[op], [vidrio]: { ...e[op][vidrio], [campo]: valor } } }))
+
+  /** Guarda en Monday sólo los vidrios que cambiaron; sin cambios, sólo cierra la edición. */
+  const guardar = async (id: string) => {
+    const escritos = edicion[id] ?? {}
+    const originales = vidrios[id] ?? []
+    const cambiados = originales.filter((v) => {
+      const b = escritos[v.id]
+      return b && (b.ancho.trim() !== v.ancho || b.alto.trim() !== v.alto || b.cantidad.trim() !== (v.cantidad == null ? '' : String(v.cantidad)))
+    })
+    if (cambiados.some((v) => !borradorValido(escritos[v.id]))) {
+      setAviso({
+        titulo: 'Revisá los vidrios',
+        texto: 'El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
+      })
+      return
+    }
+    const cambios: CambioVidrio[] = cambiados.map((v) => ({
+      id: v.id,
+      ancho: escritos[v.id].ancho.trim(),
+      alto: escritos[v.id].alto.trim(),
+      cantidad: Number(escritos[v.id].cantidad),
+    }))
+    if (cambios.length) {
+      setGuardando(id)
+      try {
+        await actualizarVidrios(cambios)
+      } catch (e) {
+        console.warn('[vidrios] no se pudieron guardar los vidrios', e)
+        setAviso({
+          titulo: 'No se pudieron guardar los vidrios',
+          texto: 'Monday no respondió. Lo que escribiste sigue en la tabla: volvé a tocar «Guardar» en unos segundos.',
+        })
+        return
+      } finally {
+        setGuardando(null)
+      }
+      const porId = new Map(cambios.map((c) => [c.id, c]))
+      setVidrios((todos) => ({
+        ...todos,
+        [id]: (todos[id] ?? []).map((v) => {
+          const c = porId.get(v.id)
+          return c ? { ...v, ancho: c.ancho, alto: c.alto, cantidad: c.cantidad } : v
+        }),
+      }))
+    }
+    setEdicion((e) => {
+      const resto = { ...e }
+      delete resto[id]
+      return resto
+    })
+  }
+
   const continuar = () => {
+    if (Object.keys(edicion).length) {
+      setAviso({
+        titulo: 'Hay vidrios en edición',
+        texto: 'Tocá «Guardar» en las órdenes que estás editando antes de continuar: si no, la solicitud sale con las medidas anteriores.',
+      })
+      return
+    }
     if (elegidas.every((o) => (vidrios[o.id] ?? []).length === 0)) {
       setFaltan(true)
       return
@@ -138,6 +227,7 @@ export function VidriosSeleccionView() {
                 <col className="ant-w-fecha" />
                 <col className="ant-w-estado" />
                 <col className="ant-w-op" />
+                <col className="vid-w-acc" />
               </colgroup>
               <thead>
                 <tr>
@@ -148,18 +238,19 @@ export function VidriosSeleccionView() {
                   <th className="ant-col-cen">Fecha de medición</th>
                   <th className="ant-col-cen">Estado</th>
                   <th className="ant-col-cen">Vidrios</th>
+                  <th className="ant-col-cen">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {ordenes === null ? (
                   <tr>
-                    <td colSpan={7} className="ant-aviso">
+                    <td colSpan={8} className="ant-aviso">
                       <i className="fas fa-spinner fa-spin" /> Buscando las órdenes y sus vidrios...
                     </td>
                   </tr>
                 ) : ordenes.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="ant-aviso">
+                    <td colSpan={8} className="ant-aviso">
                       <i className="fas fa-circle-info" />{' '}
                       {error ? 'No se pudieron leer las órdenes desde Monday.' : `${obra.nombre} no tiene órdenes en el taller con vidrios pendientes de solicitar.`}{' '}
                       <button
@@ -181,6 +272,9 @@ export function VidriosSeleccionView() {
                     const sinVidrios = vs.length === 0
                     /* Elegida, se ve desplegada; recién destildada, se ve mientras se pliega. */
                     const abierta = !sinVidrios && (on || cerrando.has(o.id))
+                    const escritos = edicion[o.id]
+                    const enEdicion = !!escritos
+                    const guardandoEsta = guardando === o.id
                     return (
                       <Fragment key={o.id}>
                         {/* La casilla elige la orden y la despliega; destildarla la pliega. */}
@@ -193,7 +287,8 @@ export function VidriosSeleccionView() {
                               type="checkbox"
                               className="ant-check"
                               checked={on && !sinVidrios}
-                              disabled={sinVidrios}
+                              disabled={sinVidrios || enEdicion}
+                              title={enEdicion ? 'Guardá los vidrios antes de destildar la orden' : undefined}
                               onChange={() => alternar(o.id)}
                               aria-label={`Pedir los vidrios de ${o.idOp || o.nombre}`}
                             />
@@ -222,12 +317,42 @@ export function VidriosSeleccionView() {
                               </span>
                             )}
                           </td>
+                          <td className="ant-col-cen">
+                            {/* Editar abre las medidas y la cantidad de los vidrios; Guardar las escribe. */}
+                            <button
+                              type="button"
+                              className={`btn ${enEdicion ? 'btn-primary btn-marca' : 'btn-out'} vid-editar`}
+                              disabled={!on || sinVidrios || guardando !== null}
+                              title={
+                                sinVidrios
+                                  ? 'Esta orden no tiene vidrios para editar'
+                                  : !on
+                                    ? 'Elegí la orden para ver y editar sus vidrios'
+                                    : undefined
+                              }
+                              onClick={() => (enEdicion ? void guardar(o.id) : editar(o.id))}
+                            >
+                              {guardandoEsta ? (
+                                <>
+                                  <i className="fas fa-circle-notch spin" /> Guardando
+                                </>
+                              ) : enEdicion ? (
+                                <>
+                                  <i className="fas fa-floppy-disk" /> Guardar
+                                </>
+                              ) : (
+                                <>
+                                  <i className="fas fa-pen" /> Editar
+                                </>
+                              )}
+                            </button>
+                          </td>
                         </tr>
                         {abierta && (
                           <tr
                             className={`vid-detalle ${on ? '' : 'vid-detalle--fuera'} ${cerrando.has(o.id) ? 'vid-detalle--cierra' : ''}`}
                           >
-                            <td colSpan={7}>
+                            <td colSpan={8}>
                               <table className="vid-sub">
                                 <colgroup>
                                   <col className="vid-w-modelo" />
@@ -269,11 +394,34 @@ export function VidriosSeleccionView() {
                                           </span>
                                         )}
                                       </td>
-                                      <td className="vid-num">{v.ancho || '—'}</td>
-                                      <td className="vid-num">{v.alto || '—'}</td>
-                                      <td className="vid-cant">
-                                        {v.cantidad ?? <span className="vid-falta">Sin cantidad</span>}
-                                      </td>
+                                      {enEdicion && escritos[v.id] ? (
+                                        <>
+                                          {(['ancho', 'alto', 'cantidad'] as const).map((campo) => {
+                                            const valor = escritos[v.id][campo]
+                                            const ok = campo === 'cantidad' ? cantidadValida(valor) : medidaValida(valor)
+                                            return (
+                                              <td key={campo}>
+                                                <input
+                                                  className={`vid-input ${ok ? '' : 'vid-input--mal'}`}
+                                                  inputMode="numeric"
+                                                  value={valor}
+                                                  disabled={guardandoEsta}
+                                                  onChange={(e) => escribir(o.id, v.id, campo, e.target.value)}
+                                                  aria-label={`${campo === 'cantidad' ? 'Cantidad' : campo === 'ancho' ? 'Ancho' : 'Alto'} de ${v.modelo || 'el vidrio'}`}
+                                                />
+                                              </td>
+                                            )
+                                          })}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <td className="vid-num">{v.ancho || '—'}</td>
+                                          <td className="vid-num">{v.alto || '—'}</td>
+                                          <td className="vid-cant">
+                                            {v.cantidad ?? <span className="vid-falta">Sin cantidad</span>}
+                                          </td>
+                                        </>
+                                      )}
                                     </tr>
                                   ))}
                                 </tbody>
@@ -336,6 +484,11 @@ export function VidriosSeleccionView() {
       {faltan && (
         <AvisoModal titulo="Elegí qué vidrios pedir" onClose={() => setFaltan(false)}>
           Tildá en la tabla al menos una orden con vidrios para armar la solicitud de cortes.
+        </AvisoModal>
+      )}
+      {aviso && (
+        <AvisoModal titulo={aviso.titulo} onClose={() => setAviso(null)}>
+          {aviso.texto}
         </AvisoModal>
       )}
     </section>

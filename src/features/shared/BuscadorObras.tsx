@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { sugerir, type EntradaIndice } from '@/lib/busquedaObras'
 
 /** Una obra en el desplegable: el nombre y el id. */
@@ -230,7 +230,10 @@ export function BuscadorObras({
   deshabilitado = false,
   ocupado = false,
   tituloBuscar = 'Buscar directamente en Monday, por si la obra todavía no está en la lista rápida',
+  renderFila,
 }: {
+  /** Cómo se dibuja cada resultado. Sin esto, el nombre y el id (las obras). */
+  renderFila?: (f: ObraEncontrada) => ReactNode
   b: Buscador
   placeholder: string
   /** El tooltip del botón Buscar: qué se busca (la Agenda busca clientes, no obras). */
@@ -299,10 +302,16 @@ export function BuscadorObras({
                   if (!b.conTeclado.current) b.setActivo(i)
                 }}
               >
-                <span className="ritem-main">
-                  <span className="ritem-name">{f.nombre}</span>
-                </span>
-                <span className="ritem-code">{f.id}</span>
+                {renderFila ? (
+                  renderFila(f)
+                ) : (
+                  <>
+                    <span className="ritem-main">
+                      <span className="ritem-name">{f.nombre}</span>
+                    </span>
+                    <span className="ritem-code">{f.id}</span>
+                  </>
+                )}
               </button>
             ))}
           </div>

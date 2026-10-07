@@ -1932,26 +1932,28 @@
   cursor: default;
 }
 /* Columnas de la tabla de la consulta (sin casilla, con la acción). */
+/* La acción tiene lugar para tres botones (Reenviar, Confirmar, Cancelar) y el estado para
+   "Enviada Pend de Confirmar" entero. */
 .anticipos-v2 .consulta-tabla .cq-w-orden {
-  width: 13%;
+  width: 11%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-obra {
-  width: 20%;
+  width: 15%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-fecha {
-  width: 10%;
+  width: 9%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-medido {
-  width: 12%;
+  width: 10%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-estado {
-  width: 13%;
+  width: 16%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-op {
-  width: 8%;
+  width: 7%;
 }
 .anticipos-v2 .consulta-tabla .cq-w-acc {
-  width: 24%;
+  width: 32%;
 }
 /* La obra de la orden: en negrita, cortada con "…" si no entra (el nombre completo, en el tooltip). */
 .anticipos-v2 .consulta-tabla td.ant-obra {
@@ -2539,6 +2541,64 @@
 }
 
 /* ── Solicitud de cortes · la tabla de vidrios desplegable ── */
+/* La columna del botón Editar / Guardar: las demás ceden un poco de ancho para que entre. */
+.anticipos-v2 .vid-tabla .ant-w-orden {
+  width: 20%;
+}
+.anticipos-v2 .vid-tabla .ant-w-fecha {
+  width: 12%;
+}
+.anticipos-v2 .vid-tabla .ant-w-medido {
+  width: 15%;
+}
+.anticipos-v2 .vid-tabla .ant-w-estado {
+  width: 16%;
+}
+.anticipos-v2 .vid-tabla .vid-w-acc {
+  width: 12%;
+}
+.anticipos-v2 .vid-editar {
+  height: 32px;
+  min-width: 104px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  justify-content: center;
+  gap: 6px;
+}
+/* Ancho, alto y cantidad en edición: un input chico, centrado en su celda. */
+/* Las filas de vidrios miden siempre lo mismo, con o sin inputs: el alto del input (30px, ver
+   `--vid-alto-input`) más su padding. Así la tabla no salta al tocar Editar. */
+.anticipos-v2 .vid-sub {
+  --vid-alto-input: 30px;
+}
+.anticipos-v2 .ant-tabla .vid-sub tbody td {
+  height: var(--vid-alto-input);
+  vertical-align: middle;
+}
+.anticipos-v2 .vid-input {
+  display: block;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 96px;
+  height: var(--vid-alto-input);
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+.anticipos-v2 .vid-input:focus {
+  outline: none;
+  border-color: var(--marca);
+  box-shadow: 0 0 0 3px var(--marca-suave);
+}
+.anticipos-v2 .vid-input--mal {
+  border-color: #c0273c;
+}
 .anticipos-v2 .vid-abrir {
   display: inline-flex;
   align-items: center;
@@ -2711,17 +2771,17 @@
   border-top: 1px solid #eef1f6;
   font-variant-numeric: tabular-nums;
 }
-.hl-giro {
-  display: inline-block;
-  width: 42px;
-  height: 42px;
-  border: 3px solid #e8d3d8;
-  border-top-color: #89263c;
-  border-radius: 50%;
-  animation: cobro-lector-giro 0.7s linear infinite;
+/* Debajo del título ("N aberturas leídas"): la cantidad de vidrios, o el aviso de que no hay. */
+.hl-subt {
+  margin: 0 0 10px;
+  color: var(--text-dark);
 }
-.hl-leyendo {
+.hl-subt--warn {
   margin: 0;
+  line-height: 1.5;
+}
+.hl-subt--warn .fas {
+  margin-right: 4px;
 }
 
 /* ===== Consultar órdenes: los filtros de la tabla (las mismas pastillas de las gestiones) ===== */
@@ -2775,4 +2835,221 @@
 .anticipos-v2 .cq-tab--on .cq-tab-n {
   background: var(--marca);
   color: #fff;
+}
+
+/* ===== Editar Órdenes de Producción ===== */
+/* Etapa 1: cada resultado en un renglón, con el tipo a la derecha del nombre de la obra. */
+.ed-ritem-linea {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.ed-ritem-linea .ritem-name {
+  min-width: 0;
+}
+.ed-ritem-linea .ritem-sub {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+/* Etapa 2: las aberturas de la orden, al lado del dibujo nuevo, con scroll si son muchas. */
+.anticipos-v2 .ed-orden-wrap {
+  max-height: 420px;
+  overflow: auto;
+}
+.anticipos-v2 .ed-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* La tarjeta de las aberturas de la orden, al costado del dibujo. */
+.anticipos-v2 .ed-elegidas {
+  margin-top: 16px;
+}
+.anticipos-v2 .carga-grid .ed-elegidas {
+  margin-top: 0;
+}
+.anticipos-v2 .ed-cuenta {
+  display: inline-block;
+  min-width: 22px;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--primary-blue);
+  font-size: 12px;
+  text-align: center;
+}
+.anticipos-v2 .ed-tabla-res {
+  table-layout: fixed;
+  width: 100%;
+}
+.anticipos-v2 .ed-tabla-res td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* La ventana con lo que se editará. Las aberturas agregadas van primero, en verde. */
+.ed-agrega {
+  background: #f0fdf4;
+}
+.ed-ab--nueva {
+  background: #dcfce7;
+  color: #067647;
+}
+.ed-cambios {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+.ed-cambios p {
+  margin: 0;
+}
+.ed-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid #e3e7f0;
+  border-radius: 10px;
+}
+.ed-lista li {
+  padding: 9px 12px;
+  border-top: 1px solid #eef1f6;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.ed-lista li:first-child {
+  border-top: none;
+}
+.ed-ab {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: #f1f4f8;
+  font-weight: 700;
+  font-size: 12px;
+}
+.ed-viejo {
+  color: #b42318;
+  text-decoration: line-through;
+}
+.ed-nuevo {
+  color: #067647;
+  font-weight: 700;
+}
+.ed-nota {
+  font-size: 12.5px;
+  color: #64748b;
+}
+.ed-nota--warn {
+  color: #b54708;
+}
+/* Etapa 3 (enviar la OP final nueva): el envío a todo el ancho, como en "Cargar y Enviar". */
+.obras-v2 .ed-envio {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.obras-v2 .ed-cargando-envio {
+  padding: 28px;
+  color: #64748b;
+  text-align: center;
+}
+/* El pie de la edición: Ver OP final, Finalizar Edición y Continuar, juntos a la derecha. */
+.ed-pie-acc {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Editar OP · etapa 2: los botones de las listas, debajo del formulario. */
+.obras-v2 .ed-listas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.obras-v2 .ed-listas .btn {
+  flex: 1 1 200px;
+}
+/* Las ventanas con la lista completa de aberturas o de vidrios: se recorren con scroll. */
+.ed-lista-modal .ed-l-scroll {
+  max-height: min(60vh, 520px);
+  overflow: auto;
+  border: 1px solid #e3e7f0;
+  border-radius: 10px;
+  text-align: left;
+}
+.ed-l-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.ed-l-tabla th {
+  position: sticky;
+  top: 0;
+  background: #f5f7fb;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 9px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+.ed-l-tabla td {
+  padding: 8px 10px;
+  border-top: 1px solid #eef1f6;
+  vertical-align: top;
+}
+.ed-l-modelo {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ed-l-num {
+  font-variant-numeric: tabular-nums;
+}
+.ed-l-cambio {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ed-l-nueva {
+  background: #f0fdf4;
+}
+.ed-l-quitado {
+  background: #fff5f5;
+}
+.ed-ab--quita {
+  background: #fee4e2;
+  color: #b42318;
+}
+
+/* Consultar órdenes: "Confirmar" a mano, verde con el tilde blanco (el mismo botón que "Finalizar"). */
+.anticipos-v2 .ant-confirmar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--green, #00c875);
+  border-radius: var(--c-radius-md);
+  background: var(--green, #00c875);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.anticipos-v2 .ant-confirmar:hover:not(:disabled) {
+  background: #00a862;
+  border-color: #00a862;
+}
+.anticipos-v2 .ant-confirmar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

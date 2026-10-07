@@ -23,6 +23,9 @@ import { ObrasView } from '@/features/obras/ObrasView'
 import { CargarHetmoView } from '@/features/op/CargarHetmoView'
 import { CargarOpView } from '@/features/op/CargarOpView'
 import { EmitirEnviarView } from '@/features/op/EmitirEnviarView'
+import { EditarBuscarView } from '@/features/editar/EditarBuscarView'
+import { EditarDibujoView } from '@/features/editar/EditarDibujoView'
+import { EditarEnviarView } from '@/features/editar/EditarEnviarView'
 import { tipoDe } from '@/lib/pasos'
 import { puedeOperar } from '@/lib/permisos'
 import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
@@ -38,7 +41,7 @@ import { areaPermitida, type AppState } from '@/state/appState'
  * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
  * taller se elige una OP confirmada y se envía.
  */
-function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, usuario }: AppState): () => JSX.Element {
+function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, edicion, usuario }: AppState): () => JSX.Element {
   /* Lo que el team del usuario no habilita no se dibuja, llegue como llegue (ver `lib/permisos`). */
   if (proceso === null || !areaPermitida(proceso, usuario?.roles)) return InicioView
   if (operacion === null || !puedeOperar(usuario?.roles, operacion)) return ProduccionInicioView
@@ -59,6 +62,12 @@ function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, 
     return paso === 'carga' || !completo ? CrearTurnoDatosView : CrearTurnoRegistrarView
   }
   if (operacion === 'consultar') return ListadoView
+  /* Editar OP: la orden, el dibujo nuevo (la IA detecta qué cambió) y el envío de la OP final nueva
+     (sólo con ella generada). */
+  if (operacion === 'editar') {
+    if (!edicion.orden || paso === 'obra') return EditarBuscarView
+    return paso === 'envio' && edicion.generada && edicion.obra ? EditarEnviarView : EditarDibujoView
+  }
   /* Solicitud de cortes de vidrio: la obra, los vidrios de sus OP en el taller, la solicitud. */
   if (operacion === 'vidrios') {
     if (!obra || paso === 'obra') return VidriosObraView

@@ -21,22 +21,81 @@
  * Este archivo no habla con Monday: es la regla sola, para poder probarla sin red.
  */
 
-/** Las etiquetas de `🤖Estado OP`, tal cual están (o van a estar) en el tablero. */
+/**
+ * Los estados de `🤖Estado OP` como los nombra la APP (lo que se ve en pantalla). En el tablero las
+ * etiquetas se renombran cada tanto —hoy "Generada" y "Pend de Confirmar"—, así que la app NO
+ * escribe ni compara por nombre: escribe por índice (`INDICE_OP`) y, al leer, reconoce cualquier
+ * nombre que la etiqueta haya tenido (`ALIAS_OP`) y lo muestra con el de acá.
+ */
 export const ETIQUETA_OP = {
-  /* Renombradas en el tablero el 06/10/2026 ("Generada" y "Enviada Pend Confirmar" eran los nombres
-     de antes, que se siguen reconociendo: ver `ALIAS_OP`). Se escriben con el nombre NUEVO: con
-     `create_labels_if_missing`, el viejo crearía una etiqueta duplicada. */
   generada: 'Generada Pend de Enviar',
-  pendiente: 'Generada y Enviada Pend Confirmar',
+  pendiente: 'Enviada Pend de Confirmar',
   confirmada: 'Confirmada',
   rechazada: 'NO Confirmado',
-  /* Las dos que siguen no existían en el tablero: se crean la primera vez que se escriben
-     (`create_labels_if_missing`), así el tablero no necesita un cambio manual antes de usarlas. */
   taller: 'Enviada a Taller',
   cancelada: 'Cancelada',
   /* La marca el team Produccion cuando el taller terminó la orden ("Completar producción"). */
   completada: 'Produccion Completada',
 } as const
+
+/**
+ * El índice de cada etiqueta en `🤖Estado OP` (su `settings_str`). El índice NO cambia al renombrar
+ * la etiqueta: es lo que se escribe. "NO Confirmado" ya no existe en el tablero (no tiene índice).
+ * Si se agrega o se recrea una etiqueta, hay que revisar estos números.
+ */
+export const INDICE_OP: Partial<Record<keyof typeof ETIQUETA_OP, number>> = {
+  completada: 0,
+  confirmada: 1,
+  cancelada: 2,
+  pendiente: 3,
+  taller: 4,
+  generada: 6,
+}
+
+/**
+ * Todos los nombres que tuvo cada etiqueta, para leer ítems y pedidos de cualquier momento: el de
+ * hoy en el tablero, los anteriores y el de la app.
+ */
+const ALIAS_OP: Record<string, string> = {
+  Generada: ETIQUETA_OP.generada,
+  'Generada Pend de Enviar': ETIQUETA_OP.generada,
+  'Pend de Confirmar': ETIQUETA_OP.pendiente,
+  'Enviada Pend Confirmar': ETIQUETA_OP.pendiente,
+  'Enviada Pend de Confirmar': ETIQUETA_OP.pendiente,
+  'Generada y Enviada Pend Confirmar': ETIQUETA_OP.pendiente,
+}
+
+/** El nombre de la app para un índice de `🤖Estado OP`. */
+const PORINDICE: Record<number, string> = Object.fromEntries(
+  Object.entries(INDICE_OP).map(([k, i]) => [i, ETIQUETA_OP[k as keyof typeof ETIQUETA_OP]]),
+)
+
+/** El índice de la etiqueta, del `value` JSON de la columna (`{"index":3,…}`). `null` si no tiene. */
+export function indiceDeValor(valorJson: string | null | undefined): number | null {
+  try {
+    const i = (JSON.parse(valorJson ?? 'null') as { index?: unknown } | null)?.index
+    return typeof i === 'number' && Number.isInteger(i) ? i : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * La etiqueta con el nombre de la app: por su índice si se conoce, y si no por su nombre (cualquiera
+ * de los que tuvo). Una etiqueta que la app no conoce se devuelve tal cual.
+ */
+export function etiquetaOp(texto: string, indice: number | null = null): string {
+  if (indice != null && PORINDICE[indice]) return PORINDICE[indice]
+  const t = texto.trim()
+  return ALIAS_OP[t] ?? t
+}
+
+/** El índice a escribir para una etiqueta (con cualquiera de sus nombres). `null` si no tiene. */
+export function indiceDeEtiqueta(etiqueta: string): number | null {
+  const canonica = etiquetaOp(etiqueta)
+  const clave = (Object.keys(ETIQUETA_OP) as (keyof typeof ETIQUETA_OP)[]).find((k) => ETIQUETA_OP[k] === canonica)
+  return clave ? (INDICE_OP[clave] ?? null) : null
+}
 
 export type EstadoOrden =
   | 'borrador'
@@ -56,15 +115,8 @@ export type EstadoOrden =
  * no se llegó a generar—. Una etiqueta desconocida se lee igual que sin etiqueta: es preferible
  * ofrecer de menos que habilitar un envío sobre un estado que la app no entiende.
  */
-/** Los nombres viejos de las etiquetas, que pueden quedar en ítems o pedidos de antes del cambio. */
-const ALIAS_OP: Record<string, string> = {
-  Generada: ETIQUETA_OP.generada,
-  'Enviada Pend Confirmar': ETIQUETA_OP.pendiente,
-}
-
 export function estadoDeOrden(etiqueta: string, tieneOpFinal: boolean): EstadoOrden {
-  const e = etiqueta.trim()
-  switch (ALIAS_OP[e] ?? e) {
+  switch (etiquetaOp(etiqueta)) {
     case ETIQUETA_OP.cancelada:
       return 'cancelada'
     case ETIQUETA_OP.completada:
@@ -88,8 +140,8 @@ export function estadoDeOrden(etiqueta: string, tieneOpFinal: boolean): EstadoOr
     colores son los de `🤖Estado OP` en el tablero. */
 export const VISTA_ESTADO: Record<EstadoOrden, { rotulo: string; color: string; icono: string }> = {
   borrador: { rotulo: 'Sin generar', color: '#c4c4c4', icono: 'fa-file-circle-question' },
-  generada: { rotulo: 'Generada · sin enviar', color: '#fdab3d', icono: 'fa-file-circle-check' },
-  pendiente: { rotulo: 'Pend de Confirmar', color: '#fdab3d', icono: 'fa-hourglass-half' },
+  generada: { rotulo: 'Generada Pend de Enviar', color: '#fdab3d', icono: 'fa-file-circle-check' },
+  pendiente: { rotulo: 'Enviada Pend de Confirmar', color: '#fdab3d', icono: 'fa-hourglass-half' },
   confirmada: { rotulo: 'Confirmada', color: '#00c875', icono: 'fa-circle-check' },
   rechazada: { rotulo: 'No confirmada', color: '#df2f4a', icono: 'fa-circle-xmark' },
   taller: { rotulo: 'Enviada a taller', color: '#9d50dd', icono: 'fa-industry' },

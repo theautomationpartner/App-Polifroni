@@ -7,8 +7,8 @@
  * base64 —un tercio más pesado— se arma recién acá, en el pedido a Anthropic, cuyo límite es de
  * 32 MB.
  *
- * Una sola consigna devuelve las dos listas: `vidrios` (una por línea "Vid:") y `observaciones` (una
- * por modelo). La salida va atada al JSON Schema con structured outputs: la respuesta siempre
+ * Una sola consigna, en dos pasos: primero las `aberturas` de la orden (una por "Modelo:") y, con
+ * ellas identificadas, sus `vidrios` (una por línea "Vid:"). La salida va atada al JSON Schema con structured outputs: la respuesta siempre
  * parsea, y la consigna se queda con lo que importa —no inventar, copiar los números tal cual—.
  */
 import Anthropic from '@anthropic-ai/sdk'
@@ -16,9 +16,6 @@ import { leerPrompt, type NombrePrompt } from './_prompts.js'
 
 /** El modelo de la lectura. Un número mal leído es un vidrio que se tira: va el más capaz de la línea Opus. */
 const MODELO = 'claude-opus-5-5'
-
-/** Qué se le pide al documento. La consigna es la misma; cambia en qué se pone el foco. */
-export type ModoLectura = 'vidrios' | 'observaciones'
 
 export interface VidrioHetmo {
   modelo: string | null
@@ -32,8 +29,17 @@ export interface VidrioHetmo {
   cant: number | null
 }
 
+export interface AberturaHetmo {
+  nombre: string
+  descripcion: string | null
+  color: string | null
+  ancho: string | null
+  alto: string | null
+  cantidad: number | null
+}
+
 export interface LecturaHetmo {
-  observaciones: { nombre: string; observacion: string | null }[]
+  aberturas: AberturaHetmo[]
   vidrios: VidrioHetmo[]
 }
 
@@ -68,18 +74,22 @@ const texto = (description: string) => ({ type: ['string', 'null'], description 
 const ESQUEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
-  required: ['observaciones', 'vidrios'],
+  required: ['aberturas', 'vidrios'],
   properties: {
-    observaciones: {
+    aberturas: {
       type: 'array',
-      description: 'Una entrada por cada modelo del documento, en el orden en que aparecen.',
+      description: 'Una entrada por cada bloque "Modelo:" del documento (tenga o no vidrio), en el orden en que aparecen.',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['nombre', 'observacion'],
+        required: ['nombre', 'descripcion', 'color', 'ancho', 'alto', 'cantidad'],
         properties: {
           nombre: { type: 'string', description: 'El nombre exacto del modelo, tal cual después de "Modelo:".' },
-          observacion: texto('La observación de fabricación del modelo, o null si no tiene.'),
+          descripcion: texto('La línea que sigue a "Uds:" + " - " + la línea de abajo ("Pos:").'),
+          color: texto('Lo que sigue a "Color:", en MAYÚSCULAS.'),
+          ancho: texto('El primer número de "Medidas:", tal cual, con el punto de miles.'),
+          alto: texto('El segundo número de "Medidas:", tal cual, con el punto de miles.'),
+          cantidad: { type: ['integer', 'null'], description: 'El número que sigue a "Uds:".' },
         },
       },
     },
@@ -91,7 +101,7 @@ const ESQUEMA: Record<string, unknown> = {
         additionalProperties: false,
         required: ['modelo', 'composicion', 'comp1', 'camara', 'comp2', 'terminacion', 'ancho', 'alto', 'cant'],
         properties: {
-          modelo: texto('El modelo al que pertenece la línea Vid.'),
+          modelo: texto('La abertura (su nombre en "aberturas") a la que pertenece la línea Vid.'),
           composicion: texto('La composición completa, sin la terminación: "3+3/12/4".'),
           comp1: texto('Lo que está antes de la primera barra. null si no hay exactamente dos barras.'),
           camara: texto('Lo que está entre las dos barras. null si no hay exactamente dos barras.'),
@@ -106,15 +116,9 @@ const ESQUEMA: Record<string, unknown> = {
   },
 }
 
-/** El foco de cada pasada. El documento y la consigna van igual: la segunda pasada lee del caché. */
-const PEDIDO: Record<ModoLectura, NombrePrompt> = {
-  vidrios: 'hetmo-vidrios.pedido',
-  observaciones: 'hetmo-observaciones.pedido',
-}
-
 /**
  * Una lectura del PDF con Claude, atada a un JSON Schema. La comparten las dos consignas: la de
- * vidrios y observaciones (acá) y la del listado completo que arma la OP final (`_hetmoListado.ts`).
+ * aberturas y vidrios (acá) y la del listado completo que arma la OP final (`_hetmoListado.ts`).
  */
 export async function consultarClaude(
   pdf: Buffer,
@@ -149,8 +153,7 @@ export async function consultarClaude(
           {
             type: 'document',
             source: { type: 'base64', media_type: 'application/pdf', data: datos },
-            /* El documento queda en caché: la pasada siguiente con la misma consigna (vidrios →
-               observaciones) llega a los pocos segundos con el mismo PDF. */
+            /* El documento queda en caché: un reintento con el mismo PDF lo lee de ahí. */
             cache_control: { type: 'ephemeral' },
           },
           { type: 'text', text: pedido },
@@ -174,15 +177,16 @@ export async function consultarClaude(
   }
 }
 
-export async function leerHetmo(pdf: Buffer, modo: ModoLectura): Promise<LecturaHetmo> {
+/** Las aberturas de la orden y sus vidrios, en una sola lectura (al cargar el PDF de HETMO). */
+export async function leerHetmo(pdf: Buffer): Promise<LecturaHetmo> {
   const lectura = (await consultarClaude(pdf, {
-    sistema: prompt('hetmo-vidrios-observaciones.sistema'),
+    sistema: prompt('hetmo-aberturas-vidrios.sistema'),
     esquema: ESQUEMA,
-    pedido: prompt(PEDIDO[modo]),
+    pedido: prompt('hetmo-aberturas-vidrios.pedido'),
     maxTokens: 32000,
   })) as Partial<LecturaHetmo>
   return {
-    observaciones: Array.isArray(lectura?.observaciones) ? lectura.observaciones : [],
+    aberturas: Array.isArray(lectura?.aberturas) ? lectura.aberturas : [],
     vidrios: Array.isArray(lectura?.vidrios) ? lectura.vidrios : [],
   }
 }

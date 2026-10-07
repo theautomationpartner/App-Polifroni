@@ -1,0 +1,1 @@
+Analizá este listado de HETMO. Primero identificá todas las aberturas: contá los "Modelo:" de todas las hojas y devolvé una entrada por cada uno, con su descripción, color (en mayúsculas), medidas y unidades. Después, abertura por abertura, devolvé una entrada por cada línea "Vid:".

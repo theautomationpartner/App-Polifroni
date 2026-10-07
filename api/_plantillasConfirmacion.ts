@@ -912,7 +912,7 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
       const ubicacion = document.getElementById('ubicacion');
       const coordinador = document.getElementById('coordinador');
 
-      // Webhooks Make.com
+      // Las dos respuestas van al enlace de la app (/c/…), que las registra en Monday.
       const webhookOriginal = '{{ENLACE_FORMULARIO}}';
       const webhookNuevo = '{{ENLACE_FORMULARIO}}';
 

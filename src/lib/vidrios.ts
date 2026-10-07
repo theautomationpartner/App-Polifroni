@@ -52,6 +52,12 @@ export function composicion(v: Pick<VidrioPedido, 'comp1' | 'camara' | 'comp2'>)
 /** "843", "1.013" → 843, 1013: las medidas vienen con el punto de miles del listado. */
 export const mm = (s: string): number => Number(String(s).replace(/\./g, '').replace(',', '.')) || 0
 
+/** Una medida escrita a mano: mm enteros, con o sin punto de miles ("843", "1013", "1.013"). */
+export const medidaValida = (s: string): boolean => /^(\d+|\d{1,3}(\.\d{3})+)$/.test(s.trim()) && mm(s) > 0
+
+/** Una cantidad escrita a mano: un entero de 1 en adelante. */
+export const cantidadValida = (s: string): boolean => /^\d+$/.test(s.trim()) && Number(s) >= 1
+
 /** Un corte para el proveedor: una composición, unas medidas y cuántas piezas. */
 export interface Corte {
   composicion: string

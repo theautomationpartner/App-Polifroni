@@ -14,9 +14,7 @@ import {
 import { nuevaClave } from '@/lib/claveConfirmacion'
 import { VISTA_ESTADO, aptaParaTaller } from '@/lib/estadosOp'
 import { fechaRecordatorio } from '@/lib/recordatorio'
-import { fechaHora, htmlATexto } from '@/lib/texto'
 import {
-  BOARD_ORDENES,
   COL,
   ESTADO_ENVIO_OP,
   ESTADO_OP,
@@ -34,20 +32,13 @@ import {
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra } from '@/types'
+import { registrarActividadesEnvio } from './actividadEnvio'
 import { EditarCelular } from './EditarCelular'
 import { MensajeEjemplo } from './MensajeEjemplo'
-import { useEnviarTaller } from './useEnviarTaller'
 import { useEnviarWhatsapp, type DestinoWsp } from './useEnviarWhatsapp'
 
 /** La única vía de envío: WhatsApp (al cliente o constructor, por 360messenger desde la app). */
 const VIA = 'Whatsapp'
-
-/**
- * El tablero y el ítem que el escenario de envío tiene que abrir: los de la OP (tablero Orden de
- * Produccion), no los de la obra. La obra igual viaja en `itemIdObra`.
- */
-const sobreDeLaOp = (ordenId: string | null) =>
-  ordenId ? { boardId: String(BOARD_ORDENES), pulseId: Number(ordenId) } : {}
 
 /** El link al PDF compartido en Drive que devuelve el envío (`link_op`). */
 const linkDeRespuesta = (cuerpo: { link_op?: string } | null): string => {
@@ -56,6 +47,10 @@ const linkDeRespuesta = (cuerpo: { link_op?: string } | null): string => {
 }
 
 /** Los destinatarios que la obra ya tenía elegidos: "Cliente", "Constructor" o "Ambos". */
+/** El error del envío al taller, cuando no hay otro mensaje (la red se cortó, por ejemplo). */
+const ERROR_TALLER =
+  'Ocurrió un error interno al intentar enviar la orden al taller por WhatsApp. Reintentá en unos minutos; si el error persiste, contactate con el soporte de TAP.'
+
 const rolesIniciales = (texto: string): Rol[] =>
   texto === 'Ambos' ? [...ROLES] : (ROLES as readonly string[]).includes(texto) ? [texto as Rol] : []
 
@@ -122,6 +117,14 @@ interface EnviarOpProps {
    * quien lo usa, no del estado global de la operación.
    */
   contexto?: ContextoEnvio
+  /**
+   * A quiénes y quién confirma, elegidos de entrada (el envío de una OP editada arranca con los de
+   * la OP anterior). Sin esto, los de la obra y, en un reenvío, el responsable que ya tiene la OP.
+   */
+  destinatariosIniciales?: Rol[]
+  confirmadorInicial?: Rol | null
+  /** La OP final nueva de una orden editada: sale con el mensaje de la OP editada. */
+  edicion?: boolean
 }
 
 /** La obra y el cierre del envío, cuando los maneja la pantalla que usa `EnviarOp`. */
@@ -157,7 +160,18 @@ export interface OrdenLocal {
  * manda de nuevo. Terminado bien, el botón queda en verde y fijo —aunque se vaya y se vuelva con el
  * stepper— y "Finalizar Operación" cierra.
  */
-export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antesDeEnviar, contexto }: EnviarOpProps) {
+export function EnviarOp({
+  modo,
+  orden,
+  listo,
+  avisoNoListo,
+  local = null,
+  antesDeEnviar,
+  contexto,
+  destinatariosIniciales,
+  confirmadorInicial = null,
+  edicion = false,
+}: EnviarOpProps) {
   const app = useApp()
   const dispatch = useDispatch()
   const obra = contexto?.obra ?? app.obra
@@ -165,16 +179,16 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
   const enviado = contexto ? contexto.enviado : app.enviado
   const marcarEnviado = () => (contexto ? contexto.onEnviado() : dispatch({ type: 'setEnviado' }))
   const cambiarObra = (o: Obra) => (contexto ? contexto.onObra(o) : dispatch({ type: 'refrescarObra', obra: o }))
-  /* Al cliente o constructor: por WhatsApp desde la app, sin escenario. Al taller: su escenario. */
+  /* Al cliente o constructor, y al taller: por WhatsApp desde la app (`/api/whatsapp`). */
   const cliente = useEnviarWhatsapp()
-  const taller = useEnviarTaller(obra)
+  const taller = useEnviarWhatsapp(ERROR_TALLER)
 
   /**
    * A quiénes se envía: el cliente, el constructor o los dos. Se agregan desde el selector a la
    * lista de destinatarios, y cada uno se quita con su tacho. Elegirlos no escribe nada en Monday.
    */
   const [roles, setRoles] = useState<Rol[]>(() =>
-    modo === 'cliente' ? rolesIniciales(obra.opDestinatario.texto) : [],
+    modo === 'cliente' ? (destinatariosIniciales?.length ? destinatariosIniciales : rolesIniciales(obra.opDestinatario.texto)) : [],
   )
   /**
    * El responsable de confirmar que la OP ya tiene asignado (`🤖Responsable de Confirmar`). Sólo
@@ -189,7 +203,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
    * ése y no se pregunta. En un reenvío arranca con el que ya tiene asignado la orden —su etiqueta
    * "Confirmador" se ve de entrada— y se puede reasignar.
    */
-  const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(confirmadorAsignado)
+  const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(confirmadorInicial ?? confirmadorAsignado)
   /* La orden puede llegar (o cambiar) después de montar: se toma su responsable si todavía no se
      eligió otro. */
   useEffect(() => {
@@ -210,6 +224,9 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
     confirmador: Rol | null
     /** La clave del enlace de confirmación que salió en el mensaje. */
     clave: string
+    /** El N° de la OP y el PDF que salió: la actividad del envío en cada destinatario los nombra. */
+    numero: string
+    archivo: string
   } | null>(null)
   const disparando = useRef(false)
 
@@ -287,7 +304,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
            al finalizar, junto con el resto del envío. */
         const clave = app.borrador.claveConfirmacion ?? nuevaClave()
         if (!app.borrador.claveConfirmacion) dispatch({ type: 'setBorrador', cambios: { claveConfirmacion: clave } })
-        enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador, clave }
+        enCurso.current = { orden: null, roles: [...roles], reenvio: false, confirmador, clave, numero: local.numero, archivo: local.archivo.name }
         /* El PDF de la app va en el pedido: Aluminio, el PDF cargado; PVC, la OP final generada. */
         void cliente.correr(
           {
@@ -298,6 +315,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             numero: local.numero,
             tipo: local.tipo,
             clave,
+            edicion,
           },
           local.archivo,
           local.archivo.name,
@@ -329,16 +347,29 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       }
       const pdf = fresca.opFinal.find((a) => !a.esImagen) ?? fresca.opFinal[0]
       if (modo === 'taller') {
-        enCurso.current = { orden: fresca, roles: [], reenvio: false, confirmador: null, clave: '' }
-        void taller.correr({
-          ...sobreDeLaOp(fresca.id),
-          ordenId: fresca.id,
-          itemIdObra: obra.id,
-          idOp: fresca.idOp,
-          numero: fresca.numero,
-          assetId: pdf?.assetId ?? null,
-          fileName: pdf?.nombre ?? null,
-        })
+        /* El PDF de la OP final, del tablero: va en el pedido, como al cliente. */
+        if (!pdf) {
+          setFaltan({ titulo: 'La orden no tiene la OP final adjunta', items: [`${nombreOrden(fresca)} no tiene el PDF para enviar.`] })
+          return
+        }
+        const bajada = await fetch(await getUrlArchivo(pdf.assetId))
+        if (!bajada.ok) throw new Error(`No se pudo bajar la OP final (HTTP ${bajada.status})`)
+        enCurso.current = { orden: fresca, roles: [], reenvio: false, confirmador: null, clave: '', numero: fresca.numero, archivo: pdf.nombre }
+        void taller.correr(
+          {
+            destinos: [],
+            reenvio: false,
+            ordenId: fresca.id,
+            obraId: obra.id,
+            numero: fresca.numero,
+            tipo: fresca.tipo,
+            clave: '',
+            documento: 'taller',
+            obra: obra.nombre,
+          },
+          await bajada.blob(),
+          pdf.nombre || 'Orden de Produccion.pdf',
+        )
         return
       }
       const etiqueta = etiquetaDestinatarios(roles)
@@ -359,7 +390,15 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
          llega. Un reenvío reusa la que ya tenía: el enlace del primer mensaje sigue sirviendo. */
       const clave = fresca.clave || nuevaClave()
       if (!fresca.clave) await guardarClaveOrden(fresca.id, clave)
-      enCurso.current = { orden: fresca, roles: [...roles], reenvio: esReenvio, confirmador, clave }
+      enCurso.current = {
+        orden: fresca,
+        roles: [...roles],
+        reenvio: esReenvio,
+        confirmador,
+        clave,
+        numero: fresca.numero,
+        archivo: pdf.nombre || 'Orden de Produccion.pdf',
+      }
       await setEstadoEnvioOrden(fresca.id, ESTADO_ENVIO_OP.enviando).catch(() => {})
       void cliente.correr(
         {
@@ -397,6 +436,18 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       return
     }
     if (fase !== 'listo') return
+    /* Al cliente o constructor, ya confirmado: la actividad del envío en cada destinatario (sin esperar). */
+    if (modo === 'cliente') {
+      const cuerpo = cliente.respuesta()
+      registrarActividadesEnvio(obra, {
+        roles: e.roles,
+        numero: e.numero,
+        reenvio: e.reenvio,
+        archivo: e.archivo,
+        link: linkDeRespuesta(cuerpo) ?? '',
+        resultados: cuerpo?.resultados,
+      })
+    }
     void (async () => {
       setCerrando(true)
       if (!e.orden) {
@@ -453,8 +504,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
       ? null
       : modo === 'cliente'
         ? cliente.estado.problema || 'No se pudo confirmar el envío por WhatsApp. Reintentá.'
-        : (taller.estado.updateError ? htmlATexto(taller.estado.updateError.body) : taller.estado.problema) ||
-          'La automatización no confirmó el envío. Reintentá.'
+        : taller.estado.problema || 'No se pudo confirmar el envío al taller por WhatsApp. Reintentá.'
 
 
   return (
@@ -675,7 +725,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             </p>
           </div>
         )}
-        {!enviado && (advertencias.length > 0 || errorCorrida || fallo || fase === 'demorado') && (
+        {!enviado && (advertencias.length > 0 || errorCorrida || fallo) && (
           <div className="enviar-avisos" role="status" aria-live="polite">
             {advertencias.map((a) => (
               <p key={a} className="enviar-aviso enviar-aviso--warn">
@@ -686,25 +736,8 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
             {(errorCorrida || fallo) && (
               <p className="enviar-aviso enviar-aviso--err">
                 <i className="fas fa-circle-exclamation" aria-hidden="true" />
-                {modo === 'taller' && taller.estado.vencida ? (
-                  /* Pasó el tope de espera: el mensaje es uno solo y dice a quién acudir. */
-                  <span>{errorCorrida}</span>
-                ) : (
-                  <span style={{ whiteSpace: 'pre-line' }}>
-                    <strong>No se pudo enviar.</strong> {errorCorrida ?? fallo}
-                    {modo === 'taller' && taller.estado.updateError && ` (${fechaHora(taller.estado.updateError.fecha)})`}
-                  </span>
-                )}
-              </p>
-            )}
-            {modo === 'taller' && fase === 'demorado' && (
-              <p className="enviar-aviso enviar-aviso--warn">
-                <i className="fas fa-hourglass-half" aria-hidden="true" />
-                <span>
-                  <strong>Está tardando más de lo normal.</strong>{' '}
-                  <button type="button" className="enviar-mas" onClick={() => void taller.seguirEsperando()}>
-                    Seguir esperando
-                  </button>
+                <span style={{ whiteSpace: 'pre-line' }}>
+                  <strong>No se pudo enviar.</strong> {errorCorrida ?? fallo}
                 </span>
               </p>
             )}
@@ -733,6 +766,7 @@ export function EnviarOp({ modo, orden, listo, avisoNoListo, local = null, antes
           roles={roles}
           confirmador={confirmador}
           reenvio={reenvio}
+          edicion={edicion}
           onClose={() => setVerMensaje(false)}
         />
       )}

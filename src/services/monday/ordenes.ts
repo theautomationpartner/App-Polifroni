@@ -10,11 +10,13 @@
  * El estado de cada OP es UNO y vive en `🤖Estado OP` (ver `lib/estadosOp`). Una OP no se borra ni
  * se modifica: se cancela, y el motivo queda escrito en ella.
  */
-import { BOARD_OBRAS, BOARD_ORDENES, COL_OP_ARCHIVOS } from './columns'
+import { BOARD_OBRAS, BOARD_ORDENES, BOARD_SUB_ORDENES, COL_OP_ARCHIVOS } from './columns'
 import { getUrlArchivo, subirArchivo } from './obras'
 import { byId, type MondayItem } from './parse'
 import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
-import { ETIQUETA_OP, estadoDeOrden, type EstadoOrden } from '@/lib/estadosOp'
+import { ETIQUETA_OP, INDICE_OP, estadoDeOrden, etiquetaOp, indiceDeEtiqueta, indiceDeValor, type EstadoOrden } from '@/lib/estadosOp'
+import { filasSubelementos, modeloDeSubelemento } from '@/lib/subelementosOp'
+import type { DatosAbertura } from '@/features/op/observaciones'
 import { SOLICITADOS } from '@/lib/vidrios'
 import type { ArchivoObra } from '@/types'
 
@@ -55,6 +57,13 @@ export const COL_OP = {
   /** 🤖Clave Confirmacion (text): la clave del enlace de confirmación que salió por WhatsApp. Con
       ella `/confirmar` encuentra la OP (ver `api/_confirmarMonday.ts`). */
   clave: 'text_mm7wqqm2',
+  /** 🤖Fecha de Confirmacion (date): cuándo se confirmó la OP. */
+  fechaConfirmacion: 'date_mm7x6ynv',
+  /** 🤖Como confirmo el responsable (text): por dónde confirmó ("Confirmó el usuario con respuesta al mensaje"). */
+  comoConfirmo: 'text_mm7xbryw',
+  /** 🤖Tiene Vidrios (checkbox): tildada, sus subelementos traen los vidrios. Se marca al generar
+      la OP final y es lo que se lee para saber si una OP tiene vidrios. */
+  tieneVidrios: 'boolean_mm7xcvcn',
 } as const
 
 /** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
@@ -71,10 +80,20 @@ export const COLOR_ENVIO_OP: Record<string, string> = {
   'Error De Envio': '#df2f4a',
 }
 
-/** Columnas de los subelementos: una observación por abertura y un renglón por vidrio. */
+/**
+ * Columnas de los subelementos. Cada subelemento es una ABERTURA (su nombre es el modelo: "V1"),
+ * con su observación y, si tiene, su vidrio. Una abertura con dos vidrios son dos subelementos con
+ * el mismo nombre (ver `crearSubelementos`).
+ */
 export const COL_OBS = {
   texto: 'long_text_mm7g5wfj',
-  estado: 'color_mm7g7r8s',
+  /** De la abertura (lectura de la IA): descripción, color en mayúsculas, medidas y "Uds:". */
+  nombre: 'text_mm7xt0qd',
+  color: 'text_mm7xxp20',
+  anchoAbertura: 'text_mm7xdfgn',
+  altoAbertura: 'text_mm7xgzf6',
+  cantidadAberturas: 'numeric_mm7xtqen',
+  /** Del vidrio. */
   comp1: 'dropdown_mm7gmkmy',
   camara: 'dropdown_mm7g1hyj',
   comp2: 'dropdown_mm7gf95e',
@@ -113,6 +132,8 @@ export interface DatosOrden {
   observacion: string
   /** `YYYY-MM-DD`. */
   fecha: string
+  /** PVC: si la lectura encontró vidrios (`🤖Tiene Vidrios`). Sin el dato, la columna no se toca. */
+  tieneVidrios?: boolean
 }
 
 async function cambiarColumnas(itemId: string, valores: Record<string, unknown>): Promise<void> {
@@ -270,6 +291,8 @@ export async function completarOrden(ordenId: string, o: DatosOrden): Promise<vo
     [COL_OP.observacion]: { text: o.observacion },
   }
   if (o.fecha) columnas[COL_OP.fechaMedicion] = { date: o.fecha }
+  /* Se escribe siempre que se sabe (PVC): volver a generar puede pasar de tener vidrios a no tener. */
+  if (o.tieneVidrios !== undefined) columnas[COL_OP.tieneVidrios] = o.tieneVidrios ? { checked: 'true' } : null
   /* El número va en la columna de su tipo; la otra se vacía, por si el tipo cambió entre un intento
      y otro. Se vuelve a escribir por si se corrigió a mano con el lápiz. */
   if (o.numero) Object.assign(columnas, columnasNumero(o.tipo, o.numero))
@@ -282,9 +305,12 @@ export async function completarOrden(ordenId: string, o: DatosOrden): Promise<vo
 }
 
 /**
- * Los subelementos de la OP: UNO por abertura (estado "Observacion", con lo que se escribió) y UNO
- * por vidrio (estado "Vidrio", con su composición y medidas). Ejemplo real: 7 aberturas y 6
- * vidrios → 13 subelementos.
+ * Los subelementos de la OP: cada uno es una ABERTURA, en el orden del documento, con sus datos
+ * (nombre, color en mayúsculas, medidas, cantidad), su observación (si se escribió) y su vidrio
+ * (composición, medidas y cantidad TOTAL). Una abertura con vidrios es un subelemento por vidrio:
+ * "V1 - Vidrio 1", "V1 - Vidrio 2"…, y la observación va en el primero; una sin vidrio (un
+ * mosquitero) es un subelemento con su nombre solo ("M6"). Un vidrio de un modelo que no está entre
+ * las aberturas no se pierde: va al final. Ver `filasSubelementos`.
  *
  * REEMPLAZA los que hubiera: si un intento anterior falló, la OP ya tiene subelementos, y volver a
  * crearlos los duplicaría. Se crean en tandas de 10 en una sola mutación cada una (alias), en vez
@@ -292,7 +318,7 @@ export async function completarOrden(ordenId: string, o: DatosOrden): Promise<vo
  */
 export async function crearSubelementos(
   ordenId: string,
-  observaciones: { nombre: string; texto: string }[],
+  aberturas: { nombre: string; texto: string; datos?: DatosAbertura }[],
   vidrios: VidrioLeido[],
 ): Promise<void> {
   const previas = await mondayApi<{ items: { subitems: { id: string }[] | null }[] }>(
@@ -303,26 +329,20 @@ export async function crearSubelementos(
     await mondayApi(`mutation ($id: ID!) { delete_item(item_id: $id) { id } }`, { id: sub.id })
   }
 
-  const etiqueta = (v: string | null) => (v && v.trim() ? { labels: [v.trim()] } : null)
-  const filas: { nombre: string; valores: Record<string, unknown> }[] = [
-    ...observaciones.map((o) => ({
-      nombre: o.nombre,
-      valores: { [COL_OBS.estado]: { label: 'Observacion' }, [COL_OBS.texto]: { text: o.texto } },
-    })),
-    ...vidrios.map((v) => {
-      const valores: Record<string, unknown> = { [COL_OBS.estado]: { label: 'Vidrio' } }
-      /* Las composiciones ("3+3", "4") son etiquetas de columnas desplegables: si una todavía no
-         existe en el tablero, se crea (`create_labels_if_missing`). */
-      if (etiqueta(v.comp1)) valores[COL_OBS.comp1] = etiqueta(v.comp1)
-      if (etiqueta(v.camara)) valores[COL_OBS.camara] = etiqueta(v.camara)
-      if (etiqueta(v.comp2)) valores[COL_OBS.comp2] = etiqueta(v.comp2)
-      if (v.ancho) valores[COL_OBS.ancho] = v.ancho
-      if (v.alto) valores[COL_OBS.alto] = v.alto
-      if (v.cant != null) valores[COL_OBS.cantidad] = String(v.cant)
-      return { nombre: (v.modelo || 'Vidrio').toUpperCase(), valores }
-    }),
-  ]
+  await insertarSubelementos(ordenId, filasDeSubelementos(aberturas, vidrios))
+}
 
+/** Una fila de subelemento lista para Monday: su nombre y sus columnas (ids de `COL_OBS`). */
+export interface FilaMonday {
+  nombre: string
+  valores: Record<string, unknown>
+}
+
+/**
+ * Crea los subelementos de una OP, en tandas de 10 por mutación (alias). No borra los que hubiera:
+ * eso lo hace `crearSubelementos` antes de llamarla.
+ */
+export async function insertarSubelementos(ordenId: string, filas: FilaMonday[]): Promise<void> {
   for (let desde = 0; desde < filas.length; desde += 10) {
     const tanda = filas.slice(desde, desde + 10)
     const variables: Record<string, unknown> = { padre: ordenId }
@@ -335,6 +355,32 @@ export async function crearSubelementos(
     })
     await mondayApi(`mutation (${firma.join(', ')}) { ${cuerpo.join('\n')} }`, variables)
   }
+}
+
+/** Las filas de `filasSubelementos`, con los ids de las columnas de Monday. */
+export function filasDeSubelementos(
+  aberturas: { nombre: string; texto: string; datos?: DatosAbertura }[],
+  vidrios: VidrioLeido[],
+): FilaMonday[] {
+  /* Las composiciones ("3+3", "4") son etiquetas de columnas desplegables: si una todavía no existe
+     en el tablero, se crea (`create_labels_if_missing`). */
+  const etiqueta = (v: string) => ({ labels: [v] })
+  return filasSubelementos(aberturas, vidrios).map(({ nombre, valores: v }) => {
+    const valores: Record<string, unknown> = {}
+    if (v.observacion) valores[COL_OBS.texto] = { text: v.observacion }
+    if (v.descripcion) valores[COL_OBS.nombre] = v.descripcion
+    if (v.color) valores[COL_OBS.color] = v.color
+    if (v.anchoAbertura) valores[COL_OBS.anchoAbertura] = v.anchoAbertura
+    if (v.altoAbertura) valores[COL_OBS.altoAbertura] = v.altoAbertura
+    if (v.cantidadAberturas != null) valores[COL_OBS.cantidadAberturas] = String(v.cantidadAberturas)
+    if (v.comp1) valores[COL_OBS.comp1] = etiqueta(v.comp1)
+    if (v.camara) valores[COL_OBS.camara] = etiqueta(v.camara)
+    if (v.comp2) valores[COL_OBS.comp2] = etiqueta(v.comp2)
+    if (v.ancho) valores[COL_OBS.ancho] = v.ancho
+    if (v.alto) valores[COL_OBS.alto] = v.alto
+    if (v.cantidad != null) valores[COL_OBS.cantidad] = String(v.cantidad)
+    return { nombre, valores }
+  })
 }
 
 /** Los documentos de UNA OP: su Orden HETMO y su OP final. */
@@ -473,6 +519,8 @@ export interface ResumenOrden {
   clave: string
   /** `🤖Estado Vidrios`, tal cual: si sus vidrios ya se pidieron ("Pend de Solicitar", …). */
   estadoVidrios: string
+  /** `🤖Tiene Vidrios` tildada: sus subelementos traen vidrios. */
+  tieneVidrios: boolean
   /** La etiqueta de `🤖Estado OP` tal cual está en el tablero. */
   estado: string
   /** El estado de la OP ya interpretado (ver `lib/estadosOp`). Es el que manda. */
@@ -502,6 +550,7 @@ const COLS_RESUMEN = [
   COL_OP.confirmador,
   COL_OP.clave,
   COL_OP.estadoVidrios,
+  COL_OP.tieneVidrios,
   COL_OP.estado,
   COL_OP.motivo,
   COL_OP.linkPdf,
@@ -535,6 +584,16 @@ function urlDeLink(valorJson: string | null | undefined): string {
   }
 }
 
+/** Una columna checkbox tildada: su valor es `{"checked":"true",…}`; destildada, vacío o "false". */
+function tildada(valorJson: string | null | undefined): boolean {
+  try {
+    const checked = (JSON.parse(valorJson ?? 'null') as { checked?: unknown } | null)?.checked
+    return checked === true || checked === 'true'
+  } catch {
+    return false
+  }
+}
+
 function aResumen(i: ItemOrden): ResumenOrden {
   const c = byId(i) as Record<string, ValorOrden | undefined>
   const t = (id: string) => (c[id]?.text ?? '').trim()
@@ -544,7 +603,8 @@ function aResumen(i: ItemOrden): ResumenOrden {
      pregunta por "el documento de la orden" —verlo, mandarlo, saber si está generada— vale ése. */
   const opFinalPropia = archivosDe(c[COL_OP.opFinal]?.value)
   const opFinal = opFinalPropia.length ? opFinalPropia : /alum/i.test(tipo) ? etmo : []
-  const estado = t(COL_OP.estado)
+  /* Con el nombre de la app, sea cual sea el que tenga hoy la etiqueta en el tablero. */
+  const estado = etiquetaOp(t(COL_OP.estado), indiceDeValor(c[COL_OP.estado]?.value))
   return {
     id: String(i.id),
     nombre: i.name,
@@ -560,6 +620,7 @@ function aResumen(i: ItemOrden): ResumenOrden {
     confirmador: t(COL_OP.confirmador),
     clave: t(COL_OP.clave),
     estadoVidrios: t(COL_OP.estadoVidrios),
+    tieneVidrios: tildada(c[COL_OP.tieneVidrios]?.value),
     estado,
     estadoOrden: estadoDeOrden(estado, opFinal.length > 0),
     motivo: t(COL_OP.motivo),
@@ -603,12 +664,10 @@ export async function leerOrden(ordenId: string): Promise<ResumenOrden | null> {
   return i && vigente(i) ? aResumen(i) : null
 }
 
-/** Índice de la etiqueta "Enviada Pend Confirmar" en `🤖Estado OP` (ver su `settings_str`). */
-const INDICE_PEND_CONFIRMAR = 3
-/** Índice de la etiqueta "Enviada a Taller" en `🤖Estado OP`. */
-const INDICE_TALLER = 4
-/** Índice de "Generada Pend de Enviar": generada, todavía sin enviar. */
-const INDICE_PEND_ENVIAR = 6
+/* Los índices de `🤖Estado OP` (ver `INDICE_OP`): no cambian cuando se renombra la etiqueta. */
+const INDICE_PEND_CONFIRMAR = INDICE_OP.pendiente!
+const INDICE_TALLER = INDICE_OP.taller!
+const INDICE_PEND_ENVIAR = INDICE_OP.generada!
 
 /**
  * Las OP del tablero, para la consulta. Se traen de a páginas de 200 con el cursor de Monday.
@@ -713,10 +772,16 @@ export async function cuentasDeObras(obraIds: string[]): Promise<Record<string, 
 }
 
 /**
- * Cambia el estado de la OP. Las etiquetas nuevas ("Enviada a Taller", "Cancelada") se crean la
- * primera vez que se usan: así el tablero no necesita un cambio manual previo.
+ * Cambia el estado de la OP. Se escribe por ÍNDICE (`INDICE_OP`): renombrar la etiqueta en el
+ * tablero no rompe nada ni crea una duplicada. Sólo una etiqueta sin índice ("NO Confirmado") va por
+ * nombre, y se crea la primera vez que se usa.
  */
 export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise<void> {
+  const indice = indiceDeEtiqueta(etiqueta)
+  if (indice != null) {
+    await cambiarColumnas(ordenId, { [COL_OP.estado]: { index: indice } })
+    return
+  }
   await mondayApi(
     `mutation ($id: ID!, $valor: String!) {
       change_simple_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_OP.estado}", value: $valor, create_labels_if_missing: true) { id }
@@ -787,9 +852,10 @@ export async function guardarClaveOrden(ordenId: string, clave: string): Promise
   await cambiarColumnas(ordenId, { [COL_OP.clave]: clave })
 }
 
-export async function cancelarOrden(ordenId: string, motivo: string, autor: string): Promise<void> {
+/** `autor` en `null`: no se dice quién la canceló (la edición de una OP, que la cancela al reemplazarla). */
+export async function cancelarOrden(ordenId: string, motivo: string, autor: string | null): Promise<void> {
   const cuando = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-  const texto = `${motivo.trim()}\n— Cancelada por ${autor || 'la app'} el ${cuando}`
+  const texto = `${motivo.trim()}\n— Cancelada ${autor === null ? '' : `por ${autor || 'la app'} `}el ${cuando}`
   await mondayApi(
     `mutation ($id: ID!, $valores: JSON!) {
       change_multiple_column_values(board_id: ${BOARD_ORDENES}, item_id: $id, column_values: $valores, create_labels_if_missing: true) { id }
@@ -797,11 +863,25 @@ export async function cancelarOrden(ordenId: string, motivo: string, autor: stri
     {
       id: ordenId,
       valores: JSON.stringify({
-        [COL_OP.estado]: { label: ETIQUETA_OP.cancelada },
+        [COL_OP.estado]: { index: INDICE_OP.cancelada },
         [COL_OP.motivo]: { text: texto },
       }),
     },
   )
+}
+
+/**
+ * Confirma la OP a mano, desde la consulta: el responsable respondió por mensaje en vez de usar el
+ * enlace. Deja la OP "Confirmada" (por índice), la fecha y hora de la confirmación —la de Monday va
+ * en UTC— y cómo confirmó el responsable.
+ */
+export async function confirmarOrdenManual(ordenId: string, { asunto, cuando }: { asunto: string; cuando: Date }): Promise<void> {
+  const iso = cuando.toISOString()
+  await cambiarColumnas(ordenId, {
+    [COL_OP.estado]: { index: INDICE_OP.confirmada },
+    [COL_OP.fechaConfirmacion]: { date: iso.slice(0, 10), time: iso.slice(11, 19) },
+    [COL_OP.comoConfirmo]: asunto.trim(),
+  })
 }
 
 /**
@@ -823,10 +903,10 @@ export async function copiarRespuestaAOrden(ordenId: string, estadoActual: strin
   }
 }
 
-/** Un vidrio de una OP: un subelemento con Tipo = "Vidrio" (ver `crearSubelementos`). */
+/** Un vidrio de una OP: un subelemento con datos de vidrio (ver `crearSubelementos`). */
 export interface VidrioDeOrden {
   id: string
-  /** El modelo de la abertura (el nombre del subelemento: "V1", "V27/28"). */
+  /** El modelo de la abertura ("V1", "V27/28"): el nombre del subelemento sin " - Vidrio n". */
   modelo: string
   /** Vidrio Comp 1 (mm o composición: "4", "3+3"). */
   comp1: string
@@ -841,13 +921,46 @@ export interface VidrioDeOrden {
   cantidad: number | null
 }
 
+/** Las medidas y la cantidad corregidas de un vidrio (un subelemento con datos de vidrio). */
+export interface CambioVidrio {
+  id: string
+  /** En mm, tal cual se escribe ("843", "1.013"): la columna es de texto. */
+  ancho: string
+  alto: string
+  cantidad: number
+}
+
 /**
- * Los vidrios de varias OP, por OP: sus subelementos con Tipo = "Vidrio", con todas sus columnas.
- * Las observaciones (Tipo = "Observacion") quedan afuera.
+ * Corrige el ancho, el alto y la cantidad de los vidrios de una OP, en sus subelementos. Va en
+ * tandas de 10 cambios por mutación (alias), como `crearSubelementos`.
+ */
+export async function actualizarVidrios(cambios: CambioVidrio[]): Promise<void> {
+  for (let desde = 0; desde < cambios.length; desde += 10) {
+    const tanda = cambios.slice(desde, desde + 10)
+    const variables: Record<string, unknown> = {}
+    const firma: string[] = []
+    const cuerpo = tanda.map((c, k) => {
+      variables[`i${k}`] = c.id
+      variables[`v${k}`] = JSON.stringify({
+        [COL_OBS.ancho]: c.ancho,
+        [COL_OBS.alto]: c.alto,
+        [COL_OBS.cantidad]: String(c.cantidad),
+      })
+      firma.push(`$i${k}: ID!`, `$v${k}: JSON!`)
+      return `s${k}: change_multiple_column_values(board_id: ${BOARD_SUB_ORDENES}, item_id: $i${k}, column_values: $v${k}) { id }`
+    })
+    await mondayApi(`mutation (${firma.join(', ')}) { ${cuerpo.join(' ')} }`, variables)
+  }
+}
+
+/**
+ * Los vidrios de varias OP, por OP: sus subelementos que traen datos de vidrio, con todas sus
+ * columnas. Las aberturas sin vidrio (sólo observación) quedan afuera. Conviene pedirlo sólo para
+ * las OP con `tieneVidrios`: es la columna que dice si hay vidrios.
  */
 export async function vidriosDeOrdenes(ordenIds: string[]): Promise<Record<string, VidrioDeOrden[]>> {
   if (ordenIds.length === 0) return {}
-  const cols = JSON.stringify([COL_OBS.estado, COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho, COL_OBS.alto, COL_OBS.cantidad])
+  const cols = JSON.stringify([COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho, COL_OBS.alto, COL_OBS.cantidad])
   const d = await mondayApi<{
     items: { id: string; subitems: { id: string; name: string; column_values: { id: string; text: string | null }[] }[] | null }[]
   }>(
@@ -859,11 +972,12 @@ export async function vidriosDeOrdenes(ordenIds: string[]): Promise<Record<strin
     porOrden[String(op.id)] = (op.subitems ?? [])
       .map((s) => {
         const t = (id: string) => (s.column_values.find((c) => c.id === id)?.text ?? '').trim()
-        if (t(COL_OBS.estado) !== 'Vidrio') return null
+        if (![COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho, COL_OBS.alto, COL_OBS.cantidad].some((id) => t(id))) return null
         const cant = Number(t(COL_OBS.cantidad).replace(',', '.'))
         return {
           id: String(s.id),
-          modelo: s.name.trim(),
+          /* "V1 - Vidrio 2" → "V1": el modelo de la abertura. */
+          modelo: modeloDeSubelemento(s.name),
           comp1: t(COL_OBS.comp1),
           camara: t(COL_OBS.camara),
           comp2: t(COL_OBS.comp2),

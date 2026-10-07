@@ -41,7 +41,10 @@ export function FinalizarOperacion({
   detalle,
   registrar,
   textos,
+  etiqueta = 'Finalizar Operación',
 }: {
+  /** El texto del botón ("Finalizar Edición"). */
+  etiqueta?: string
   detalle?: string
   registrar?: () => Promise<void>
   /** Otra operación que no es una OP (el presupuesto): sus propios textos. */
@@ -119,7 +122,7 @@ export function FinalizarOperacion({
         title={accionEnCurso ?? undefined}
         onClick={() => (enviado ? void cerrar() : setPreguntar(true))}
       >
-        <i className="fas fa-flag-checkered" /> Finalizar Operación
+        <i className="fas fa-flag-checkered" /> {etiqueta}
       </button>
 
       {preguntar && (

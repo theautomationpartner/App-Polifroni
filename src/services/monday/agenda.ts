@@ -9,8 +9,9 @@
  *    CUENTA, no el cliente: de la cuenta salen las obras, los pendientes y el cliente asignado.
  *  - 👤 Clientes (9617181550): el cliente asignado en la cuenta queda vinculado en el turno.
  *  - 🪟 Obras (9617181553): etapa de producción, saldo y sus OP.
- *  - 🏭 Orden de Produccion (18432207111): los subelementos "Observacion" de cada OP —uno por
- *    abertura— son las aberturas a colocar. Los subelementos de la OBRA no sirven: son recibos.
+ *  - 🏭 Orden de Produccion (18432207111): los subelementos de cada OP son sus aberturas (una
+ *    abertura con dos vidrios son dos subelementos, "V1 - Vidrio 1" y "V1 - Vidrio 2"): las
+ *    aberturas a colocar. Los subelementos de la OBRA no sirven: son recibos.
  *  - 🚚 Pend de Entrega Vta (9900503036): los pendientes a entregar.
  */
 import {
@@ -31,7 +32,8 @@ import { estadoDeOrden } from '@/lib/estadosOp'
 import { memoGlobal } from './cache'
 import { BOARD_OBRAS, BOARD_ORDENES, COL } from './columns'
 import { getEstructuraBoard } from './obras'
-import { COL_OBS, COL_OP } from './ordenes'
+import { COL_OP } from './ordenes'
+import { modeloDeSubelemento } from '@/lib/subelementosOp'
 import { byId, num, sumaMirror, valor, type CV } from './parse'
 import { mondayApi } from './sdk'
 
@@ -448,8 +450,8 @@ export async function getElementosCliente(cliente: ClienteTurno): Promise<Elemen
 }
 
 /**
- * Las aberturas a colocar de cada obra (RN-07): los subelementos "Observacion" —uno por abertura—
- * de sus OP vigentes. Las canceladas y los borradores no cuentan. Una obra sin OP en el tablero de
+ * Las aberturas a colocar de cada obra (RN-07): los subelementos de sus OP vigentes, contados por
+ * modelo —una abertura con varios vidrios son varios subelementos, "V1 - Vidrio 1", "V1 - Vidrio 2"—. Las canceladas y los borradores no cuentan. Una obra sin OP en el tablero de
  * órdenes (anterior a la app) devuelve `null`: no se sabe, y no es lo mismo que cero.
  */
 export async function aberturasDeObras(obras: readonly ObraDeCliente[]): Promise<Record<string, number | null>> {
@@ -464,14 +466,14 @@ export async function aberturasDeObras(obras: readonly ObraDeCliente[]): Promise
         state: string
         board: { id: string }
         column_values: CV[]
-        subitems: { column_values: { id: string; text: string | null }[] }[] | null
+        subitems: { name: string }[] | null
       }[]
     }>(
       `query ($ids: [ID!]) {
         items(ids: $ids) {
           id state board { id }
           column_values(ids: ["${COL_OP.estado}", "${COL_OP.opFinal}", "${COL_OP.etmo}"]) { id text value }
-          subitems { column_values(ids: ["${COL_OBS.estado}"]) { id text } }
+          subitems { name }
         }
       }`,
       { ids: tanda },
@@ -489,7 +491,7 @@ export async function aberturasDeObras(obras: readonly ObraDeCliente[]): Promise
       const tieneDoc = Boolean(limpio(c[COL_OP.opFinal]?.text) || limpio(c[COL_OP.etmo]?.text))
       const estado = estadoDeOrden(limpio(c[COL_OP.estado]?.text), tieneDoc)
       if (estado === 'cancelada' || estado === 'borrador') continue
-      const n = (op.subitems ?? []).filter((s) => (s.column_values[0]?.text ?? '').trim() === 'Observacion').length
+      const n = new Set((op.subitems ?? []).map((s) => modeloDeSubelemento(s.name).toUpperCase())).size
       total = (total ?? 0) + n
     }
     salida[obra.id] = total

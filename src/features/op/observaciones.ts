@@ -10,11 +10,26 @@
  * mano, ordenado.
  */
 
+/** Lo que la lectura de la IA dice de una abertura (su bloque "Modelo:"). */
+export interface DatosAbertura {
+  /** "Ventana Efficient DC 66-85 Ap.Int - OSCILOBATIENTE 1 HOJA IZQUIERDA". */
+  descripcion: string | null
+  /** En mayúsculas: "BLANCO". */
+  color: string | null
+  /** De "Medidas:", tal cual: "1.500". */
+  ancho: string | null
+  alto: string | null
+  /** "Uds:": cuántas aberturas iguales lleva el modelo. */
+  cantidad: number | null
+}
+
 /** Una abertura del documento, con su observación. */
 export interface Abertura {
   /** Cómo la nombra el ETMO, normalizado en mayúscula: "V1", "V6", "M6". */
   nombre: string
   texto: string
+  /** Sus datos, si la leyó la IA. */
+  datos?: DatosAbertura
 }
 
 /**
@@ -88,7 +103,7 @@ export function fusionar(
 ): Abertura[] {
   const previo = new Map(guardadas.map((a) => [a.nombre, a.texto]))
   return delDocumento.map((a) => ({
-    nombre: a.nombre,
+    ...a,
     texto: previo.get(a.nombre)?.trim() || a.texto,
   }))
 }

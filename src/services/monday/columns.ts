@@ -12,6 +12,9 @@ export const BOARD_OBRAS = 9617181553
 /** 🏭 Orden de Produccion: una OP por ítem, con SUS documentos (ver `services/monday/ordenes`). */
 export const BOARD_ORDENES = 18432207111
 
+/** Los subelementos de las OP (observaciones y vidrios, ver `COL_OBS`): su tablero propio. */
+export const BOARD_SUB_ORDENES = 18432580598
+
 /**
  * Dónde guarda cada OP sus documentos. La obra ya no los guarda: cada orden tiene su propia Orden
  * HETMO y su propia OP final.

@@ -4,21 +4,21 @@ import type { VidrioLeido } from '@/services/monday'
 /**
  * La ventana que sigue a la lectura de la orden de HETMO.
  *
- * Primero muestra los vidrios que encontró la IA (o avisa que no hay ninguno) y ofrece generar las
- * observaciones. Esa segunda lectura corre EN la misma ventana, con su animación: si trae
- * aberturas la ventana se cierra sola (con una caja por abertura); si no hay ninguna, avisa ahí mismo.
+ * Arriba, cuántas aberturas identificó la IA; abajo, los vidrios que encontró en ellas (o el aviso de
+ * que no hay ninguno). Ofrece "Cargar observaciones", que sólo abre una caja por abertura: no vuelve
+ * a leer el documento.
  */
 export type FaseLecturaHetmo =
-  | { fase: 'vidrios' }
-  | { fase: 'leyendoObs' }
-  /** La lectura no encontró ninguna abertura (ningún "Modelo:"). */
-  | { fase: 'sinObs' }
+  | { fase: 'leido' }
   | { fase: 'error'; problema: string; reintentar: () => void }
 
 interface Props {
+  /** Cuántas aberturas identificó la IA. */
+  aberturas: number
   vidrios: VidrioLeido[]
   estado: FaseLecturaHetmo
-  onGenerarObservaciones: () => void
+  /** Sin esta función (las cajas ya están abiertas) no se ofrece el botón. */
+  onCargarObservaciones?: () => void
   onClose: () => void
 }
 
@@ -26,8 +26,7 @@ const SOPORTE = 'Validá que la información sea correcta; caso contrario, conta
 
 const celda = (v: string | null) => v || '—'
 
-export function LecturaHetmoModal({ vidrios, estado, onGenerarObservaciones, onClose }: Props) {
-  const leyendo = estado.fase === 'leyendoObs'
+export function LecturaHetmoModal({ aberturas, vidrios, estado, onCargarObservaciones, onClose }: Props) {
   const hay = vidrios.length > 0
 
   if (estado.fase === 'error') {
@@ -52,89 +51,79 @@ export function LecturaHetmoModal({ vidrios, estado, onGenerarObservaciones, onC
     )
   }
 
-  if (estado.fase === 'sinObs') {
+  if (aberturas === 0) {
     return (
       <Modal
         title="No se encontraron aberturas"
         icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
         onClose={onClose}
         actions={
-          <button type="button" className="btn btn-primary btn-marca" onClick={onClose}>
-            Entendido
+          <button type="button" className="btn btn-primary" onClick={onClose}>
+            Aceptar
           </button>
         }
       >
-        La orden no trae aberturas para cargarles observaciones. Si la información no es correcta,
-        contactá con el soporte de TAP.
+        La IA no identificó ninguna abertura (ningún «Modelo:») en esta orden. {SOPORTE}
       </Modal>
     )
   }
 
   return (
     <Modal
-      title={
-        leyendo
-          ? 'Generando observaciones'
-          : hay
-            ? `Se encontraron ${vidrios.length} ${vidrios.length === 1 ? 'vidrio' : 'vidrios'} en la orden`
-            : 'No se encontraron vidrios en la orden'
-      }
-      icon={
-        leyendo ? (
-          <span className="hl-giro" aria-hidden />
-        ) : hay ? (
-          <i className="fas fa-border-all modal-icon--info" />
-        ) : (
-          <i className="fas fa-triangle-exclamation modal-icon--warn" />
-        )
-      }
-      cerrable={!leyendo}
+      title={`${aberturas} ${aberturas === 1 ? 'abertura leída' : 'aberturas leídas'}`}
+      icon={<i className="fas fa-border-all modal-icon--info" />}
       onClose={onClose}
-      className={hay && !leyendo ? 'modal-box--ancho' : undefined}
+      className={hay ? 'modal-box--ancho' : undefined}
       actions={
-        leyendo ? undefined : (
-          <>
-            <button type="button" className="btn btn-primary" onClick={onClose}>
-              Aceptar
+        <>
+          <button type="button" className="btn btn-primary" onClick={onClose}>
+            Aceptar
+          </button>
+          {onCargarObservaciones && (
+            <button type="button" className="btn btn-primary btn-marca" onClick={onCargarObservaciones}>
+              <i className="fas fa-pen-to-square" /> Cargar observaciones
             </button>
-            <button type="button" className="btn btn-primary btn-marca" onClick={onGenerarObservaciones}>
-              <i className="fas fa-wand-magic-sparkles" /> Generar observaciones
-            </button>
-          </>
-        )
+          )}
+        </>
       }
     >
-      {leyendo ? (
-        <p className="hl-leyendo">La IA está leyendo los modelos de la orden y sus observaciones…</p>
-      ) : hay ? (
-        <div className="hl-tabla-wrap">
-          <table className="hl-tabla">
-            <thead>
-              <tr>
-                <th>Vidrio Comp 1</th>
-                <th>Cámara</th>
-                <th>Vidrio Comp 2</th>
-                <th>Ancho</th>
-                <th>Alto</th>
-                <th>Cantidad</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vidrios.map((v, i) => (
-                <tr key={i} title={v.modelo ? `Modelo ${v.modelo}` : undefined}>
-                  <td>{celda(v.comp1)}</td>
-                  <td>{celda(v.camara)}</td>
-                  <td>{celda(v.comp2)}</td>
-                  <td>{celda(v.ancho)}</td>
-                  <td>{celda(v.alto)}</td>
-                  <td>{v.cant ?? '—'}</td>
+      {hay ? (
+        <>
+          <p className="hl-subt">
+            Se encontraron <strong>{vidrios.length}</strong> {vidrios.length === 1 ? 'vidrio' : 'vidrios'} en la orden
+          </p>
+          <div className="hl-tabla-wrap">
+            <table className="hl-tabla">
+              <thead>
+                <tr>
+                  <th>Vidrio Comp 1</th>
+                  <th>Cámara</th>
+                  <th>Vidrio Comp 2</th>
+                  <th>Ancho</th>
+                  <th>Alto</th>
+                  <th>Cantidad</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {vidrios.map((v, i) => (
+                  <tr key={i} title={v.modelo ? `Modelo ${v.modelo}` : undefined}>
+                    <td>{celda(v.comp1)}</td>
+                    <td>{celda(v.camara)}</td>
+                    <td>{celda(v.comp2)}</td>
+                    <td>{celda(v.ancho)}</td>
+                    <td>{celda(v.alto)}</td>
+                    <td>{v.cant ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       ) : (
-        <>NO se encontraron vidrios especificados en las aberturas de esta orden. {SOPORTE}</>
+        <p className="hl-subt hl-subt--warn">
+          <i className="fas fa-triangle-exclamation modal-icon--warn" /> NO se encontraron vidrios especificados en las
+          aberturas de esta orden. {SOPORTE}
+        </p>
       )}
     </Modal>
   )

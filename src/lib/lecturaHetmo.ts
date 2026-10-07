@@ -1,12 +1,20 @@
 /**
  * La respuesta de la lectura de HETMO (`/api/hetmo`), puesta en la forma de la app: los vidrios como
- * viajan a la OP y las observaciones como cajas por abertura. Sin dependencias: se prueba en
+ * viajan a la OP y las aberturas como cajas de observación (vacías: las carga el usuario). Sin dependencias: se prueba en
  * `tests/produccion.test.ts`.
  */
 import type { VidrioLeido } from '@/services/monday/ordenes'
 import { normalizarNombre, type Abertura } from '@/features/op/observaciones'
 
-export type ModoLectura = 'vidrios' | 'observaciones'
+/** Una abertura tal cual la devuelve la lectura: un bloque "Modelo:" del documento. */
+export interface AberturaHetmo {
+  nombre: string
+  descripcion?: string | null
+  color?: string | null
+  ancho?: string | null
+  alto?: string | null
+  cantidad?: number | null
+}
 
 /** Un vidrio tal cual lo devuelve la lectura: una línea "Vid:" del documento. */
 export interface VidrioHetmo {
@@ -22,7 +30,8 @@ export interface VidrioHetmo {
 }
 
 export interface LecturaHetmo {
-  observaciones: { nombre: string; observacion: string | null }[]
+  /** Una por "Modelo:" del documento, tenga o no vidrio. */
+  aberturas: AberturaHetmo[]
   vidrios: VidrioHetmo[]
 }
 
@@ -42,9 +51,30 @@ export const aVidriosOp = (vidrios: VidrioHetmo[]): VidrioLeido[] =>
     cant: typeof v.cant === 'number' && Number.isFinite(v.cant) ? v.cant : null,
   }))
 
-/** Las observaciones, como cajas por abertura. Un modelo sin nombre se numera por su posición. */
-export const aAberturasOp = (observaciones: LecturaHetmo['observaciones']): Abertura[] =>
-  observaciones.map((o, i) => ({
-    nombre: normalizarNombre(o.nombre || '') || `V${i + 1}`,
-    texto: typeof o.observacion === 'string' ? o.observacion.trim() : '',
-  }))
+/**
+ * Las aberturas leídas, como cajas de observación vacías. Un modelo sin nombre se numera por su
+ * posición; un nombre repetido (la IA lo leyó dos veces) queda una sola vez.
+ */
+export const aAberturasOp = (aberturas: LecturaHetmo['aberturas']): Abertura[] => {
+  const vistas = new Set<string>()
+  return aberturas.flatMap((a, i) => {
+    const nombre = normalizarNombre(a.nombre || '') || `V${i + 1}`
+    const clave = nombre.toUpperCase()
+    if (vistas.has(clave)) return []
+    vistas.add(clave)
+    return [
+      {
+        nombre,
+        texto: '',
+        datos: {
+          descripcion: txt(a.descripcion),
+          /* El color va en mayúsculas en el tablero, aunque la IA no lo haya pasado. */
+          color: txt(a.color)?.toUpperCase() ?? null,
+          ancho: txt(a.ancho),
+          alto: txt(a.alto),
+          cantidad: typeof a.cantidad === 'number' && Number.isFinite(a.cantidad) ? a.cantidad : null,
+        },
+      },
+    ]
+  })
+}

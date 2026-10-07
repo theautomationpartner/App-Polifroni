@@ -43,6 +43,10 @@ export function etiquetaPaso(
   if (operacion === 'crearTurno') {
     return paso === 'obra' ? 'Seleccionar Cliente' : paso === 'carga' ? 'Datos del Turno' : 'Registrar Turno'
   }
+  /* Editar Órdenes de Producción: la orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
+  if (operacion === 'editar') {
+    return paso === 'obra' ? 'Buscar Orden' : paso === 'carga' ? 'Cargar Nuevo Dibujo HETMO' : 'Enviar Nueva OP Final'
+  }
   if (paso === 'obra') return 'Seleccionar Obra'
   /* Solicitud de cortes de vidrio: la obra, los vidrios de sus OP en el taller, la solicitud. */
   if (operacion === 'vidrios') return paso === 'carga' ? 'Seleccionar Ordenes' : 'Solicitar Cortes'

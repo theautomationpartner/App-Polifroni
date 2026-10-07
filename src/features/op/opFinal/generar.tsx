@@ -23,6 +23,11 @@ export interface EntradaGenerar extends EntradaOp {
   hetmo: File | null
   /** El documento fue una foto, pasada a PDF al cargarla: su única hoja no se recorta por mitades. */
   deFoto?: boolean
+  /**
+   * Una OP editada: los documentos de los dibujos, por `archivoIdx` (el 0 es `hetmo`). Los modelos
+   * editados toman su dibujo del documento nuevo.
+   */
+  otrosHetmo?: File[]
 }
 
 export interface ResultadoGenerar {
@@ -55,9 +60,13 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
   if (!datos || errores.length) return { ok: false, errores, avisos }
 
   /* ── Los dibujos ──────────────────────────────────────────────────────── */
-  let hojas: HTMLCanvasElement[]
+  const documentos = [e.hetmo as File, ...(e.otrosHetmo ?? [])]
+  const hojasDe: HTMLCanvasElement[][] = []
   try {
-    hojas = await cargarHojas(e.hetmo as File)
+    const usados = new Set(datos.paginas.flatMap((p) => p.filas.flat()).map((m) => m.archivoIdx))
+    for (let i = 0; i < documentos.length; i++) {
+      hojasDe[i] = i === 0 || usados.has(i) ? await cargarHojas(documentos[i]) : []
+    }
   } catch (err) {
     return {
       ok: false,
@@ -65,6 +74,7 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
       avisos,
     }
   }
+  const hojas = hojasDe[0]
   if (datos.hojasNecesarias > hojas.length) {
     avisos.push(
       `Faltan los dibujos de algunos modelos porque la IA los ubicó hasta la hoja ${datos.hojasNecesarias}, pero el documento de HETMO tiene ${hojas.length} ${hojas.length === 1 ? 'hoja' : 'hojas'}, por eso esos modelos van sin dibujo. Verificá que el documento cargado en el paso anterior esté completo y volvé a generar una OP Final.`,
@@ -74,10 +84,12 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
   const esFoto = !!e.deFoto || !/\.pdf$/i.test((e.hetmo as File).name)
   const cache = new Map<string, Dibujo | null>()
   const dibujo = (m: ModeloOp): Dibujo | null => {
-    if (m.hojaIdx == null || !hojas[m.hojaIdx]) return null
-    const slot = esFoto ? 'full' : m.slot
-    const clave = `${m.hojaIdx}:${slot}`
-    if (!cache.has(clave)) cache.set(clave, recortar(hojas[m.hojaIdx], slot))
+    const deEste = hojasDe[m.archivoIdx] ?? []
+    if (m.hojaIdx == null || !deEste[m.hojaIdx]) return null
+    /* Una foto no se recorta: ni el original (`deFoto`) ni un dibujo nuevo que la IA marcó "none". */
+    const slot = (m.archivoIdx === 0 && esFoto) || m.slot === 'none' ? 'full' : m.slot
+    const clave = `${m.archivoIdx}:${m.hojaIdx}:${slot}`
+    if (!cache.has(clave)) cache.set(clave, recortar(deEste[m.hojaIdx], slot))
     return cache.get(clave) ?? null
   }
   const dibujos = datos.paginas.flatMap((p) => p.filas.flat()).map(dibujo)

@@ -11,9 +11,10 @@ import { join } from 'node:path'
 
 /** Los prompts que existen. Un nombre nuevo se agrega acá y en `prompts/`. */
 export type NombrePrompt =
-  | 'hetmo-vidrios-observaciones.sistema'
-  | 'hetmo-vidrios.pedido'
-  | 'hetmo-observaciones.pedido'
+  | 'hetmo-aberturas-vidrios.sistema'
+  | 'hetmo-aberturas-vidrios.pedido'
+  | 'hetmo-edicion.sistema'
+  | 'hetmo-edicion.pedido'
   | 'listado-hetmo.sistema'
   | 'listado-hetmo.pedido'
 

@@ -22,6 +22,20 @@ const BOARD_ORDENES = '18432207111'
 const COL_ESTADO = 'color_mm7g3ta4'
 const ETIQUETA_TALLER = 'Enviada a Taller'
 export const ETIQUETA_COMPLETADA = 'Produccion Completada'
+/* Los índices de `🤖Estado OP` (ver `INDICE_OP` en `src/lib/estadosOp.ts`): no cambian si la
+   etiqueta se renombra en el tablero. */
+const INDICE_TALLER = 4
+const INDICE_COMPLETADA = 0
+
+/** El índice de un status, de su `value` JSON. `null` si no tiene. */
+const indiceDe = (valor: string | null | undefined): number | null => {
+  try {
+    const i = (JSON.parse(valor ?? 'null') as { index?: unknown } | null)?.index
+    return typeof i === 'number' && Number.isInteger(i) ? i : null
+  } catch {
+    return null
+  }
+}
 
 export async function manejarProduccionCompletada(req: Pedido, res: ServerResponse): Promise<void> {
   if (req.method !== 'POST') return responder(res, 405, { error: 'Method Not Allowed' })
@@ -37,10 +51,10 @@ export async function manejarProduccionCompletada(req: Pedido, res: ServerRespon
 
   try {
     const data = await mondayServidor<{
-      items?: { id: string; state?: string; board?: { id: string }; column_values?: { text: string | null }[] }[]
+      items?: { id: string; state?: string; board?: { id: string }; column_values?: { text: string | null; value?: string | null }[] }[]
     }>(
       `query ($ids: [ID!], $col: [String!]) {
-        items(ids: $ids) { id state board { id } column_values(ids: $col) { text } }
+        items(ids: $ids) { id state board { id } column_values(ids: $col) { text value } }
       }`,
       { ids: [ordenId], col: [COL_ESTADO] },
     )
@@ -50,16 +64,20 @@ export async function manejarProduccionCompletada(req: Pedido, res: ServerRespon
       return responder(res, 404, { error: 'La orden no está en el tablero de órdenes.' })
     }
     const estado = (item.column_values?.[0]?.text ?? '').trim()
-    if (estado === ETIQUETA_COMPLETADA) {
+    /* Se decide por el índice; el nombre, sólo si la etiqueta no lo trae. */
+    const indice = indiceDe(item.column_values?.[0]?.value)
+    const completada = indice != null ? indice === INDICE_COMPLETADA : estado === ETIQUETA_COMPLETADA
+    const enTaller = indice != null ? indice === INDICE_TALLER : estado === ETIQUETA_TALLER
+    if (completada) {
       return responder(res, 409, { error: 'La producción de la orden ya fue finalizada.', estado })
     }
-    if (estado !== ETIQUETA_TALLER) return responder(res, 409, { error: 'La orden no está enviada al taller.', estado })
+    if (!enTaller) return responder(res, 409, { error: 'La orden no está enviada al taller.', estado })
 
     await mondayServidor(
-      `mutation ($id: ID!, $valor: String!) {
-        change_simple_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_ESTADO}", value: $valor) { id }
+      `mutation ($id: ID!, $valor: JSON!) {
+        change_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_ESTADO}", value: $valor) { id }
       }`,
-      { id: ordenId, valor: ETIQUETA_COMPLETADA },
+      { id: ordenId, valor: JSON.stringify({ index: INDICE_COMPLETADA }) },
       { escritura: true },
     )
     return responder(res, 200, { estado: ETIQUETA_COMPLETADA })

@@ -65,6 +65,10 @@
 .modal-icon--info {
   color: var(--primary-blue);
 }
+/* El bordó de la marca (`--marca`, en labatea.css). */
+.modal-icon--marca {
+  color: var(--marca);
+}
 .modal-title {
   font-size: 19px;
   font-weight: 700;

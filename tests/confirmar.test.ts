@@ -84,7 +84,11 @@ assert.equal(leerEnlaceLargo(new URLSearchParams({ ...Object.fromEntries(largo),
 
 /* ── Las reglas ────────────────────────────────────────────────────────────────────────────────── */
 assert.equal(situacionOp('Enviada Pend Confirmar'), 'pendiente')
-assert.equal(situacionOp('Generada y Enviada Pend Confirmar'), 'pendiente', 'el nombre nuevo de la etiqueta')
+assert.equal(situacionOp('Generada y Enviada Pend Confirmar'), 'pendiente', 'un nombre anterior de la etiqueta')
+assert.equal(situacionOp('Pend de Confirmar'), 'pendiente', 'el nombre de hoy en el tablero')
+assert.equal(situacionOp('Cualquier nombre', 3), 'pendiente', 'con el índice manda el índice, no el nombre')
+assert.equal(situacionOp('Pend de Confirmar', 6), 'sinEnviar', 'índice 6 = Generada: todavía no se envió')
+assert.equal(situacionOp('', 1), 'confirmada')
 for (const e of ['Confirmada', 'Enviada a Taller', 'Produccion Completada']) {
   assert.equal(situacionOp(e), 'confirmada', `${e}: ya se confirmó`)
 }
@@ -164,7 +168,7 @@ const op = (estado: string, clave = CLAVE) => ({
   const escrituras = m.llamadas.filter((l) => l.query.trim().startsWith('mutation'))
   const valores = (l: Llamada) => JSON.parse(String(l.variables.valores ?? '{}'))
   assert.equal(escrituras[0].variables.id, '501')
-  assert.deepEqual(valores(escrituras[0]), { [COL_OP.estado]: { label: 'Confirmada' } }, 'la OP pasa a Confirmada')
+  assert.deepEqual(valores(escrituras[0]), { [COL_OP.estado]: { index: 1 } }, 'la OP pasa a Confirmada (por índice: el nombre puede cambiar)')
   assert.equal(escrituras[1].variables.id, '900')
   assert.deepEqual(valores(escrituras[1]), { color_mm73rxg7: { label: 'CONFIRMADO OP' } }, 'la obra, CONFIRMADO OP')
   assert.ok(String(escrituras[2].variables.cuerpo).includes('PEREZ JUAN'), 'el update dice quién confirmó')
@@ -265,7 +269,8 @@ globalThis.fetch = (async (_url: string, init: { body: string }) => {
   const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
   if (query.trim().startsWith('mutation')) {
     mutaciones.push(String(variables.valores ?? variables.cuerpo))
-    if (String(variables.valores ?? '').includes('Confirmada')) estadoOp = 'Confirmada'
+    /* La OP se confirma por índice ({"index":1}), no por nombre. */
+    if (/"index":1[,}]|Confirmada/.test(String(variables.valores ?? ''))) estadoOp = 'Confirmada'
     return new Response(JSON.stringify({ data: { ok: true } }))
   }
   if (query.includes('items(ids:')) return new Response(JSON.stringify({ data: { items: [OBRA_CONTACTOS] } }))

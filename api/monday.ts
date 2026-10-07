@@ -96,7 +96,7 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
 function esMutacion(body: string): boolean {
   try {
     const { query } = JSON.parse(body) as { query?: unknown }
-    return typeof query !== 'string' || /mutation/i.test(query)
+    return typeof query !== 'string' || /\bmutation\b/i.test(query)
   } catch {
     return true
   }

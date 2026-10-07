@@ -47,7 +47,7 @@ function Fila({ label, requerido = true, children }: { label: string; requerido?
  * Enviar", con el original en `🤖OP OriginaL` y la OP final en `🤖Op V2 Mejorada` (ver
  * `guardarOpGenerada`): una orden generada que no se llega a enviar se termina desde la consulta.
  * "Ver OP Final" usa el PDF de la app y "Confirmar y Enviar" lo manda dentro del pedido. "Finalizar
- * Operación" completa la misma OP: los subelementos (observaciones y vidrios), el N° de HETMO y el
+ * Operación" completa la misma OP: los subelementos (una abertura cada uno, con observación y vidrios), el N° de HETMO y el
  * envío (ver `registrarPvc`). Se puede volver a generar mientras la orden no se haya enviado: se
  * reusa la misma OP y se reemplaza la OP final.
  */
@@ -400,7 +400,7 @@ export function EmitirEnviarView() {
       {guardando && (
         <ModalCargando
           titulo="Guardando la orden en el tablero"
-          detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO, la OP final, sus vidrios y sus observaciones."
+          detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO y la OP final adjuntas."
         />
       )}
     </section>

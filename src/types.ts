@@ -121,6 +121,7 @@ export type Paso = 'obra' | 'carga' | 'envio'
 export type Operacion =
   | 'enviar'
   | 'consultar'
+  | 'editar'
   | 'vidrios'
   | 'crearTurno'
   | 'gestionarTurnos'

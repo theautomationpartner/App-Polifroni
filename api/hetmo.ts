@@ -1,8 +1,10 @@
 /**
  * Serverless Function (Vercel) — lectura con Claude de la orden de HETMO de una OP de PVC.
  *
- *   POST ?modo=vidrios|observaciones   cuerpo: los bytes del PDF  → { observaciones, vidrios }
+ *   POST ?modo=aberturas               cuerpo: los bytes del PDF  → { aberturas, vidrios }
  *   POST ?modo=listado                 cuerpo: los bytes del PDF  → la lectura para la OP final
+ *   POST ?modo=edicion                 el dibujo nuevo y las aberturas a editar → sus datos nuevos
+ *   GET|POST ?modo=lectura&orden=ID    la lectura guardada con la que se armó la OP final
  *
  * La app manda el PDF directo, sin pasar por Monday (ver `api/_hetmo.ts`). Necesita
  * `ANTHROPIC_API_KEY` en las variables del proyecto.

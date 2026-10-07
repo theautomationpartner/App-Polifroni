@@ -144,11 +144,14 @@ for (const etiqueta of ETIQUETAS) {
     assert.deepEqual(accionesConsulta(['produccion', 'admin'], o), accionesConsulta(['admin'], o), `los dos teams = admin («${etiqueta}»)`)
   }
 }
-assert.deepEqual(accionesConsulta(['admin'], ordenDe('Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'], 'admin: pendiente → reenviar y cancelar')
-assert.deepEqual(accionesConsulta(['admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'], 'con el nombre nuevo de la etiqueta, igual')
+assert.deepEqual(accionesConsulta(['admin'], ordenDe('Enviada Pend Confirmar', true)), ['reenviar', 'confirmar', 'cancelar'], 'admin: pendiente → reenviar, confirmar a mano y cancelar')
+assert.deepEqual(accionesConsulta(['admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'confirmar', 'cancelar'], 'con otro nombre de la etiqueta, igual')
+assert.deepEqual(accionesConsulta(['admin'], ordenDe('Pend de Confirmar', true)), ['reenviar', 'confirmar', 'cancelar'], 'con el nombre de hoy en el tablero, igual')
+assert.ok(!accionesConsulta(['produccion'], ordenDe('Pend de Confirmar', true)).includes('confirmar'), 'Produccion nunca confirma')
+assert.ok(!accionesConsulta(['admin'], ordenDe('Generada Pend de Enviar', true)).includes('confirmar'), 'sin enviar no se confirma')
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('Generada Pend de Enviar', true)), ['enviar', 'cancelar'], 'generada sin enviar → enviar y cancelar')
 /* Lo que se veía en la pantalla: un usuario en los teams Produccion Y Admin tiene TODAS las acciones. */
-assert.deepEqual(accionesConsulta(['produccion', 'admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'cancelar'])
+assert.deepEqual(accionesConsulta(['produccion', 'admin'], ordenDe('Generada y Enviada Pend Confirmar', true)), ['reenviar', 'confirmar', 'cancelar'])
 assert.deepEqual(accionesConsulta(['produccion', 'admin'], ordenDe('Enviada a Taller', true)), ['finalizar'])
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('', true)), ['enviar', 'cancelar'], 'admin: sin estado → enviar y cancelar')
 assert.deepEqual(accionesConsulta(['admin'], ordenDe('Enviada a Taller', true)), ['finalizar'], 'admin: del taller → finalizar')

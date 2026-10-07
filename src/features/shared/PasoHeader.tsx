@@ -81,13 +81,13 @@ export function TopSel({ label, children }: { label: string; children: ReactNode
  * de operación descarta lo cargado.
  */
 function OperacionSelector() {
-  const { proceso, operacion, obra, turno, presupuesto, accionEnCurso, usuario } = useApp()
+  const { proceso, operacion, obra, turno, presupuesto, edicion, accionEnCurso, usuario } = useApp()
   const dispatch = useDispatch()
   const [pendiente, setPendiente] = useState<Operacion | null>(null)
   const actual = OPERACIONES.find((o) => o.id === operacion)
   /* Con trabajo cargado —una obra, el cliente de un turno o lo elegido de un presupuesto— cambiar de
      operación lo descarta. */
-  const hayTrabajo = Boolean(obra || turno.cliente || presupuestoEnCurso(presupuesto))
+  const hayTrabajo = Boolean(obra || turno.cliente || presupuestoEnCurso(presupuesto) || edicion.orden)
 
   const elegir = (op: Operacion) => {
     if (op === operacion || accionEnCurso) return

@@ -52,9 +52,10 @@ export const COL_SUB_PRES = {
 /** Las etiquetas, tal cual están en los tableros. */
 export const ETIQUETAS = {
   op: {
-    /* Renombrada en el tablero el 06/10/2026: el nombre de antes se sigue aceptando al leer. */
-    pendiente: 'Generada y Enviada Pend Confirmar',
-    pendienteAnterior: 'Enviada Pend Confirmar',
+    /* La etiqueta que espera la respuesta se renombró varias veces en el tablero (hoy "Pend de
+       Confirmar"): al leer se aceptan todos sus nombres, y además se mira su ÍNDICE (`INDICE_OP`). */
+    pendiente: 'Pend de Confirmar',
+    pendienteAnteriores: ['Generada y Enviada Pend Confirmar', 'Enviada Pend Confirmar', 'Enviada Pend de Confirmar'],
     confirmada: 'Confirmada',
     /* No existe todavía en `🤖Estado OP`: se crea la primera vez (`create_labels_if_missing`), como
        hace la app con "Enviada a Taller" y "Cancelada". */
@@ -79,13 +80,26 @@ export const ETIQUETAS = {
  */
 export type SituacionRespuesta = 'pendiente' | 'confirmada' | 'rechazada' | 'cancelada' | 'sinEnviar'
 
+/**
+ * Los índices de `🤖Estado OP` (su `settings_str`): no cambian al renombrar una etiqueta. Son los
+ * mismos de `INDICE_OP` en `src/lib/estadosOp.ts`.
+ */
+export const INDICE_OP = { completada: 0, confirmada: 1, cancelada: 2, pendiente: 3, taller: 4, generada: 6 } as const
+
 /** Las etiquetas de `🤖Estado OP` de una orden que ya pasó la confirmación del cliente. */
 const OP_YA_CONFIRMADA: readonly string[] = [ETIQUETAS.op.confirmada, 'Enviada a Taller', 'Produccion Completada']
 
-/** Una OP sólo se responde en "Generada y Enviada Pend Confirmar" (o su nombre anterior). */
-export function situacionOp(etiqueta: string): SituacionRespuesta {
+/**
+ * Una OP sólo se responde mientras espera la confirmación ("Pend de Confirmar", con cualquiera de
+ * sus nombres). Con el índice de la etiqueta se decide por él: el nombre puede haber cambiado.
+ */
+export function situacionOp(etiqueta: string, indice: number | null = null): SituacionRespuesta {
+  if (indice === INDICE_OP.pendiente) return 'pendiente'
+  if (indice === INDICE_OP.confirmada || indice === INDICE_OP.taller || indice === INDICE_OP.completada) return 'confirmada'
+  if (indice === INDICE_OP.cancelada) return 'cancelada'
+  if (indice === INDICE_OP.generada) return 'sinEnviar'
   const e = etiqueta.trim()
-  if (e === ETIQUETAS.op.pendiente || e === ETIQUETAS.op.pendienteAnterior) return 'pendiente'
+  if (e === ETIQUETAS.op.pendiente || (ETIQUETAS.op.pendienteAnteriores as readonly string[]).includes(e)) return 'pendiente'
   if (OP_YA_CONFIRMADA.includes(e)) return 'confirmada'
   if (e === ETIQUETAS.op.rechazada) return 'rechazada'
   if (e === 'Cancelada') return 'cancelada'
@@ -166,6 +180,8 @@ export interface Documento {
 interface CV {
   id: string
   text: string | null
+  /** El valor JSON de la columna: en un status trae su `index`. */
+  value?: string | null
   display_value?: string
   linked_item_ids?: string[]
 }
@@ -185,7 +201,17 @@ const sinCodigo = (n: string) => n.replace(/^\d+\s*-\s*/, '').trim()
 /** El nombre del primer ítem vinculado en una columna de conexión. */
 const vinculado = (c?: CV) => sinCodigo((c?.display_value || c?.text || '').split(',')[0] ?? '')
 
-const CAMPOS_CV = `id text ... on BoardRelationValue { display_value linked_item_ids }`
+const CAMPOS_CV = `id text value ... on BoardRelationValue { display_value linked_item_ids }`
+
+/** El índice de un status, de su `value` JSON. `null` si no tiene. */
+const indiceDe = (c?: CV): number | null => {
+  try {
+    const i = (JSON.parse(c?.value ?? 'null') as { index?: unknown } | null)?.index
+    return typeof i === 'number' && Number.isInteger(i) ? i : null
+  } catch {
+    return null
+  }
+}
 
 /** Las columnas de la obra con el cliente (su cuenta corriente) y el constructor/arquitecto. */
 const COL_OBRA_CONTACTO = { Cliente: 'board_relation_mkthtd70', Constructor: 'board_relation_mksz3v0h' } as const
@@ -240,7 +266,7 @@ export async function buscarDocumento(
       titulo: ['Orden de Producción', numero ? `N° ${numero}` : '', tipo ? `· ${tipo}` : ''].filter(Boolean).join(' '),
       detalle: (c[COL_OP.obra]?.display_value ?? '').trim(),
       etiqueta,
-      situacion: situacionOp(etiqueta),
+      situacion: situacionOp(etiqueta, indiceDe(c[COL_OP.estado])),
       nombre: nombreDelEnlace ?? (await nombreEnObra(consulta, obraId, rol)),
       motivo: '',
     }
@@ -339,7 +365,9 @@ export async function registrarRespuesta(
 
   if (doc.documento === 'op') {
     await escribir(BOARD_ORDENES, doc.id, {
-      [COL_OP.estado]: { label: confirma ? ETIQUETAS.op.confirmada : ETIQUETAS.op.rechazada },
+      /* "Confirmada" por índice (su nombre puede cambiar en el tablero). "NO Confirmado" no tiene
+         índice: va por nombre y se crea la primera vez. */
+      [COL_OP.estado]: confirma ? { index: INDICE_OP.confirmada } : { label: ETIQUETAS.op.rechazada },
     })
     if (doc.padreId) {
       await escribir(BOARD_OBRAS, doc.padreId, {
