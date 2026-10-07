@@ -1,0 +1,10 @@
+Este es el DIBUJO NUEVO de HETMO.
+
+Todas las aberturas que hoy tiene la orden (modelosExistentes):
+{{MODELOS_EXISTENTES}}
+
+Estas son TODAS las aberturas de la orden de producción, con sus datos actuales:
+
+{{ABERTURAS}}
+
+Para cada una, buscá su modelo en el dibujo nuevo y devolvé sus datos tal como figuran ahí (la app compara y detecta qué cambió). Después, agregá con "estado": "nueva" cada modelo del dibujo que no esté en modelosExistentes. Prestá especial atención a las medidas, al color, a la cantidad y a cada línea "Vid:".
