@@ -186,30 +186,38 @@ Tomá los modelos en orden y repartilos así:
 4 bis. REGLA ESPECIAL: PERFIL 66-100.
    Si en la PRIMERA línea de la descripción (la del tipo de abertura, la que sigue a
    "Uds:") aparece el código de perfil "66-100", a la SEGUNDA línea (la tipología) le
-   sacás la palabra "IZQUIERDA", junto con el espacio que la precede. Todo lo demás se
-   copia igual que siempre.
+   sacás LA MANO: la palabra "IZQUIERDA" o la palabra "DERECHA", la que tenga, junto
+   con el espacio que la precede. Las DOS se sacan: no es sólo IZQUIERDA. Todo lo demás
+   se copia igual que siempre.
 
      En el documento:
        Uds:1   Puerta Efficient DC 66-100 Ap. Int.
        Pos:    PUERTA 1 HOJA IZQUIERDA
      "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
 
+     En el documento:
+       Uds:1   Puerta Efficient DC 66-100 Ap. Int.
+       Pos:    PUERTA 1 HOJA DERECHA
+     "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
+
    Lo que dispara la regla es el CÓDIGO "66-100", NO el nombre. El nombre de la línea
    NO siempre va a ser "Puerta Efficient DC": puede ser otra línea, otra serie, otra
    abertura. Si el código es 66-100, la regla se aplica igual:
-       "Ventana Balconera Efficient DC 66-100 Ap.Int" + "PRACTICABLE 2 HOJAS IZQUIERDA"
+       "Ventana Balconera Efficient DC 66-100 Ap.Int" + "PRACTICABLE 2 HOJAS DERECHA"
        -> "Ventana Balconera Efficient DC 66-100 Ap.Int - PRACTICABLE 2 HOJAS"
    Y si dice "Puerta Efficient DC" pero el código NO es 66-100, NO se aplica.
 
    Cuidados:
      - Tiene que ser exactamente "66-100". "66-85", "55-69", "66-1000" o "166-100" son
-       otros perfiles: esos modelos conservan su "IZQUIERDA".
+       otros perfiles: esos modelos conservan su mano, sea "IZQUIERDA" o "DERECHA".
          "Ventana Efficient DC 66-85 Ap.Int - PRACTICABLE 1 HOJA IZQUIERDA"  (no cambia)
+         "Ventana Efficient DC 66-85 Ap.Int - OSCILOBATIENTE 1 HOJA DERECHA" (no cambia)
      - El código se busca SÓLO en la línea del tipo de abertura. Un "66-100" en otro
        lado del bloque (cotas, Tap, Vid) no cuenta.
-     - Sólo se saca la palabra "IZQUIERDA". "DERECHA" y cualquier otra palabra quedan
-       como están.
-     - Si la tipología no dice "IZQUIERDA", la descripción queda igual que siempre.
+     - Se sacan SÓLO las palabras "IZQUIERDA" y "DERECHA". Cualquier otra palabra de la
+       tipología ("PUERTA", "1 HOJA", "PRACTICABLE", etc.) queda como está.
+     - Si la tipología no dice ni "IZQUIERDA" ni "DERECHA", la descripción queda igual
+       que siempre.
 
    Es la ÚNICA modificación permitida sobre lo que dice el documento: no la extiendas a
    otros perfiles, a otras palabras ni a otros campos.

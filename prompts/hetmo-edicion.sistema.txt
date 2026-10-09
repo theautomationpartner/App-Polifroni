@@ -31,11 +31,13 @@ De dónde sale cada campo:
   codigo       TODO lo que sigue a "Modelo:" en el dibujo nuevo, tal cual: "V1", "V9 DT 3".
   descripcion  la línea que sigue a "Uds:" + " - " + la línea de abajo (sin "Pos:"). Si no hay segunda línea, sólo la primera.
                REGLA ESPECIAL, PERFIL 66-100: si en la PRIMERA línea (el tipo de abertura) aparece el código de perfil "66-100",
-               a la SEGUNDA línea (la tipología) le sacás la palabra "IZQUIERDA" y el espacio que la precede:
+               a la SEGUNDA línea (la tipología) le sacás LA MANO —la palabra "IZQUIERDA" o la palabra "DERECHA", la que
+               tenga— y el espacio que la precede. Las DOS se sacan: no es sólo IZQUIERDA.
                  "Puerta Efficient DC 66-100 Ap. Int." + "PUERTA 1 HOJA IZQUIERDA" -> "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
+                 "Puerta Efficient DC 66-100 Ap. Int." + "PUERTA 1 HOJA DERECHA"   -> "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
                Lo que dispara la regla es el CÓDIGO "66-100", no el nombre: la línea NO siempre dice "Puerta Efficient DC".
-               Tiene que ser exactamente "66-100" ("66-85", "55-69", "66-1000" o "166-100" conservan su "IZQUIERDA"), buscado
-               SÓLO en el tipo de abertura. Sólo se saca "IZQUIERDA"; "DERECHA" y lo demás quedan igual.
+               Tiene que ser exactamente "66-100" ("66-85", "55-69", "66-1000" o "166-100" conservan su mano, sea IZQUIERDA o
+               DERECHA), buscado SÓLO en el tipo de abertura. Sólo se sacan "IZQUIERDA" y "DERECHA"; lo demás queda igual.
   color        el valor de la línea "Color:", tal cual.
   ancho        el PRIMER número de "Medidas:", sin "mm", con el punto de miles: "1.500".
   alto         el SEGUNDO número de "Medidas:", sin "mm", con el punto de miles: "1.500".

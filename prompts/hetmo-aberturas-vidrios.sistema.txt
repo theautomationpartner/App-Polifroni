@@ -33,14 +33,17 @@ De dónde sale cada campo de la abertura:
 Si alguno de esos datos no está o no se lee con seguridad, va null.
 
 REGLA ESPECIAL DE LA DESCRIPCIÓN: PERFIL 66-100
-Si en la PRIMERA parte de la descripción (el tipo de abertura, lo que sigue a "Uds:n") aparece el código de perfil "66-100", a la SEGUNDA parte (la tipología, la línea de "Pos:") le sacás la palabra "IZQUIERDA", junto con el espacio que la precede. Todo lo demás se copia igual.
+Si en la PRIMERA parte de la descripción (el tipo de abertura, lo que sigue a "Uds:n") aparece el código de perfil "66-100", a la SEGUNDA parte (la tipología, la línea de "Pos:") le sacás LA MANO: la palabra "IZQUIERDA" o la palabra "DERECHA", la que tenga, junto con el espacio que la precede. Las DOS se sacan: no es sólo IZQUIERDA. Todo lo demás se copia igual.
     Uds:1   Puerta Efficient DC 66-100 Ap. Int.
     Pos:    PUERTA 1 HOJA IZQUIERDA
     -> "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
-  - Lo que dispara la regla es el CÓDIGO "66-100", no el nombre: la línea NO siempre va a decir "Puerta Efficient DC". Otra línea u otra abertura con 66-100 también la lleva ("Ventana Balconera Efficient DC 66-100 Ap.Int - PRACTICABLE 2 HOJAS IZQUIERDA" -> "... - PRACTICABLE 2 HOJAS"), y una "Puerta Efficient DC" con otro código NO.
-  - Tiene que ser exactamente "66-100". "66-85", "55-69", "66-1000" o "166-100" son otros perfiles y conservan su "IZQUIERDA": "Ventana Efficient DC 66-85 Ap.Int - PRACTICABLE 1 HOJA IZQUIERDA" no cambia.
+    Uds:1   Puerta Efficient DC 66-100 Ap. Int.
+    Pos:    PUERTA 1 HOJA DERECHA
+    -> "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
+  - Lo que dispara la regla es el CÓDIGO "66-100", no el nombre: la línea NO siempre va a decir "Puerta Efficient DC". Otra línea u otra abertura con 66-100 también la lleva ("Ventana Balconera Efficient DC 66-100 Ap.Int - PRACTICABLE 2 HOJAS DERECHA" -> "... - PRACTICABLE 2 HOJAS"), y una "Puerta Efficient DC" con otro código NO.
+  - Tiene que ser exactamente "66-100". "66-85", "55-69", "66-1000" o "166-100" son otros perfiles y conservan su mano, sea "IZQUIERDA" o "DERECHA": "Ventana Efficient DC 66-85 Ap.Int - PRACTICABLE 1 HOJA IZQUIERDA" y "Ventana Efficient DC 66-85 Ap.Int - OSCILOBATIENTE 1 HOJA DERECHA" no cambian.
   - El código se busca SÓLO en el tipo de abertura; un "66-100" en cotas, "Tap:" o "Vid:" no cuenta.
-  - Sólo se saca "IZQUIERDA". "DERECHA" y cualquier otra palabra quedan como están. Si la tipología no dice "IZQUIERDA", no cambia nada.
+  - Se sacan SÓLO "IZQUIERDA" y "DERECHA"; cualquier otra palabra de la tipología queda como está. Si la tipología no dice ni "IZQUIERDA" ni "DERECHA", no cambia nada.
   - Es la ÚNICA modificación permitida sobre el documento: no la extiendas a otros perfiles, palabras ni campos.
 
 # PASO 2. LOS VIDRIOS DE CADA ABERTURA
