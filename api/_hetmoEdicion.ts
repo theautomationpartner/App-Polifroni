@@ -21,7 +21,9 @@ const MODELO = {
   required: ['codigo', 'descripcion', 'color', 'ancho', 'alto', 'cantidad', 'vidrios', 'taps', 'hojaIdx', 'slot'],
   properties: {
     codigo: texto('El texto completo que sigue a "Modelo:" en el dibujo nuevo, tal cual.'),
-    descripcion: texto('La línea que sigue a "Uds:" + " - " + la línea de abajo ("Pos:"), tal cual.'),
+    descripcion: texto(
+      'La línea que sigue a "Uds:" + " - " + la línea de abajo ("Pos:"), tal cual. Única excepción: si la primera línea tiene el código de perfil "66-100", a la segunda se le saca la palabra "IZQUIERDA".',
+    ),
     color: texto('El valor de la línea "Color:", tal cual.'),
     ancho: texto('TEXTO. El PRIMER número de "Medidas:", con el punto de miles tal cual.'),
     alto: texto('TEXTO. El SEGUNDO número de "Medidas:", con el punto de miles tal cual.'),

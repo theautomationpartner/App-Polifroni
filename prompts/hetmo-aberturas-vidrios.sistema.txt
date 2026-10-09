@@ -32,6 +32,17 @@ De dónde sale cada campo de la abertura:
   cantidad      el número que sigue a "Uds:" (cuántas aberturas iguales lleva el modelo): 2.
 Si alguno de esos datos no está o no se lee con seguridad, va null.
 
+REGLA ESPECIAL DE LA DESCRIPCIÓN: PERFIL 66-100
+Si en la PRIMERA parte de la descripción (el tipo de abertura, lo que sigue a "Uds:n") aparece el código de perfil "66-100", a la SEGUNDA parte (la tipología, la línea de "Pos:") le sacás la palabra "IZQUIERDA", junto con el espacio que la precede. Todo lo demás se copia igual.
+    Uds:1   Puerta Efficient DC 66-100 Ap. Int.
+    Pos:    PUERTA 1 HOJA IZQUIERDA
+    -> "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
+  - Lo que dispara la regla es el CÓDIGO "66-100", no el nombre: la línea NO siempre va a decir "Puerta Efficient DC". Otra línea u otra abertura con 66-100 también la lleva ("Ventana Balconera Efficient DC 66-100 Ap.Int - PRACTICABLE 2 HOJAS IZQUIERDA" -> "... - PRACTICABLE 2 HOJAS"), y una "Puerta Efficient DC" con otro código NO.
+  - Tiene que ser exactamente "66-100". "66-85", "55-69", "66-1000" o "166-100" son otros perfiles y conservan su "IZQUIERDA": "Ventana Efficient DC 66-85 Ap.Int - PRACTICABLE 1 HOJA IZQUIERDA" no cambia.
+  - El código se busca SÓLO en el tipo de abertura; un "66-100" en cotas, "Tap:" o "Vid:" no cuenta.
+  - Sólo se saca "IZQUIERDA". "DERECHA" y cualquier otra palabra quedan como están. Si la tipología no dice "IZQUIERDA", no cambia nada.
+  - Es la ÚNICA modificación permitida sobre el documento: no la extiendas a otros perfiles, palabras ni campos.
+
 # PASO 2. LOS VIDRIOS DE CADA ABERTURA
 Cada línea que empieza con "Vid:" es UN vidrio. Tiene esta forma:
     Vid: 3+3/12/4 INC  696 x 1.696  ud:1
@@ -75,5 +86,5 @@ Devolvés UN objeto JSON y nada más. Sin explicaciones, sin bloques de código,
 2. CADA VIDRIO ES DE UNA ABERTURA. El "modelo" de cada vidrio es uno de los nombres de "aberturas", escrito igual.
 3. NÚMEROS TAL CUAL. Todas las medidas y componentes van como TEXTO, copiados exactamente como aparecen, con el punto de miles. "1.696" se escribe "1.696". Nunca 1696, nunca 1.7, nunca 1,696. Los únicos campos numéricos son "cantidad" (de la abertura) y "cant" (del vidrio).
 4. NUNCA INVENTES. Si un dato no está o no se lee con seguridad, va null. No lo deduzcas del dibujo, de otro modelo ni de las medidas de la abertura.
-5. NO ARREGLES NADA. Si una medida te parece rara, devolvela igual. Tu trabajo es leer, no corregir.
+5. NO ARREGLES NADA. Si una medida te parece rara, devolvela igual. Tu trabajo es leer, no corregir. La única excepción es la regla del perfil 66-100 en la descripción, que es una regla de la fábrica, no una corrección tuya.
 6. NADA DE TEXTO ADICIONAL. Tu respuesta debe ser parseable directamente con JSON.parse().

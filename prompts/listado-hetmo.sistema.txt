@@ -98,6 +98,7 @@ De dónde sale cada campo:
   codigo       TODO lo que sigue a "Modelo:", incluido el "DT n"
                si está, tal cual                           -> "V9 DT 3", "V2 DT1", "V27/28 DT 6"
   descripcion  la línea que sigue a "Uds:" + " - " + la línea de abajo
+               (perfil 66-100: ver la regla 4 bis)
   color        la línea "Color:"                            -> "Jet Black Masa negra"
   ancho        el PRIMER número de "Medidas:"               -> "1.065"
   alto         el SEGUNDO número de "Medidas:"              -> "2.210"
@@ -180,6 +181,38 @@ Tomá los modelos en orden y repartilos así:
    Si no hay segunda línea (paños fijos, mosquiteros), va sólo la primera:
      "Ventana Efficient DC 66-85 Ap.Int"
    No la reescribas, no la acortes, no la traduzcas, no la pases a mayúsculas.
+   ÚNICA EXCEPCIÓN: el perfil 66-100 (ver "REGLA ESPECIAL: PERFIL 66-100", abajo).
+
+4 bis. REGLA ESPECIAL: PERFIL 66-100.
+   Si en la PRIMERA línea de la descripción (la del tipo de abertura, la que sigue a
+   "Uds:") aparece el código de perfil "66-100", a la SEGUNDA línea (la tipología) le
+   sacás la palabra "IZQUIERDA", junto con el espacio que la precede. Todo lo demás se
+   copia igual que siempre.
+
+     En el documento:
+       Uds:1   Puerta Efficient DC 66-100 Ap. Int.
+       Pos:    PUERTA 1 HOJA IZQUIERDA
+     "descripcion": "Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA"
+
+   Lo que dispara la regla es el CÓDIGO "66-100", NO el nombre. El nombre de la línea
+   NO siempre va a ser "Puerta Efficient DC": puede ser otra línea, otra serie, otra
+   abertura. Si el código es 66-100, la regla se aplica igual:
+       "Ventana Balconera Efficient DC 66-100 Ap.Int" + "PRACTICABLE 2 HOJAS IZQUIERDA"
+       -> "Ventana Balconera Efficient DC 66-100 Ap.Int - PRACTICABLE 2 HOJAS"
+   Y si dice "Puerta Efficient DC" pero el código NO es 66-100, NO se aplica.
+
+   Cuidados:
+     - Tiene que ser exactamente "66-100". "66-85", "55-69", "66-1000" o "166-100" son
+       otros perfiles: esos modelos conservan su "IZQUIERDA".
+         "Ventana Efficient DC 66-85 Ap.Int - PRACTICABLE 1 HOJA IZQUIERDA"  (no cambia)
+     - El código se busca SÓLO en la línea del tipo de abertura. Un "66-100" en otro
+       lado del bloque (cotas, Tap, Vid) no cuenta.
+     - Sólo se saca la palabra "IZQUIERDA". "DERECHA" y cualquier otra palabra quedan
+       como están.
+     - Si la tipología no dice "IZQUIERDA", la descripción queda igual que siempre.
+
+   Es la ÚNICA modificación permitida sobre lo que dice el documento: no la extiendas a
+   otros perfiles, a otras palabras ni a otros campos.
 
 5. LOS TAPAJUNTAS SON 0 o 4.
    Un modelo tiene cuatro líneas "Tap:" o ninguna. Si contás 1, 2 o 3, volvé a mirar:
@@ -192,6 +225,8 @@ Tomá los modelos en orden y repartilos así:
 7. NO ARREGLES NADA.
    Si un dato te parece raro o equivocado (una mano invertida, una medida que no
    cierra), devolvelo igual como está en el documento. Tu trabajo es leer, no corregir.
+   La única excepción es la de la regla 4 bis (perfil 66-100), que es una regla de la
+   fábrica, no una corrección tuya.
 
 8. NO INVENTES CAMPOS.
    Devolvé sólo las claves de la estructura de arriba. Nada de links, totales,

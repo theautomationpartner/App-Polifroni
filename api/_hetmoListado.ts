@@ -21,7 +21,7 @@ const MODELO = {
       "El texto completo que sigue a 'Modelo:', incluido el 'DT n' si esta, tal cual. Ej: V1 DT 1, V2 DT1, V27/28 DT 6.",
     ),
     descripcion: texto(
-      "La linea que sigue a 'Uds:' + ' - ' + la linea de abajo. Si no hay segunda linea, solo la primera. Copiada tal cual, sin reescribir.",
+      "La linea que sigue a 'Uds:' + ' - ' + la linea de abajo. Si no hay segunda linea, solo la primera. Copiada tal cual, sin reescribir. Unica excepcion: si la primera linea tiene el codigo de perfil '66-100', a la segunda se le saca la palabra 'IZQUIERDA' (ej: 'Puerta Efficient DC 66-100 Ap. Int. - PUERTA 1 HOJA').",
     ),
     color: texto("El valor de la linea 'Color:'. Ej: Lenga."),
     ancho: texto(

@@ -85,7 +85,9 @@ const ESQUEMA: Record<string, unknown> = {
         required: ['nombre', 'descripcion', 'color', 'ancho', 'alto', 'cantidad'],
         properties: {
           nombre: { type: 'string', description: 'El nombre exacto del modelo, tal cual después de "Modelo:".' },
-          descripcion: texto('La línea que sigue a "Uds:" + " - " + la línea de abajo ("Pos:").'),
+          descripcion: texto(
+            'La línea que sigue a "Uds:" + " - " + la línea de abajo ("Pos:"). Si la primera línea tiene el código de perfil "66-100", a la segunda se le saca la palabra "IZQUIERDA".',
+          ),
           color: texto('Lo que sigue a "Color:", en MAYÚSCULAS.'),
           ancho: texto('El primer número de "Medidas:", tal cual, con el punto de miles.'),
           alto: texto('El segundo número de "Medidas:", tal cual, con el punto de miles.'),
