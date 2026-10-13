@@ -24,7 +24,7 @@ export function datosAviso(t: Turno, ubicacionCliente: string): DatosAviso {
     etiquetaTipo: t.etiquetaTipo,
     fecha: t.fecha,
     hora: t.hora,
-    ubicacion: t.tipo === 'reparacion' || t.tipo === 'medicion' ? ubicacionCliente || t.ubicacion : t.ubicacion,
+    ubicacion: t.tipo === 'reparacion' || t.tipo === 'medicion' || t.tipo === 'terminacion' ? ubicacionCliente || t.ubicacion : t.ubicacion,
     material: t.material,
     aberturas: t.cantAberturas,
   }
@@ -57,40 +57,6 @@ function Clave({ turno }: { turno: Turno }) {
         {turno.fecha ? `${fechaLarga(turno.fecha)}${turno.hora ? ` · ${turno.hora} hs` : ''}` : 'Sin fecha'}
       </span>
     </p>
-  )
-}
-
-/* ────────────────────────────────────────────────────────────────────────────────
- * Asignar
- * ──────────────────────────────────────────────────────────────────────────────── */
-
-/**
- * Asignar un turno que está sin asignar: pasa a "Asignada". Después se pregunta si se le manda al
- * cliente el mensaje de asignación (la misma ventana que al crearlo).
- */
-export function ModalAsignarTurno({ turno, onClose, onAsignar }: { turno: Turno; onClose: () => void; onAsignar: () => void }) {
-  return (
-    <Modal
-      title="¿Asignar el turno?"
-      icon={<i className="fas fa-calendar-check modal-icon--info" />}
-      onClose={onClose}
-      className="ag-modal"
-      actions={
-        <>
-          <button type="button" className="btn btn-out" onClick={onClose}>
-            Volver
-          </button>
-          <button type="button" className="btn btn-primary btn-marca" onClick={onAsignar}>
-            <i className="fas fa-calendar-check" /> Sí, asignar turno
-          </button>
-        </>
-      }
-    >
-      <Clave turno={turno} />
-      <p className="modal-nota">
-        El turno pasa de <strong>Pendiente</strong> a <strong>Asignado</strong>
-      </p>
-    </Modal>
   )
 }
 
@@ -128,7 +94,7 @@ export function ModalConfirmarTurno({
 
   return (
     <Modal
-      title="¿Confirmar el turno?"
+      title="¿Completar el turno?"
       icon={<i className="fas fa-circle-check ag-icono-verde" />}
       onClose={onClose}
       className="ag-modal"
@@ -138,18 +104,18 @@ export function ModalConfirmarTurno({
             Volver
           </button>
           <button type="button" className="btn ag-btn-verde" onClick={confirmar}>
-            <i className="fas fa-circle-check" /> Sí, confirmar turno
+            <i className="fas fa-circle-check" /> Sí, completar turno
           </button>
         </>
       }
     >
       <Clave turno={turno} />
       <p className="modal-nota">
-        El turno pasa a <strong>Confirmado</strong> y queda registrado como <strong>Cumplido</strong> en la Agenda.
+        Completar el turno actualiza el turno a estado <strong>Cumplido</strong> en la Agenda.
       </p>
       <p className="ag-irreversible" role="note">
         <i className="fas fa-triangle-exclamation" /> Esta acción es irreversible: un turno cumplido no se puede volver a
-        abrir.
+        activar.
       </p>
 
       {tipo === 'colocacion' && (
@@ -169,7 +135,7 @@ export function ModalConfirmarTurno({
               {r === 'total' ? 'Completa' : 'Parcial'}
             </label>
           ))}
-          <p className="ag-nota">Queda en la etapa de producción de la obra como «Colocacion Total» o «Colocacion Parcial».</p>
+          <p className="ag-nota">Queda registrado en el turno como «Colocacion Total» o «Colocacion Parcial».</p>
         </fieldset>
       )}
 
@@ -406,7 +372,6 @@ export function ModalReprogramarTurno({
     const f = [
       ...(!motivo ? ['Elegí el motivo de la reprogramación.'] : []),
       ...(!fecha ? ['Elegí la nueva fecha del turno.'] : fecha < hoy ? ['La nueva fecha no puede ser anterior a hoy.'] : []),
-      ...(!hora ? ['Elegí la nueva hora del turno.'] : []),
       ...(colocacion && (n == null || !Number.isInteger(n) || n < 0) ? ['Indicá la cantidad de aberturas a colocar.'] : []),
     ]
     setMarcar(true)
@@ -434,7 +399,7 @@ export function ModalReprogramarTurno({
       <Clave turno={turno} />
       <p className="modal-nota">
         Este turno queda <strong>Cancelado</strong> con el motivo de la reprogramación, y se crea uno nuevo con sus
-        mismos datos en la fecha y la hora que elijas. El nuevo queda <strong>Sin asignar</strong>.
+        mismos datos en la fecha y franja horaria que elijas.
       </p>
 
       <CamposMotivo
@@ -465,11 +430,11 @@ export function ModalReprogramarTurno({
         </div>
         <div>
           <label className="campo-l" htmlFor={`${uid}-hora`}>
-            Nueva hora del turno *
+            Nuevo rango horario aproximado
           </label>
           <input
             id={`${uid}-hora`}
-            className={`ag-input ${marcar && !hora ? 'ag-input--falta' : ''}`}
+            className="ag-input"
             type="time"
             step={300}
             value={hora}

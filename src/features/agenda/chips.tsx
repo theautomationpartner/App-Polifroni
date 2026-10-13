@@ -1,4 +1,4 @@
-import { VISTA_TURNO, defTipo, type Aprobacion, type EstadoTurno, type TipoTurno } from '@/lib/agenda'
+import { COLOR_TIPO_TURNO, VISTA_TURNO, colorMaterial, defTipo, materialDe, type Aprobacion, type EstadoTurno, type TipoTurno } from '@/lib/agenda'
 
 /**
  * Las pastillas de la Agenda. Son la misma `op-estado` de los estados de la OP —tinte del color de
@@ -25,19 +25,17 @@ export function EstadoTurnoChip({ estado }: { estado: EstadoTurno }) {
   return <Pastilla color={v.color} icono={ICONO_ESTADO[estado]} texto={v.rotulo} />
 }
 
-/** Los colores de `✋ Tipo de Turno` en el tablero. */
-const COLOR_TIPO: Record<TipoTurno, string> = {
-  colocacion: '#00c875',
-  reparacion: '#df2f4a',
-  entrega: '#fdab3d',
-  medicion: '#9d50dd',
-}
 
 /** El tipo de turno. Los tipos viejos que la app no carga se muestran con su etiqueta, en gris. */
 export function TipoTurnoChip({ tipo, etiqueta }: { tipo: TipoTurno | null; etiqueta: string }) {
   if (!tipo) return etiqueta ? <Pastilla color="#c4c4c4" texto={etiqueta} /> : <span className="ant-sd">—</span>
   const d = defTipo(tipo)
-  return <Pastilla color={COLOR_TIPO[tipo]} icono={d.icono} texto={d.titulo} />
+  return <Pastilla color={COLOR_TIPO_TURNO[tipo]} icono={d.icono} texto={d.titulo} />
+}
+
+/** El material de la obra, como etiqueta: PVC en verde, Aluminio en amarillo; otro, en gris. */
+export function MaterialChip({ material }: { material: string }) {
+  return <Pastilla color={colorMaterial(materialDe(material))} texto={material} />
 }
 
 export function EtapaChip({ texto, color }: { texto: string; color: string }) {

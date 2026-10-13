@@ -16,7 +16,7 @@
  */
 import {
   ETIQUETA_APROBACION,
-  ETIQUETA_TURNO,
+  INDICE_TURNO,
   aColumnaFecha,
   deColumnaFecha,
   defTipo,
@@ -27,6 +27,7 @@ import {
   type ObraDeCliente,
   type PendienteDeCliente,
   type TipoTurno,
+  claveEtiqueta,
 } from '@/lib/agenda'
 import { estadoDeOrden } from '@/lib/estadosOp'
 import { memoGlobal } from './cache'
@@ -337,6 +338,7 @@ const COLS_OBRA = [
   COL.totalPactado,
   COL.canceladoEspejo,
   COL.ordenes,
+  COL.pctCancelado,
 ]
 
 /**
@@ -428,6 +430,7 @@ export async function getElementosCliente(cliente: ClienteTurno): Promise<Elemen
           ubicacion: limpio(c[COL.ubicacion]?.text),
           celCoordinar: limpio(c[COL.celCoordinar]?.text).replace(/\D/g, ''),
           saldo,
+          pctCancelado: limpio(valor(c[COL.pctCancelado])) ? num(limpio(valor(c[COL.pctCancelado]))) : null,
           ordenesIds: ids(c[COL.ordenes]),
         }
       })
@@ -765,7 +768,10 @@ export interface AltaTurno {
   /** `HH:MM`, hora local. */
   hora?: string
   obra?: ObraDeCliente | null
-  pendiente?: PendienteDeCliente | null
+  /** Los pendientes de entrega del turno: ninguno, uno o varios (también junto con una obra). */
+  pendientes?: PendienteDeCliente[]
+  /** Las OP de la obra que se vinculan al turno (opcionales), con su nombre para la constancia. */
+  ops?: { id: string; nombre: string }[]
   /** Colocación. `null` = no se pudo calcular: la columna queda vacía. */
   aberturas?: number | null
   aprobacion?: Aprobacion | null
@@ -782,7 +788,10 @@ export interface AltaTurno {
 
 /** El nombre del ítem: el cliente y lo que se va a hacer, como se lee en el tablero. */
 export function nombreTurno(a: AltaTurno): string {
-  const que = a.obra?.nombre ?? a.pendiente?.producto ?? ''
+  const pendientes = a.pendientes ?? []
+  const que =
+    a.obra?.nombre ??
+    (pendientes.length > 1 ? `${pendientes[0].producto} y ${pendientes.length - 1} más` : (pendientes[0]?.producto ?? ''))
   const quien = a.cliente.clienteNombre || a.cliente.nombre
   return [defTipo(a.tipo).titulo.toUpperCase(), quien, que && que !== quien ? que : '']
     .filter(Boolean)
@@ -800,9 +809,10 @@ export function nombreTurno(a: AltaTurno): string {
  */
 export async function crearTurno(a: AltaTurno): Promise<string> {
   const valores: Record<string, unknown> = {
-    [COL_TURNO.estado]:{ label: a.asignadoEl ? ETIQUETA_TURNO.asignado : ETIQUETA_TURNO.pendiente },
+    [COL_TURNO.estado]: { index: a.asignadoEl ? INDICE_TURNO.asignado : INDICE_TURNO.pendiente },
     [COL_TURNO.fecha]: aColumnaFecha(a.fecha, a.hora),
-    [COL_TURNO.conObra]: { label: a.obra ? 'Con Obra' : 'Sin Obra' },
+    /* Por índice: 5 = Con Obra, 0 = Sin Obra. */
+    [COL_TURNO.conObra]: { index: a.obra ? 5 : 0 },
   }
   if (a.cliente.clienteId) valores[COL_TURNO.cliente] = { item_ids: [Number(a.cliente.clienteId)] }
   if (a.responsableId) valores[COL_TURNO.responsable] = { personsAndTeams: [{ id: Number(a.responsableId), kind: 'person' }] }
@@ -811,7 +821,10 @@ export async function crearTurno(a: AltaTurno): Promise<string> {
     /* Sólo con una etiqueta que exista tal cual: sin `create_labels_if_missing`, otra la rechaza. */
     if (a.obra.material === 'PVC' || a.obra.material === 'Aluminio') valores[COL_TURNO.material] = { label: a.obra.material }
   }
-  if (a.pendiente) valores[COL_TURNO.pendiente] = { item_ids: [Number(a.pendiente.id)] }
+  if (a.pendientes?.length) valores[COL_TURNO.pendiente] = { item_ids: a.pendientes.map((x) => Number(x.id)) }
+  /* Las OP van a su columna de conexión, si el tablero ya la tiene (se crea a mano en Monday). */
+  const colOps = a.ops?.length ? await columnaOrdenesAgenda() : null
+  if (colOps && a.ops?.length) valores[colOps] = { item_ids: a.ops.map((o) => Number(o.id)) }
   if (a.asignadoEl) {
     valores[COL_TURNO.notifAsignacion] = { label: NOTIF.enviado }
     valores[COL_TURNO.fechaNotifAsignacion] = fechaCol(a.asignadoEl)
@@ -827,7 +840,12 @@ export async function crearTurno(a: AltaTurno): Promise<string> {
     }`,
     { nombre: nombreTurno(a), valores: JSON.stringify(valores) },
   )
-  return String(d.create_item.id)
+  const id = String(d.create_item.id)
+  /* Sin la columna de las OP, quedan escritas en la constancia del turno. */
+  if (!colOps && a.ops?.length) {
+    await dejarConstancia(id, ['Órdenes de producción del turno:', ...a.ops.map((o) => `• ${o.nombre}`)].join('\n')).catch(() => {})
+  }
+  return id
 }
 
 /**
@@ -835,17 +853,13 @@ export async function crearTurno(a: AltaTurno): Promise<string> {
  * de `✋ Tipo de Turno` es el que dispara la automatización nativa de la Agenda.
  */
 export async function asignarTipoTurno(id: string, tipo: TipoTurno): Promise<void> {
-  await escribirEtiquetaTipo(id, defTipo(tipo).etiqueta)
+  /* Por índice: la etiqueta puede estar renombrada en el tablero ("MEDIR" → "Medicion"). */
+  await cambiarTurno(id, { [COL_TURNO.tipo]: { index: defTipo(tipo).indice } })
 }
 
 /** Lo mismo con la etiqueta tal cual: el turno reprogramado de un tipo viejo (SELLAR) conserva el suyo. */
 export async function escribirEtiquetaTipo(id: string, etiqueta: string): Promise<void> {
   await cambiarTurno(id, { [COL_TURNO.tipo]: { label: etiqueta } })
-}
-
-/** Asigna un turno Pendiente desde la gestión: pasa a "Asignada", sin mensaje (se pregunta después). */
-export async function asignarTurno(id: string): Promise<void> {
-  await cambiarTurno(id, { [COL_TURNO.estado]: { label: ETIQUETA_TURNO.asignado } })
 }
 
 /** Resultado del mensaje de asignación: "Asignada" si salió; si no, queda Pendiente con el error. */
@@ -854,7 +868,7 @@ export async function registrarAsignacion(id: string, enviado: boolean, hoy: str
     id,
     enviado
       ? {
-          [COL_TURNO.estado]: { label: ETIQUETA_TURNO.asignado },
+          [COL_TURNO.estado]: { index: INDICE_TURNO.asignado },
           [COL_TURNO.notifAsignacion]: { label: NOTIF.enviado },
           [COL_TURNO.fechaNotifAsignacion]: fechaCol(hoy),
         }
@@ -868,7 +882,7 @@ export async function cancelarTurno(
   c: { motivo: string; detalle: string; autor: string; hoy: string },
 ): Promise<void> {
   const valores: Record<string, unknown> = {
-    [COL_TURNO.estado]: { label: ETIQUETA_TURNO.cancelado },
+    [COL_TURNO.estado]: { index: INDICE_TURNO.cancelado },
     [COL_TURNO.motivoCancelacion]: { label: c.motivo },
     [COL_TURNO.fechaCancelacion]: fechaCol(c.hoy),
   }
@@ -881,13 +895,16 @@ export async function cancelarTurno(
   )
 }
 
-/** Confirma el turno: "Cumplido", con el resultado y la fecha, y el dato de finalización como constancia. */
+/**
+ * Completa el turno: "Cumplido", con el resultado de la colocación (Total o Parcial) y la fecha, y
+ * el dato de finalización como constancia. No toca la obra: todo queda en el turno.
+ */
 export async function confirmarTurno(
   id: string,
-  c: { etiquetaResultado: string | null; resultado: string; autor: string; hoy: string; obraId?: string },
+  c: { etiquetaResultado: string | null; resultado: string; autor: string; hoy: string },
 ): Promise<void> {
   const valores: Record<string, unknown> = {
-    [COL_TURNO.estado]: { label: ETIQUETA_TURNO.cumplido },
+    [COL_TURNO.estado]: { index: INDICE_TURNO.cumplido },
     [COL_TURNO.fechaCumplido]: fechaCol(c.hoy),
   }
   if (c.etiquetaResultado) valores[COL_TURNO.resultado] = { label: c.etiquetaResultado }
@@ -896,16 +913,6 @@ export async function confirmarTurno(
     id,
     [`Turno confirmado por ${c.autor || 'la app'} desde la app.`, c.resultado].filter(Boolean).join('\n'),
   )
-  /* Colocación: el resultado va también a la `✋Etapa de Produccion` de la obra, que es lo que
-     refleja el espejo "Etapa de Porduccion" (`lookup_mm2t4yss`) del turno. Un espejo no se escribe. */
-  if (c.etiquetaResultado && c.obraId) {
-    await mondayApi(
-      `mutation ($id: ID!, $valores: JSON!) {
-        change_multiple_column_values(board_id: ${BOARD_OBRAS}, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
-      }`,
-      { id: c.obraId, valores: JSON.stringify({ [COL.etapaProduccion]: { label: c.etiquetaResultado } }) },
-    )
-  }
 }
 
 /** Lo pendiente de entrega de un pendiente, leído en el momento (para validar la cantidad entregada). */
@@ -1016,7 +1023,10 @@ export async function crearTurnoReprogramado(
   viejo: Turno,
   n: { fecha: string; hora: string; aberturas: number | null; responsableId: string | null },
 ): Promise<string> {
+  /* Las OP del turno también pasan al nuevo, si el tablero ya tiene su columna. */
+  const colOps = await columnaOrdenesAgenda().catch(() => null)
   const copiar = [
+    ...(colOps ? [colOps] : []),
     COL_TURNO.cliente,
     COL_TURNO.obra,
     COL_TURNO.pendiente,
@@ -1034,10 +1044,10 @@ export async function crearTurnoReprogramado(
   )
   const c = byId(d.items[0] ?? { column_values: [] })
   const valores: Record<string, unknown> = {
-    [COL_TURNO.estado]: { label: ETIQUETA_TURNO.pendiente },
+    [COL_TURNO.estado]: { index: INDICE_TURNO.pendiente },
     [COL_TURNO.fecha]: aColumnaFecha(n.fecha, n.hora),
   }
-  for (const col of [COL_TURNO.cliente, COL_TURNO.obra, COL_TURNO.pendiente]) {
+  for (const col of [COL_TURNO.cliente, COL_TURNO.obra, COL_TURNO.pendiente, ...(colOps ? [colOps] : [])]) {
     const linkeados = ids(c[col])
     if (linkeados.length) valores[col] = { item_ids: linkeados.map(Number) }
   }
@@ -1069,3 +1079,98 @@ export async function crearTurnoReprogramado(
   )
   return String(creado.create_item.id)
 }
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Las OP del turno y la edición
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * La columna de conexión de la Agenda con el tablero de órdenes (`✋ Órdenes de Producción`), o
+ * `null` si todavía no existe. La API de Monday no crea columnas de conexión: se agrega a mano en
+ * el tablero, y la app la encuentra sola por el tablero al que apunta. Sin ella, las OP elegidas
+ * quedan en la constancia del turno.
+ */
+export const columnaOrdenesAgenda = memoGlobal(async (): Promise<string | null> => {
+  const d = await mondayApi<{ boards: { columns: { id: string; type: string; settings_str: string }[] }[] }>(
+    `query { boards(ids: [${BOARD_AGENDA}]) { columns(types: [board_relation]) { id type settings_str } } }`,
+  )
+  for (const c of d.boards[0]?.columns ?? []) {
+    try {
+      const s = JSON.parse(c.settings_str || '{}') as { boardIds?: (number | string)[] }
+      if ((s.boardIds ?? []).map(String).includes(String(BOARD_ORDENES))) return c.id
+    } catch {
+      /* Una configuración ilegible no es la columna. */
+    }
+  }
+  return null
+})
+
+/** Las OP vinculadas a un turno (vacío si la columna todavía no existe). */
+export async function opsDeTurno(turnoId: string): Promise<string[]> {
+  const col = await columnaOrdenesAgenda()
+  if (!col) return []
+  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${col}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
+    { ids: [turnoId] },
+  )
+  return ids(d.items[0]?.column_values[0])
+}
+
+/** Los ids de los pendientes de entrega vinculados a un turno (pueden ser varios). */
+export async function pendientesDeTurno(turnoId: string): Promise<string[]> {
+  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_TURNO.pendiente}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
+    { ids: [turnoId] },
+  )
+  return ids(d.items[0]?.column_values[0])
+}
+
+/**
+ * Edita los datos de un turno activo que no cambian su fecha (eso es reprogramar): la cantidad de
+ * aberturas (Colocación), el tipo de reparación (Reparación) y las OP vinculadas.
+ */
+export async function editarTurno(
+  id: string,
+  c: { aberturas?: number | null; tipoReparacionId?: number | null; ops?: { id: string; nombre: string }[]; autor: string },
+): Promise<void> {
+  const valores: Record<string, unknown> = {}
+  if (c.aberturas !== undefined) valores[COL_TURNO.cantAberturas] = c.aberturas == null ? '' : String(c.aberturas)
+  if (c.tipoReparacionId != null) valores[COL_TURNO.tipoReparacion] = { ids: [c.tipoReparacionId] }
+  const colOps = c.ops ? await columnaOrdenesAgenda() : null
+  if (colOps && c.ops) valores[colOps] = { item_ids: c.ops.map((o) => Number(o.id)) }
+  if (Object.keys(valores).length) await cambiarTurno(id, valores)
+  const lineas = [`Turno editado por ${c.autor || 'la app'} desde la app.`]
+  if (c.aberturas !== undefined) lineas.push(`Cantidad de aberturas: ${c.aberturas ?? 'sin dato'}`)
+  if (c.ops && !colOps) lineas.push('Órdenes de producción del turno:', ...c.ops.map((o) => `• ${o.nombre}`))
+  await dejarConstancia(id, lineas.join('\n')).catch(() => {})
+}
+
+/** Los ids de las órdenes de producción de una obra (para "Ver OP" al editar un turno). */
+export async function idsOrdenesDeObra(obraId: string): Promise<string[]> {
+  if (!obraId) return []
+  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL.ordenes}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
+    { ids: [obraId] },
+  )
+  return ids(d.items[0]?.column_values[0])
+}
+
+/**
+ * Los colores de las etiquetas de `✋ Tipo de Turno`, por clave de etiqueta ("colocacion" →
+ * "#00c875"), tal cual están en el tablero. Se leen una vez por sesión.
+ */
+export const coloresTipoTurno = memoGlobal(async (): Promise<Record<string, string>> => {
+  const d = await mondayApi<{ boards: { columns: { settings_str: string }[] }[] }>(
+    `query { boards(ids: [${BOARD_AGENDA}]) { columns(ids: ["${COL_TURNO.tipo}"]) { settings_str } } }`,
+  )
+  const s = JSON.parse(d.boards[0]?.columns[0]?.settings_str ?? '{}') as {
+    labels?: Record<string, string>
+    labels_colors?: Record<string, { color?: string }>
+  }
+  const colores: Record<string, string> = {}
+  for (const [i, nombre] of Object.entries(s.labels ?? {})) {
+    const color = s.labels_colors?.[i]?.color
+    if (nombre && color) colores[claveEtiqueta(nombre)] = color
+  }
+  return colores
+})
