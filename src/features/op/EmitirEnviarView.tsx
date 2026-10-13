@@ -399,7 +399,7 @@ export function EmitirEnviarView() {
       )}
       {guardando && (
         <ModalCargando
-          titulo="Guardando la orden en el tablero"
+          titulo="Guardando en el sistema"
           detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO y la OP final adjuntas."
         />
       )}

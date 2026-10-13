@@ -15,7 +15,7 @@ const TEXTOS_FINALIZAR: TextosFinalizar = {
   pregunta:
     'Los presupuestos se registran en el sistema recién cuando se envían. Si finalizás ahora, no se guarda nada y lo cargado se pierde.',
   registrando: 'Registrando presupuestos y envío en el sistema...',
-  registrandoDetalle: 'Guardamos cada presupuesto en Monday con su PDF y dejamos constancia del envío. Esperá unos segundos.',
+  registrandoDetalle: 'Guardando cada presupuesto en el sistema con su PDF con la constancia del envío. Esperá unos segundos.',
   errorTitulo: 'No se pudieron registrar los presupuestos',
   error:
     'Monday no respondió al intentar registrar los presupuestos. Los presupuestos YA se enviaron: reintentá «Finalizar Operación» en unos segundos para no perder el registro. Si la falla persiste, contactate con el soporte de TAP.',
@@ -40,17 +40,7 @@ export function EnviarPresupuestosView() {
       <PasoHeader />
       <PasoTitulo
         titulo={etiquetaPaso('envio', null, null, 'presupuestos', modo)}
-        descripcion={
-          <>
-            Elegí a quién se envían y, si querés, quién tiene que confirmarlos.{' '}
-            {para && (
-              <>
-                {modo === 'cargar' ? 'Presupuesto: ' : 'Para: '}
-                <strong>{para}</strong>
-              </>
-            )}
-          </>
-        }
+        descripcion="Seleccioná a quiénes se envían los presupuestos cargados en la etapa anterior y, si lo deseás, quién tiene que confirmarlos."
       />
 
       <div className="emision-grid emision-grid--mitades pres-etapa">
