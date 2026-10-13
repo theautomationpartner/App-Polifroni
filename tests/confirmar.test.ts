@@ -24,6 +24,7 @@ import {
   COL_OP,
   COL_SUB_PRES,
   buscarDocumento,
+  buscarPresupuestoPorId,
   leerRespuesta,
   registrarRespuesta,
   situacionOp,
@@ -33,13 +34,16 @@ import {
   type Documento,
 } from '../api/_confirmarMonday'
 import { manejarConfirmar } from '../api/_confirmarHttp'
+import { manejarRespuestaPresupuesto } from '../api/_presupuestoRespuestaHttp'
 import {
   ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
   COL_BOLSA,
+  COL_MOV,
   COL_OBRA,
   COL_SUB,
   INDICE,
   completarConfirmacion,
+  saldoInicialNuevo,
   tipoObraDe,
   type Archivos,
 } from '../api/_confirmarPresupuesto'
@@ -109,6 +113,12 @@ for (const e of ['Generada', '']) assert.equal(situacionOp(e), 'sinEnviar', e)
 assert.equal(situacionPresupuesto(''), 'pendiente')
 assert.equal(situacionPresupuesto('Confirmado'), 'confirmada')
 assert.equal(situacionPresupuesto('Rechazado'), 'rechazada')
+/* El tablero le puso nombre a "sin respuesta" (índice 5): se decide por el índice, no por el texto. */
+assert.equal(situacionPresupuesto('Pend de Confirmar', 5), 'pendiente')
+assert.equal(situacionPresupuesto('Pend de Confirmar', null), 'pendiente', 'sin valor: tampoco hay respuesta')
+assert.equal(situacionPresupuesto('Confirmado', 1), 'confirmada')
+assert.equal(situacionPresupuesto('Rechazado', 0), 'rechazada')
+assert.equal(situacionPresupuesto('Error de Confirmacion', 2), 'confirmada', 'ya respondió (con datos faltantes)')
 
 /* Los campos de los formularios. */
 assert.deepEqual(leerRespuesta('op', { estado_obra: 'Confirmar' }), { ok: true, respuesta: { tipo: 'confirmar' } })
@@ -595,7 +605,9 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
 
 /* ── Lo que sigue a la confirmación del presupuesto: actividad, ítem y obra ───────────────────── */
 {
-  const subConDatos = (cambios: { tipo?: string; color?: string; total?: string; pdf?: boolean; obra?: boolean; cliente?: boolean } = {}) => ({
+  const subConDatos = (
+    cambios: { tipo?: string; color?: string; total?: string; pdf?: boolean; obra?: boolean; cliente?: boolean; arquitecto?: string } = {},
+  ) => ({
     id: '701',
     name: 'IDPDF-1221',
     column_values: [
@@ -609,9 +621,10 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
       name: 'PEREZ JUAN',
       column_values: [
         { id: COL_BOLSA.cliente, text: 'PEREZ JUAN', linked_item_ids: cambios.cliente === false ? [] : ['1'] },
-        { id: COL_BOLSA.arquitecto, text: '', linked_item_ids: [] },
+        { id: COL_BOLSA.arquitecto, text: '', linked_item_ids: cambios.arquitecto ? [cambios.arquitecto] : [] },
         { id: COL_BOLSA.idPresupuesto, text: 'IDPRES-90' },
         { id: COL_BOLSA.obras, text: '', linked_item_ids: cambios.obra ? ['9'] : [] },
+        { id: COL_BOLSA.creadoPor, text: 'Ana', value: '{"personsAndTeams":[{"id":4321,"kind":"person"}]}' },
       ],
     },
   })
@@ -622,14 +635,40 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
       { id: 'location_mkt9ewya', text: '', value: '{"lat":"-37.3","lng":"-59.1","address":"Pujol 1147"}' },
     ],
   }
-  const montar = (sub: ReturnType<typeof subConDatos>) => {
+  const montar = (
+    sub: ReturnType<typeof subConDatos>,
+    o: { falla?: boolean; obraTrasFalla?: boolean; registrada?: boolean; movimientos?: string[][] } = {},
+  ) => {
     const llamadas: Llamada[] = []
     const subidas: { itemId: string; columna: string; nombre: string }[] = []
     const consulta: Consulta = async <T,>(query: string, variables: Record<string, unknown>) => {
       llamadas.push({ query, variables })
-      if (query.includes('create_item')) return { create_item: { id: '800' } } as T
+      if (query.includes('create_item')) {
+        if (o.falla) throw new Error('Internal server error')
+        return { create_item: { id: '800' } } as T
+      }
+      if (query.includes('create_subitem')) return { mov: { id: '900' }, obra: { id: '800' } } as T
       if (query.trim().startsWith('mutation')) return { ok: true } as T
       if (query.includes('parent_item')) return { items: [sub] } as T
+      if (query.includes('subitems')) {
+        const movs = o.movimientos ?? [['1000', '500', '200'], ['1300', '0', '300']]
+        const cols = (m: string[]) => [
+          { id: COL_MOV.saldoInicial, text: m[0] },
+          { id: COL_MOV.ventas, text: m[1] },
+          { id: COL_MOV.cobros, text: m[2] },
+        ]
+        return { items: [{ subitems: movs.map((m) => ({ column_values: cols(m) })) }] } as T
+      }
+      const cols = (variables.cols as string[]) ?? []
+      if (cols.includes(COL_OBRA.idObra)) {
+        return {
+          items: [{ column_values: [{ id: COL_OBRA.idObra, text: 'IDOBRA-900' }, { id: COL_OBRA.validacionCtaCte, text: o.registrada ? 'Registrado en Cta Cte' : '' }] }],
+        } as T
+      }
+      if (cols.length === 1 && cols[0] === 'phone_mksydcv6') return { items: [{ column_values: [{ id: 'phone_mksydcv6', text: '+54 9 249 555-0000' }] }] } as T
+      if (cols.includes(COL_BOLSA.obras)) {
+        return { items: [{ column_values: [{ id: COL_BOLSA.obras, text: '', linked_item_ids: o.obraTrasFalla ? ['801'] : [] }] }] } as T
+      }
       return { items: [clienteMonday] } as T
     }
     const archivos: Archivos = {
@@ -642,18 +681,37 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     const valores = (l: Llamada) => JSON.parse(String(l.variables.valores ?? '{}'))
     return { consulta, archivos, llamadas, subidas, escrituras, valores }
   }
-  const correr = (m: ReturnType<typeof montar>) =>
-    completarConfirmacion({ subId: '701', titulo: 'Confirmación', contenido: '<p>✅ Confirmó</p>', cuando: new Date('2026-10-13T15:43:00Z') }, m.consulta, m.archivos)
+  const geocodificados: { texto: string; cerca: unknown }[] = []
+  const correr = (
+    m: ReturnType<typeof montar>,
+    f: { ubicacion?: string; coordinador?: 'Cliente' | 'Arquitecto' | null; punto?: { lat: string; lng: string } | null } = {},
+  ) =>
+    completarConfirmacion(
+      {
+        subId: '701',
+        titulo: 'Confirmación',
+        contenido: '<p>✅ Confirmó</p>',
+        ubicacion: f.ubicacion ?? 'Pujol 1147',
+        coordinador: f.coordinador === undefined ? 'Cliente' : f.coordinador,
+        cuando: new Date('2026-10-13T15:43:00Z'),
+      },
+      m.consulta,
+      m.archivos,
+      async (texto, cerca) => {
+        geocodificados.push({ texto, cerca })
+        return f.punto === undefined ? { lat: '-37.2941852', lng: '-59.1423517' } : f.punto
+      },
+    )
 
   {
     const m = montar(subConDatos())
     await correr(m)
-    const [actividad, item, obra, vinculo] = m.escrituras()
+    const [item, actividad, obra, vinculo] = m.escrituras()
     assert.ok(actividad.query.includes('create_timeline_item'), '1. la actividad')
     assert.equal(actividad.variables.item, '1', 'en el cliente')
     assert.equal(actividad.variables.actividad, ACTIVIDAD_CONFIRMACION_PRESUPUESTO, '"Confirmacion Presupuesto Obra"')
     assert.equal(actividad.variables.content, '<p>✅ Confirmó</p>', 'con lo que decía el update')
-    assert.ok(!m.escrituras().some((l) => l.query.includes('create_update')), 'sin update en el subelemento')
+    assert.ok(!m.escrituras().some((l) => l.query.includes('create_update')), 'sin updates: ni en el subelemento ni de error')
 
     assert.equal(item.variables.id, '700', '2. el ítem')
     assert.deepEqual(m.valores(item), {
@@ -675,26 +733,54 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     assert.deepEqual(v[COL_OBRA.tipo], { label: 'Aluminio' })
     assert.deepEqual(v[COL_OBRA.aceptacion], { date: '2026-10-13' })
     assert.deepEqual(v[COL_OBRA.presupuestos], { item_ids: [700] })
-    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492494014611', countryShortName: 'AR' })
-    assert.deepEqual(v[COL_OBRA.ubicacion], { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' })
+    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492494014611', countryShortName: 'AR' }, 'coordina el cliente: su celular')
+    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Cliente' }, 'quién coordina, del formulario')
+    assert.deepEqual(
+      v[COL_OBRA.ubicacion],
+      { lat: '-37.2941852', lng: '-59.1423517', address: 'Pujol 1147' },
+      'la dirección que escribió quien confirmó, ubicada en el mapa',
+    )
+    assert.deepEqual(v[COL_OBRA.asignado], { personsAndTeams: [{ id: 4321, kind: 'person' }] }, 'asignado: quien creó la bolsa')
+
+    /* 4. La cuenta corriente, en UNA mutation: el movimiento y la obra registrada. */
+    const cta = m.escrituras().filter((l) => l.query.includes('create_subitem'))
+    assert.equal(cta.length, 1)
+    assert.ok(cta[0].query.includes('change_multiple_column_values'), 'la obra, en la misma mutation')
+    assert.equal(cta[0].variables.cuenta, '45')
+    assert.equal(cta[0].variables.nombre, 'IDOBRA-900 - PEREZ JUAN')
+    assert.deepEqual(JSON.parse(String(cta[0].variables.mov)), {
+      [COL_MOV.movimiento]: { label: 'Venta-Sin Fact' },
+      [COL_MOV.saldoInicial]: '1000',
+      [COL_MOV.ventas]: '1297684',
+      [COL_MOV.estado]: { label: 'Boton' },
+      [COL_MOV.obras]: { item_ids: [800] },
+    }, 'el saldo inicial es el saldo final del último movimiento (1300 + 0 − 300)')
+    assert.deepEqual(JSON.parse(String(cta[0].variables.valoresObra)), {
+      [COL_OBRA.envioPresFinal]: { date: '2026-10-13' },
+      [COL_OBRA.validacionCtaCte]: { label: 'Registrado en Cta Cte' },
+      [COL_OBRA.aceptacion]: { date: '2026-10-13' },
+    })
+    assert.ok(m.subidas.some((x) => x.itemId === '900' && x.columna === COL_MOV.pdf), 'el PDF, en el movimiento')
+    assert.deepEqual(geocodificados.at(-1), { texto: 'Pujol 1147', cerca: { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' } }, 'se busca cerca del cliente')
 
     assert.equal(vinculo.variables.id, '700')
-    assert.deepEqual(m.valores(vinculo), { [COL_BOLSA.obras]: { item_ids: [800] }, [COL_BOLSA.creacionObra]: { index: INDICE.creado } })
+    assert.deepEqual(m.valores(vinculo), { [COL_BOLSA.creacionObra]: { index: INDICE.creado } }, 'sólo "Creado": el vínculo lo deja la obra (dos vías)')
     assert.deepEqual(m.subidas, [
       { itemId: '700', columna: COL_BOLSA.pdf, nombre: 'pdf-555.pdf' },
       { itemId: '800', columna: COL_OBRA.presupuestoAceptado, nombre: 'pdf-555.pdf' },
-    ], 'el PDF, al ítem y a la obra')
+      { itemId: '900', columna: COL_MOV.pdf, nombre: 'pdf-555.pdf' },
+    ], 'el PDF, al ítem, a la obra y al movimiento de la cuenta corriente')
   }
   {
     /* Sin total ni PDF: nada en el ítem; el subelemento "Error de Confirmacion" y la obra no se crea. */
     const m = montar(subConDatos({ total: '', pdf: false }))
     await correr(m)
     const e = m.escrituras()
-    assert.ok(e[0].query.includes('create_timeline_item'), 'la actividad va igual')
-    assert.equal(e[1].variables.id, '701')
-    assert.deepEqual(m.valores(e[1]), { [COL_SUB.confirmacion]: { index: INDICE.errorConfirmacion } })
-    const u = String(e[2].variables.cuerpo)
-    assert.ok(e[2].query.includes('create_update') && e[2].variables.id === '701', 'el update, en el subelemento')
+    assert.equal(e[0].variables.id, '701')
+    assert.deepEqual(m.valores(e[0]), { [COL_SUB.confirmacion]: { index: INDICE.errorConfirmacion } })
+    const u = String(e[1].variables.cuerpo)
+    assert.ok(e[1].query.includes('create_update') && e[1].variables.id === '701', 'el update, en el subelemento')
+    assert.ok(e[2].query.includes('create_timeline_item'), 'la actividad va igual')
     assert.ok(u.includes('❌ Total Pactado') && u.includes('❌ Presupuesto pdf') && u.includes('✅ Color'), u)
     assert.deepEqual(m.valores(e[3]), { [COL_BOLSA.creacionObra]: { index: INDICE.errorCreacion } }, 'Error Creacion')
     assert.ok(e[4].query.includes('create_update') && e[4].variables.id === '700', 'con su update en el presupuesto')
@@ -716,8 +802,162 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     const u = m.escrituras().find((l) => l.query.includes('create_update'))
     assert.ok(String(u?.variables.cuerpo).includes('Ya se creó una obra para el presupuesto <b>IDPRES-90</b>'))
   }
+  {
+    /* Coordina el arquitecto: su etiqueta y SU celular. */
+    const m = montar(subConDatos({ arquitecto: '55' }))
+    await correr(m, { coordinador: 'Arquitecto' })
+    const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
+    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Arquitecto' })
+    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492495550000', countryShortName: 'AR' })
+    assert.deepEqual(v[COL_OBRA.arquitecto], { item_ids: [55] })
+  }
+  {
+    /* La dirección no se encuentra en el mapa: la obra va sin ubicación y con un update que la dice. */
+    const m = montar(subConDatos())
+    await correr(m, { ubicacion: 'Calle Inventada 99', punto: null })
+    const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
+    assert.equal(v[COL_OBRA.ubicacion], undefined, 'nunca la del cliente en su lugar: es otra dirección')
+    const u = m.escrituras().find((l) => l.query.includes('create_update'))
+    assert.equal(u?.variables.id, '800', 'el update, en la obra')
+    assert.ok(String(u?.variables.cuerpo).includes('Calle Inventada 99'))
+  }
+  {
+    /* Un enlace viejo, sin dirección: la ubicación del cliente. */
+    const m = montar(subConDatos())
+    await correr(m, { ubicacion: '', coordinador: null })
+    const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
+    assert.deepEqual(v[COL_OBRA.ubicacion], { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' })
+    assert.equal(v[COL_OBRA.coordinarEntrega], undefined)
+  }
+  {
+    /* Monday responde con error al crear la obra, pero la obra SÍ quedó (y vinculada): se sigue con ella. */
+    const m = montar(subConDatos(), { falla: true, obraTrasFalla: true })
+    await correr(m)
+    const vinculo = m.escrituras().find((l) => String(l.variables.valores ?? '').includes(COL_BOLSA.creacionObra))
+    assert.deepEqual(m.valores(vinculo!), { [COL_BOLSA.creacionObra]: { index: INDICE.creado } })
+    assert.ok(m.subidas.some((x) => x.itemId === '801' && x.columna === COL_OBRA.presupuestoAceptado), 'el PDF, a esa obra')
+  }
+  {
+    /* Monday responde con error y la obra NO quedó: "Error Creacion" con su update, y el error sigue de largo. */
+    const m = montar(subConDatos(), { falla: true })
+    await assert.rejects(correr(m))
+    const e = m.escrituras()
+    assert.ok(e.some((l) => m.valores(l)[COL_BOLSA.creacionObra]?.index === INDICE.errorCreacion))
+    assert.ok(e.some((l) => l.query.includes('create_update') && String(l.variables.cuerpo).includes('Monday no respondió')))
+  }
+  {
+    /* La obra ya estaba registrada (un reintento): no se crea otro movimiento. */
+    const m = montar(subConDatos(), { registrada: true })
+    await correr(m)
+    assert.ok(!m.escrituras().some((l) => l.query.includes('create_subitem')))
+  }
+  {
+    /* Quien confirma sólo espera el ítem: la constancia, la obra y la cuenta corriente van en segundo plano. */
+    const m = montar(subConDatos())
+    let tarea: Promise<void> | null = null
+    await completarConfirmacion(
+      { subId: '701', titulo: 'C', contenido: '<p>c</p>', ubicacion: '', coordinador: 'Cliente', cuando: new Date('2026-10-13T15:43:00Z') },
+      m.consulta,
+      m.archivos,
+      async () => null,
+      (t) => {
+        tarea = t
+      },
+    )
+    const antes = m.escrituras().map((l) => l.query)
+    assert.ok(tarea, 'lo que sigue quedó en segundo plano')
+    assert.ok(antes.some((q) => q.includes('change_multiple_column_values')), 'el ítem ya está escrito al volver')
+    assert.ok(!antes.some((q) => q.includes('create_item') || q.includes('create_subitem')), 'ni la obra ni la cuenta corriente al volver')
+    await tarea
+    const despues = m.escrituras().map((l) => l.query)
+    assert.ok(despues.some((q) => q.includes('create_item')) && despues.some((q) => q.includes('create_subitem')), 'después, la obra y el movimiento')
+  }
+  assert.equal(saldoInicialNuevo([]), 0, 'el primer movimiento de la cuenta')
+  assert.equal(saldoInicialNuevo([{ saldoInicial: 100, ventas: 50, cobros: 30 }]), 120)
   assert.equal(tipoObraDe('PVC'), 'PVC')
   assert.equal(tipoObraDe('Alumino'), 'Aluminio')
+}
+
+/* ── Confirmar y Perdido desde la app: el mismo camino que el enlace (13/10/2026) ──────────────── */
+{
+  const escritas: { query: string; variables: Record<string, unknown> }[] = []
+  let confirmacion = ''
+  globalThis.fetch = (async (_url: string, init: { body: string }) => {
+    const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
+    if (query.trim().startsWith('mutation')) {
+      escritas.push({ query, variables })
+      return new Response(JSON.stringify({ data: { ok: true } }))
+    }
+    if (query.includes('users(ids')) return new Response(JSON.stringify({ data: { users: [{ name: 'Ana Gómez' }] } }))
+    const sub = {
+      id: '701',
+      name: 'IDPDF-1221',
+      state: 'active',
+      board: { id: '9984270591' },
+      parent_item: {
+        id: '700',
+        name: 'PEREZ JUAN',
+        column_values: [{ id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', display_value: '1111 - PEREZ JUAN', linked_item_ids: ['1'] }],
+      },
+      column_values: [
+        { id: COL_SUB_PRES.clave, text: '' },
+        { id: COL_SUB_PRES.confirmacion, text: confirmacion },
+      ],
+    }
+    return new Response(JSON.stringify({ data: { items: [sub] } }))
+  }) as typeof fetch
+
+  const llamar = async (cuerpo: Record<string, unknown>, userId: string | null = '99') => {
+    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(cuerpo))]), { method: 'POST', headers: {} }) as unknown as IncomingMessage
+    let status = 0
+    let body = ''
+    const res = {
+      statusCode: 0,
+      setHeader() {},
+      end(b: string) {
+        status = this.statusCode
+        body = b
+      },
+    } as unknown as ServerResponse
+    await manejarRespuestaPresupuesto(req, res, userId)
+    return { status, cuerpo: JSON.parse(body || '{}') as { ok?: boolean; error?: string } }
+  }
+
+  const doc = await buscarPresupuestoPorId('701')
+  assert.equal(doc?.nombre, 'PEREZ JUAN', 'se nombra al cliente, sin el código de la cuenta')
+  assert.deepEqual(doc?.coordinadores, [{ nombre: 'PEREZ JUAN', rol: 'Cliente' }])
+
+  /* Perdido: Rechazado, con el motivo; la constancia dice quién lo registró desde la app. */
+  const r = await llamar({ subId: '701', tipo: 'rechazar', motivo: 'Eligió otro proveedor' })
+  assert.equal(r.status, 200, JSON.stringify(r.cuerpo))
+  const rechazo = escritas.find((e) => String(e.variables.valores ?? '').includes(COL_SUB_PRES.confirmacion))
+  assert.deepEqual(JSON.parse(String(rechazo?.variables.valores)), {
+    [COL_SUB_PRES.confirmacion]: { label: 'Rechazado' },
+    [COL_SUB_PRES.motivo]: 'Eligió otro proveedor',
+  })
+  const u = String(escritas.find((e) => e.query.includes('create_update'))?.variables.cuerpo)
+  assert.ok(u.includes('❌ Rechazó el presupuesto') && u.includes('Registrado desde la app por Ana Gómez'), u)
+  assert.ok(!u.includes('enlace de confirmación'), 'no dice que vino del enlace')
+
+  /* Sin motivo: desde la app es opcional, y el update no lleva el renglón. */
+  escritas.length = 0
+  assert.equal((await llamar({ subId: '701', tipo: 'rechazar' })).status, 200)
+  assert.ok(!String(escritas.find((e) => e.query.includes('create_update'))?.variables.cuerpo).includes('Motivo'))
+
+  /* Confirmar exige lo mismo que el formulario del enlace. */
+  escritas.length = 0
+  const sinCoord = await llamar({ subId: '701', tipo: 'confirmar', ubicacion: 'Pujol 1147', coordinador: '' })
+  assert.equal(sinCoord.status, 422)
+  assert.equal((await llamar({ subId: '701', tipo: 'confirmar', ubicacion: 'Pujol 1147', coordinador: 'OTRO' })).status, 422, 'fuera de la lista')
+  assert.equal(escritas.length, 0, 'nada se escribió')
+
+  /* Ya respondido (por el enlace o por otro usuario): 409, sin escribir. */
+  confirmacion = 'Confirmado'
+  const ya = await llamar({ subId: '701', tipo: 'rechazar', motivo: 'x' })
+  assert.equal(ya.status, 409)
+  assert.equal(escritas.length, 0)
+  assert.equal((await llamar({ subId: 'abc', tipo: 'rechazar' })).status, 400, 'id inválido')
+  assert.equal((await llamar({ subId: '701', tipo: 'otra' })).status, 400, 'respuesta inválida')
 }
 
 console.log('confirmar: ok')

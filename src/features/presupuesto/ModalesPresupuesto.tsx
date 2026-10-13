@@ -1,39 +1,49 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { SelectBuscable } from '@/components/ui/SelectBuscable'
-import { SoltarArchivo } from '@/components/ui/SoltarArchivo'
-import { conTope } from '@/features/agenda/ModalErrorConsulta'
-import { faltantesGanar, importeDe, tipoObraDe } from '@/lib/presupuesto'
-import {
-  ArchivoMuyPesado,
-  datosClienteObra,
-  getUrlArchivo,
-  prepararArchivoParaSubir,
-  type DatosClienteObra,
-  type PresupuestoEnviado,
-  type PresupuestoGestion,
-} from '@/services/monday'
-import type { DatosGanar } from './ganar'
+import { sinCodigo } from '@/lib/destinatario'
+import { accionesPresupuesto, esSinArquitecto, formatoImporte, situacionDe, yaEnviado, type SituacionPresupuesto } from '@/lib/presupuesto'
+import type { PresupuestoEnviado, PresupuestoGestion } from '@/services/monday'
+import { Etiquetas, verPdfMonday } from './TablaPresupuestos'
+
+/** Una fila de la consulta: el presupuesto (subelemento) y su bolsa. */
+export interface FilaGestion {
+  bolsa: PresupuestoGestion
+  p: PresupuestoEnviado
+}
 
 /** "2026-10-05" → "05/10/2026". */
-const fechaCorta = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
+export const fechaCorta = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
 
-/** Cómo se nombra un presupuesto enviado en la lista: su ID, tipo, color y cuándo se envió. */
-const rotulo = (s: PresupuestoEnviado) =>
-  [s.nombre, s.tipo, s.color, fechaCorta(s.fechaEnvio)].filter(Boolean).join(' · ')
+/** Cómo se ve la respuesta de un presupuesto: el texto y el color de su pastilla. */
+export function rotuloSituacion(s: SituacionPresupuesto, enviado: boolean): { texto: string; color: string } {
+  if (s === 'confirmado') return { texto: 'Confirmado', color: '#00c875' }
+  if (s === 'rechazado') return { texto: 'Rechazado', color: '#df2f4a' }
+  if (s === 'error') return { texto: 'Error de Confirmación', color: '#fdab3d' }
+  return enviado ? { texto: 'Pend. de confirmar', color: '#579bfc' } : { texto: 'Sin enviar', color: '#c4c4c4' }
+}
 
-/** El presupuesto en la ventana: su nombre y su ID, como la clave del turno en la Agenda. */
-function Clave({ p }: { p: PresupuestoGestion }) {
+export function SituacionChip({ p }: { p: PresupuestoEnviado }) {
+  const r = rotuloSituacion(situacionDe(p.confirmacion), yaEnviado(p.estadoEnvio))
+  return (
+    <span className="op-estado op-estado--sm" style={{ ['--op-c' as string]: r.color }}>
+      {r.texto}
+    </span>
+  )
+}
+
+/** El presupuesto en la ventana: la bolsa y el presupuesto, como la clave del turno en la Agenda. */
+function Clave({ f }: { f: FilaGestion }) {
   return (
     <p className="modal-clave">
-      {p.nombre}
-      <span className="ag-clave-fecha">{[p.idPresupuesto, p.estado].filter(Boolean).join(' · ')}</span>
+      {f.bolsa.nombre}
+      <span className="ag-clave-fecha">{[f.p.nombre, f.bolsa.idPresupuesto].filter(Boolean).join(' · ')}</span>
     </p>
   )
 }
 
 /** Un dato fijo de la ventana: el rótulo y el valor. */
-function Dato({ l, v }: { l: string; v: string }) {
+function Dato({ l, v }: { l: string; v: ReactNode }) {
   return (
     <div className="pres-dato">
       <span className="campo-l">{l}</span>
@@ -42,113 +52,47 @@ function Dato({ l, v }: { l: string; v: string }) {
   )
 }
 
-/**
- * Abre el PDF en otra pestaña. La pestaña se abre ANTES de pedir la dirección firmada: abrirla
- * después de esperar a Monday la frena el bloqueador de ventanas del navegador.
- */
-async function verPdf(assetId: string) {
-  const w = window.open('', '_blank')
-  try {
-    const url = await getUrlArchivo(assetId)
-    if (w) w.location.href = url
-    else window.open(url, '_blank')
-  } catch {
-    w?.close()
-    throw new Error('No se pudo abrir el PDF.')
+/** Quiénes pueden coordinar la obra: el cliente y, si hay uno de verdad, el constructor (como el enlace). */
+export function coordinadoresDe(b: PresupuestoGestion): { nombre: string; rol: 'Cliente' | 'Arquitecto' }[] {
+  const lista: { nombre: string; rol: 'Cliente' | 'Arquitecto' }[] = []
+  const cliente = sinCodigo(b.cliente?.nombre ?? '')
+  const arquitecto = sinCodigo(b.arquitecto?.nombre ?? '')
+  if (cliente) lista.push({ nombre: cliente, rol: 'Cliente' })
+  if (arquitecto && !esSinArquitecto(b.arquitecto) && arquitecto !== cliente) {
+    lista.push({ nombre: arquitecto, rol: 'Arquitecto' })
   }
+  return lista
 }
 
 /**
- * Ganar el presupuesto: "¿Desea confirmar el siguiente presupuesto?". Se confirma y se registra como
- * obra.
- *
- * Se elige cuál de los presupuestos enviados es el ganado (por defecto, el último): de él salen el
- * tipo de carpintería, el color y el PDF final, que se completan solos. Se pide el Total Pactado y,
- * si lo hay, el Plano de Aberturas. La cuenta corriente donde se registra la obra es la del cliente
- * (si tiene más de una activa, se elige).
- *
- * `previo`: un intento anterior ya escribió parte en Monday. Los datos quedan fijos, para que el
- * reintento termine lo mismo que se empezó.
+ * Confirmar un presupuesto desde la app (regla del usuario, 13/10/2026): pide lo mismo que el
+ * formulario del enlace —la dirección de la obra y quién la coordina— y hace lo mismo que la
+ * confirmación del cliente: el presupuesto Confirmado, sus datos en la bolsa, la constancia, la obra y
+ * su registro en la cuenta corriente.
  */
-export function ModalGanarPresupuesto({
-  presupuesto: p,
-  responsable,
-  previo,
+export function ModalConfirmarPresupuesto({
+  fila: f,
   onClose,
   onConfirmar,
 }: {
-  presupuesto: PresupuestoGestion
-  /** A quién se asigna la obra (✋Asignado a:). */
-  responsable: string
-  previo: { datos: DatosGanar; cliente: DatosClienteObra } | null
+  fila: FilaGestion
   onClose: () => void
-  onConfirmar: (datos: DatosGanar, cliente: DatosClienteObra) => void
+  onConfirmar: (ubicacion: string, coordinador: string) => void
 }) {
   const uid = useId()
-  const fijo = !!previo
-  const conPdf = p.presupuestos.filter((s) => s.pdf)
-  const [elegidoId, setElegidoId] = useState(
-    previo?.datos.elegido.id ?? (conPdf[conPdf.length - 1] ?? p.presupuestos[p.presupuestos.length - 1])?.id ?? '',
-  )
-  const [total, setTotal] = useState(previo ? String(previo.datos.total).replace('.', ',') : '')
-  const [plano, setPlano] = useState<File | null>(previo?.datos.plano ?? null)
-  const [errorPlano, setErrorPlano] = useState('')
-  const [preparando, setPreparando] = useState(false)
-  const [cliente, setCliente] = useState<DatosClienteObra | null>(previo?.cliente ?? null)
-  const [errorCliente, setErrorCliente] = useState(false)
-  const [cuentaId, setCuentaId] = useState(previo?.datos.cuentaId ?? '')
+  const opciones = coordinadoresDe(f.bolsa)
+  const [ubicacion, setUbicacion] = useState('')
+  const [coordinador, setCoordinador] = useState(opciones.length === 1 ? opciones[0].nombre : '')
   const [faltan, setFaltan] = useState<string[]>([])
-  const [errorVer, setErrorVer] = useState('')
-
-  const elegido = p.presupuestos.find((s) => s.id === elegidoId) ?? null
-
-  /* Las cuentas corrientes, el celular y la ubicación del cliente: se leen al abrir. */
-  useEffect(() => {
-    if (previo || !p.cliente) return
-    let vivo = true
-    conTope(datosClienteObra(p.cliente.id))
-      .then((c) => {
-        if (!vivo) return
-        setCliente(c)
-        if (c.cuentas.length === 1) setCuentaId(c.cuentas[0].id)
-      })
-      .catch(() => vivo && setErrorCliente(true))
-    return () => {
-      vivo = false
-    }
-  }, [p.cliente, previo])
-
-  const cargarPlano = async (f: File) => {
-    setErrorPlano('')
-    setPreparando(true)
-    try {
-      setPlano(await prepararArchivoParaSubir(f))
-    } catch (e) {
-      setErrorPlano(e instanceof ArchivoMuyPesado ? e.message : 'No se pudo preparar el plano. Probá de nuevo.')
-    } finally {
-      setPreparando(false)
-    }
-  }
-
-  const leyendoCliente = !!p.cliente && !cliente && !errorCliente
 
   const confirmar = () => {
-    if (leyendoCliente || preparando) return
-    const f = faltantesGanar({
-      presupuestoElegido: !!elegido,
-      conPdf: !!elegido?.pdf,
-      total,
-      conCliente: !!p.cliente,
-      cuentas: cliente?.cuentas.length ?? 0,
-      cuentaElegida: !!cuentaId,
-    })
-    if (errorCliente) f.push('No se pudieron leer las cuentas corrientes del cliente. Cerrá la ventana y volvé a intentar.')
-    setFaltan(f)
-    if (f.length || !elegido || !cliente) return
-    onConfirmar({ elegido, cuentaId, total: importeDe(total) ?? 0, plano }, cliente)
+    const falta = [
+      ...(!ubicacion.trim() ? ['Ingresá la dirección de la obra (calle y número).'] : []),
+      ...(!coordinador ? ['Elegí quién coordina la obra.'] : []),
+    ]
+    setFaltan(falta)
+    if (!falta.length) onConfirmar(ubicacion.trim(), coordinador)
   }
-
-  const cuentas = cliente?.cuentas ?? []
 
   return (
     <Modal
@@ -161,109 +105,39 @@ export function ModalGanarPresupuesto({
           <button type="button" className="btn btn-out" onClick={onClose}>
             Volver
           </button>
-          <button type="button" className="btn ag-btn-verde" disabled={leyendoCliente || preparando} onClick={confirmar}>
-            <i className="fas fa-trophy" /> {fijo ? 'Reintentar' : 'Sí, confirmar presupuesto'}
+          <button type="button" className="btn ag-btn-verde" onClick={confirmar}>
+            <i className="fas fa-circle-check" /> Sí, confirmar presupuesto
           </button>
         </>
       }
     >
-      <Clave p={p} />
-      <p className="modal-nota">
-        Dicho presupuesto se confirmará y se registrará como Obra.
-      </p>
-      {fijo && (
-        <p className="ag-irreversible" role="note">
-          <i className="fas fa-triangle-exclamation" /> El intento anterior quedó a mitad de camino: se completa con los mismos
-          datos.
-        </p>
-      )}
+      <Clave f={f} />
+      <p className="modal-nota">Dicho presupuesto se confirmará y se registrará como Obra.</p>
 
       {/* `carga-grid`: los campos en bordó, como en la carga del presupuesto. */}
       <div className="carga-grid pres-modal-campos">
-        <div className="med-campo">
-          <label className="campo-l" htmlFor={`${uid}-pres`}>
-            Presupuesto ganado *
-          </label>
-          <div className="pres-ver-fila">
-            <SelectBuscable
-              id={`${uid}-pres`}
-              valor={elegidoId}
-              opciones={p.presupuestos.map((x) => ({ valor: x.id, texto: `${rotulo(x)}${x.pdf ? '' : ' (sin PDF)'}` }))}
-              placeholder={p.presupuestos.length ? 'Elegí el presupuesto ganado' : 'No tiene presupuestos enviados'}
-              disabled={fijo || p.presupuestos.length <= 1}
-              onElegir={(v) => {
-                setElegidoId(v)
-                setFaltan([])
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-out pres-ver"
-              disabled={!elegido?.pdf}
-              title={elegido?.pdf ? 'Abrir el PDF del presupuesto en otra pestaña' : 'Este presupuesto no tiene PDF'}
-              onClick={() => {
-                setErrorVer('')
-                if (elegido?.pdf) void verPdf(elegido.pdf.assetId).catch(() => setErrorVer('No se pudo abrir el PDF. Probá de nuevo.'))
-              }}
-            >
-              <i className="fas fa-file-pdf" /> Ver presupuesto
-            </button>
-          </div>
-          {errorVer && <span className="pres-error">{errorVer}</span>}
-        </div>
-
         <div className="pres-datos-fijos">
-          <Dato l="Tipo de carpintería" v={elegido?.tipo ?? ''} />
-          <Dato l="Color" v={elegido?.color ?? ''} />
-          <Dato l="Tipo de obra" v={tipoObraDe(elegido?.tipo ?? '')} />
-          <Dato l="Cliente" v={p.cliente?.nombre ?? ''} />
-          <Dato l="Constructor/Arquitecto" v={p.arquitecto?.nombre || 'SIN ARQUITECTO'} />
-          <Dato l="Asignado a" v={responsable} />
+          <Dato l="Tipo de carpintería" v={f.p.tipo} />
+          <Dato l="Color" v={f.p.color} />
+          <Dato l="Total pactado" v={f.p.total !== null ? formatoImporte(f.p.total) : ''} />
+          <Dato l="Cliente" v={f.bolsa.cliente?.nombre ?? ''} />
         </div>
 
-        {p.cliente && (
-          <div className="med-campo">
-            <label className="campo-l" htmlFor={`${uid}-cta`}>
-              Cuenta corriente *
-            </label>
-            {leyendoCliente ? (
-              <span className="pres-dato-v">
-                <i className="fas fa-circle-notch spin" /> Leyendo las cuentas corrientes del cliente...
-              </span>
-            ) : cuentas.length > 1 ? (
-              <SelectBuscable
-                id={`${uid}-cta`}
-                valor={cuentaId}
-                opciones={cuentas.map((c) => ({ valor: c.id, texto: c.nombre }))}
-                placeholder="Elegí la cuenta corriente"
-                disabled={fijo}
-                falta={faltan.some((f) => f.includes('cuenta corriente'))}
-                onElegir={setCuentaId}
-              />
-            ) : (
-              <span className="pres-dato-v">
-                {cuentas[0]?.nombre ?? (errorCliente ? 'No se pudo leer' : <span className="pres-error">Sin cuenta corriente activa</span>)}
-              </span>
-            )}
-          </div>
-        )}
-
         <div className="med-campo">
-          <label className="campo-l" htmlFor={`${uid}-total`}>
-            Total Pactado *
+          <label className="campo-l" htmlFor={`${uid}-ubic`}>
+            Dirección de la obra *
           </label>
-          <div className={`med-conic ${faltan.some((f) => f.includes('Total')) ? 'pres-falta' : ''}`}>
-            <i className="fas fa-dollar-sign" aria-hidden="true" />
+          <div className={`med-conic ${faltan.some((x) => x.includes('dirección')) ? 'pres-falta' : ''}`}>
+            <i className="fas fa-location-dot" aria-hidden="true" />
             <input
-              id={`${uid}-total`}
+              id={`${uid}-ubic`}
               className="med-input"
               type="text"
-              inputMode="decimal"
-              placeholder="Ej.: 1.731.694,48"
-              value={total}
-              disabled={fijo}
+              maxLength={300}
+              placeholder="Calle y número, p. ej. Pujol 1147"
+              value={ubicacion}
               onChange={(e) => {
-                setTotal(e.target.value)
+                setUbicacion(e.target.value)
                 setFaltan([])
               }}
             />
@@ -271,29 +145,28 @@ export function ModalGanarPresupuesto({
         </div>
 
         <div className="med-campo">
-          <span className="campo-l">
-            Plano de Aberturas <span className="med-l-sub">opcional</span>
-          </span>
-          <div className="carga-grid pres-plano">
-            <SoltarArchivo
-              id={`${uid}-plano`}
-              archivo={plano?.name ?? null}
-              estado={preparando ? 'procesando' : errorPlano ? 'error' : plano ? 'listo' : 'vacio'}
-              titulo={preparando ? 'Procesando…' : errorPlano ? 'No se pudo cargar' : plano ? 'Plano cargado' : undefined}
-              detalle={errorPlano || (plano ? undefined : 'Soltá el PDF del plano de aberturas, o hacé click para elegirlo')}
-              deshabilitado={fijo || preparando}
-              onArchivo={(f) => void cargarPlano(f)}
-              onQuitar={plano && !fijo ? () => setPlano(null) : undefined}
-            />
-          </div>
+          <label className="campo-l" htmlFor={`${uid}-coord`}>
+            Coordinador de la obra *
+          </label>
+          <SelectBuscable
+            id={`${uid}-coord`}
+            valor={coordinador}
+            opciones={opciones.map((o) => ({ valor: o.nombre, texto: `${o.nombre} · ${o.rol}` }))}
+            placeholder={opciones.length ? 'Elegí quién coordina la obra' : 'La bolsa no tiene cliente ni constructor'}
+            falta={faltan.some((x) => x.includes('coordina'))}
+            onElegir={(v) => {
+              setCoordinador(v)
+              setFaltan([])
+            }}
+          />
         </div>
       </div>
 
       {faltan.length > 0 && (
         <ul className="modal-faltantes">
-          {faltan.map((f) => (
-            <li key={f}>
-              <i className="fas fa-circle-xmark" /> {f}
+          {faltan.map((x) => (
+            <li key={x}>
+              <i className="fas fa-circle-xmark" /> {x}
             </li>
           ))}
         </ul>
@@ -303,15 +176,16 @@ export function ModalGanarPresupuesto({
 }
 
 /**
- * Dar el presupuesto por perdido: pasa a "Perdido" y deja de gestionarse. Sus presupuestos enviados
- * quedan "Rechazado", con el motivo si se escribe (opcional).
+ * Dar un presupuesto por perdido (regla del usuario, 13/10/2026): lo mismo que "Rechazar" del enlace.
+ * El presupuesto queda Rechazado, con el motivo si se escribe (opcional). La bolsa y sus otros
+ * presupuestos no cambian.
  */
 export function ModalPerderPresupuesto({
-  presupuesto: p,
+  fila: f,
   onClose,
   onConfirmar,
 }: {
-  presupuesto: PresupuestoGestion
+  fila: FilaGestion
   onClose: () => void
   onConfirmar: (motivo: string) => void
 }) {
@@ -334,16 +208,9 @@ export function ModalPerderPresupuesto({
         </>
       }
     >
-      <Clave p={p} />
+      <Clave f={f} />
       <p className="modal-nota">
-        El presupuesto pasa a <strong>Perdido</strong> y deja de listarse en la consulta.
-        {p.presupuestos.length > 0 && (
-          <>
-            {' '}
-            {p.presupuestos.length === 1 ? 'Su presupuesto enviado queda' : `Sus ${p.presupuestos.length} presupuestos enviados quedan`}{' '}
-            <strong>Rechazado</strong>.
-          </>
-        )}
+        El presupuesto queda <strong>Rechazado</strong>. La bolsa y sus otros presupuestos no cambian.
       </p>
       <label className="campo-l" htmlFor={`${uid}-motivo`}>
         Motivo <span className="med-l-sub">opcional</span>
@@ -357,6 +224,119 @@ export function ModalPerderPresupuesto({
         value={motivo}
         onChange={(e) => setMotivo(e.target.value)}
       />
+    </Modal>
+  )
+}
+
+export type AccionFila = 'enviar' | 'reenviar' | 'confirmar' | 'perder'
+
+/** El recordatorio de los 5 días, dicho para el usuario. */
+function textoRecordatorio(estado: string): { texto: string; ok: boolean | null } {
+  const e = estado.trim()
+  if (e === 'Enviado') return { texto: 'Enviado', ok: true }
+  if (e === 'Error de Envio') return { texto: 'Error al enviarlo', ok: false }
+  if (e === 'Enviando') return { texto: 'Enviándose', ok: null }
+  return { texto: 'Todavía no se envió', ok: null }
+}
+
+/**
+ * La ficha de un presupuesto (como la del turno en la Agenda): sus datos, el último envío y el
+ * recordatorio de los 5 días —cuándo sale y si ya salió—, con sus acciones.
+ */
+export function FichaPresupuesto({
+  fila: f,
+  onClose,
+  onAccion,
+}: {
+  fila: FilaGestion
+  onClose: () => void
+  onAccion: (a: AccionFila) => void
+}) {
+  const { p, bolsa } = f
+  const acciones = accionesPresupuesto(bolsa.estado, p)
+  const rec = textoRecordatorio(bolsa.estadoRecordatorio)
+  const s = situacionDe(p.confirmacion)
+  const envio = acciones.envio
+  return (
+    <Modal
+      title="Presupuesto"
+      icon={<i className="fas fa-file-invoice-dollar modal-icon--info" />}
+      onClose={onClose}
+      className="ag-modal ag-ficha-turno agenda-v2"
+    >
+      <p className="modal-clave ag-ficha-clave">
+        {bolsa.nombre}
+        <span className="ag-clave-fecha">{[p.nombre, bolsa.idPresupuesto].filter(Boolean).join(' · ')}</span>
+      </p>
+      <dl className="ag-resumen">
+        <dt>Estado</dt>
+        <dd>
+          <SituacionChip p={p} />
+        </dd>
+        <dt>Carpintería</dt>
+        <dd>{p.tipo || p.color ? <Etiquetas tipo={p.tipo} color={p.color} /> : <span className="ant-sd">Sin especificar</span>}</dd>
+        <dt>Total pactado</dt>
+        <dd>{p.total !== null ? formatoImporte(p.total) : <span className="ant-sd">Sin total</span>}</dd>
+        <dt>Cliente</dt>
+        <dd>{bolsa.cliente?.nombre || <span className="ant-sd">Sin cliente</span>}</dd>
+        <dt>Constructor/Arquitecto</dt>
+        <dd>{bolsa.arquitecto?.nombre || <span className="ant-sd">Sin constructor</span>}</dd>
+        <dt>Último envío</dt>
+        <dd>
+          {p.fechaEnvio ? (
+            fechaCorta(p.fechaEnvio)
+          ) : (
+            <span className="ant-sd">{yaEnviado(p.estadoEnvio) ? 'Enviado (sin fecha registrada)' : 'Todavía no se envió'}</span>
+          )}
+        </dd>
+        <dt>Recordatorio</dt>
+        <dd>
+          {bolsa.fechaRecordatorio ? fechaCorta(bolsa.fechaRecordatorio) : <span className="ant-sd">Sin fecha de recordatorio</span>}
+          <span className="ant-detalle">
+            {rec.ok === true && <i className="fas fa-circle-check pres-rec-ok" />}
+            {rec.ok === false && <i className="fas fa-circle-exclamation pres-rec-err" />} Mensaje de recordatorio: {rec.texto}
+          </span>
+        </dd>
+        {s === 'rechazado' && (
+          <>
+            <dt>Motivo</dt>
+            <dd>{p.motivo || <span className="ant-sd">Sin motivo</span>}</dd>
+          </>
+        )}
+        <dt>PDF</dt>
+        <dd>
+          {p.pdf ? (
+            <button type="button" className="btn btn-out pres-ver" onClick={() => p.pdf && void verPdfMonday(p.pdf.assetId)}>
+              <i className="fas fa-file-pdf" /> Ver presupuesto
+            </button>
+          ) : (
+            <span className="ant-sd">Sin PDF</span>
+          )}
+        </dd>
+      </dl>
+      <div className="ag-ficha-acciones">
+        {!envio && !acciones.confirmar && !acciones.perder ? (
+          <span className="ant-sd">Este presupuesto ya no admite acciones.</span>
+        ) : (
+          <>
+            {envio && (
+              <button type="button" className="ag-acc ag-acc--asignar" onClick={() => onAccion(envio)}>
+                <i className={`fas ${envio === 'reenviar' ? 'fa-rotate-right' : 'fa-paper-plane'}`} /> {envio === 'reenviar' ? 'Reenviar' : 'Enviar'}
+              </button>
+            )}
+            {acciones.confirmar && (
+              <button type="button" className="ag-acc ag-acc--ok" onClick={() => onAccion('confirmar')}>
+                <i className="fas fa-circle-check" /> Confirmar
+              </button>
+            )}
+            {acciones.perder && (
+              <button type="button" className="ag-acc ag-acc--cancel" onClick={() => onAccion('perder')}>
+                <i className="fas fa-thumbs-down" /> Perdido
+              </button>
+            )}
+          </>
+        )}
+      </div>
     </Modal>
   )
 }

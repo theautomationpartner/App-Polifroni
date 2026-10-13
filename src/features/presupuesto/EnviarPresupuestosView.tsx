@@ -30,7 +30,7 @@ const TEXTOS_FINALIZAR: TextosFinalizar = {
  */
 export function EnviarPresupuestosView() {
   const dispatch = useDispatch()
-  const { presupuesto, enviado } = useApp()
+  const { presupuesto, enviado, usuario } = useApp()
   const { modo, bolsa, cliente, arquitecto, presupuestos } = presupuesto
   const [aConfirmar, setAConfirmar] = useState<string[]>([])
   const para = [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
@@ -59,6 +59,7 @@ export function EnviarPresupuestosView() {
               ? () =>
                   registrarPresupuesto({
                     borrador: presupuesto,
+                    creadoPor: usuario?.id ?? null,
                     avanzar: (cambios) => dispatch({ type: 'setPresupuesto', cambios }),
                   })
               : undefined

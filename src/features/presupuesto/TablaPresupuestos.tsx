@@ -26,7 +26,7 @@ export function verPdfLocal(archivo: File) {
  * Abre en otra pestaña un PDF que ya está en Monday. La pestaña se abre ANTES de pedir la dirección
  * firmada: abrirla después de esperar a Monday la frena el bloqueador de ventanas del navegador.
  */
-async function verPdfMonday(assetId: string) {
+export async function verPdfMonday(assetId: string) {
   const w = window.open('', '_blank')
   try {
     const url = await getUrlArchivo(assetId)
@@ -41,7 +41,7 @@ async function verPdfMonday(assetId: string) {
 const fechaCorta = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
 
 /** Las etiquetas de tipo de carpintería y color de una fila (la misma pastilla de los estados). */
-function Etiquetas({ tipo, color }: { tipo: string; color: string }) {
+export function Etiquetas({ tipo, color }: { tipo: string; color: string }) {
   return (
     <span className="pres-fila-tags">
       {tipo && (

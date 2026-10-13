@@ -18,6 +18,7 @@
  *     así un doble clic o un enlace abierto dos veces no escriben dos veces.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { waitUntil } from '@vercel/functions'
 import { leerCodigo, leerEnlaceLargo, type DocumentoConfirmacion, type EnlaceLeido } from './_confirmacion.js'
 import { buscarDocumento, leerRespuesta, registrarRespuesta, type Documento } from './_confirmarMonday.js'
 import { conVistaPrevia, paginaAviso, paginaFormulario, paginaRespuesta, paginaVistaPrevia } from './_confirmarPaginas.js'
@@ -144,7 +145,12 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
     /* Los formularios ya exigen cada campo antes de enviar: si igual falta algo, se vuelve a mostrar. */
     if (!leida.ok) return html(res, 422, tarjeta, formulario(doc, accion))
 
-    await registrarRespuesta(doc, doc.nombre, leida.respuesta)
+    /* Quien confirma sólo espera su respuesta y los datos del presupuesto; la obra y la cuenta corriente
+       siguen después de responderle. En Vercel, `waitUntil` mantiene viva la función hasta que
+       terminan; en desarrollo (Vite) siguen corriendo solas. */
+    await registrarRespuesta(doc, doc.nombre, leida.respuesta, undefined, undefined, (tarea) => {
+      waitUntil(tarea)
+    })
     const r = leida.respuesta
     return html(
       res,

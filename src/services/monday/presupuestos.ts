@@ -12,6 +12,7 @@
  *  - El tipo de carpintería, el color, el PDF y la fecha de envío son de cada SUBELEMENTO.
  */
 import type { ArchivoObra } from '@/types'
+import { indiceDeValor } from '@/lib/estadosOp'
 import { memoGlobal } from './cache'
 import { archivosDeColumna, subirArchivo } from './obras'
 import { byId, valor, type CV } from './parse'
@@ -36,6 +37,9 @@ export const COL_PRES = {
   estado: 'color_mkvg6w7v',
   idPresupuesto: 'pulse_id_mkvgv9tn',
   creacion: 'pulse_log_mkwkx88a',
+  /** 🤖Creado por: el usuario de la app que creó la bolsa (columna creada el 13/10/2026). La obra que
+      nace de su confirmación lo toma como ✋Asignado a:. */
+  creadoPor: 'multiple_person_mm83jvyr',
 } as const
 
 /** Columnas del subelemento (cada presupuesto enviado). */
@@ -52,6 +56,10 @@ export const COL_SUB = {
   total: 'numeric_mm836j1t',
   /** 🤖Clave Confirmacion: la clave del enlace de confirmación que salió en el mensaje. */
   clave: 'text_mm7wn1jz',
+  /** 🤖 Estado de Confirmacion: Confirmado | Rechazado | Error de Confirmacion (vacío: sin respuesta). */
+  confirmacion: 'color_mm0dsv6p',
+  /** 🤖Motivo: por qué se rechazó. */
+  motivo: 'text_mm7wmv13',
 } as const
 
 /** Etiquetas del tablero que escribe la app. */
@@ -247,6 +255,12 @@ export interface PresupuestoEnviado {
   pdf: ArchivoObra | null
   /** ✋Total Pactado. `null` en los que no lo tienen (los anteriores a esta columna). */
   total: number | null
+  /** 🤖 Estado de Confirmacion, tal cual (vacío: todavía sin respuesta). */
+  confirmacion: string
+  /** 🤖Clave Confirmacion: la del enlace que salió (un reenvío la reusa). */
+  clave: string
+  /** 🤖Motivo del rechazo. */
+  motivo: string
 }
 
 /** Una bolsa de presupuestos, con a quién pertenece y lo que ya se le mandó. */
@@ -280,7 +294,17 @@ export const CAMPOS_BOLSA = `
   }
   subitems {
     id name
-    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio, COL_SUB.pdf, COL_SUB.total])}) { id text value }
+    column_values(ids: ${JSON.stringify([
+      COL_SUB.tipo,
+      COL_SUB.color,
+      COL_SUB.fechaEnvio,
+      COL_SUB.estadoEnvio,
+      COL_SUB.pdf,
+      COL_SUB.total,
+      COL_SUB.confirmacion,
+      COL_SUB.clave,
+      COL_SUB.motivo,
+    ])}) { id text value }
   }
 `
 
@@ -320,6 +344,11 @@ export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
         estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
         pdf: pdfDe(sc[COL_SUB.pdf]),
         total: valor(sc[COL_SUB.total]).trim() ? Number(valor(sc[COL_SUB.total])) : null,
+        /* Sin respuesta: vacío. El tablero le puso nombre a esa etiqueta (índice 5, "Pend de Confirmar"),
+           así que se decide por el índice y no por el texto. */
+        confirmacion: [null, 5].includes(indiceDeValor(sc[COL_SUB.confirmacion]?.value)) ? '' : valor(sc[COL_SUB.confirmacion]),
+        clave: valor(sc[COL_SUB.clave]),
+        motivo: valor(sc[COL_SUB.motivo]),
       }
     }),
   }
@@ -417,10 +446,13 @@ export async function crearBolsa(a: {
   cliente: Contacto | null
   arquitecto: Contacto | null
   enviarA: string
+  /** El id de Monday del usuario logueado en la app. */
+  creadoPor: string | null
 }): Promise<string> {
   const valores: Record<string, unknown> = {
     [COL_PRES.estado]: { label: ETIQUETA_PRES.presupuestoEnviado },
   }
+  if (a.creadoPor) valores[COL_PRES.creadoPor] = { personsAndTeams: [{ id: Number(a.creadoPor), kind: 'person' }] }
   if (a.cliente) valores[COL_PRES.cliente] = relacion(a.cliente)
   if (a.arquitecto) valores[COL_PRES.arquitecto] = relacion(a.arquitecto)
   if (a.enviarA) valores[COL_PRES.enviarA] = { label: a.enviarA }
@@ -431,6 +463,22 @@ export async function crearBolsa(a: {
     { nombre: a.nombre, valores: JSON.stringify(valores) },
   )
   return String(d.create_item.id)
+}
+
+/**
+ * Cierra el alta de una bolsa nueva: "Presupuesto Enviado" y quién la creó. Va al FINAL, con los
+ * subelementos ya creados: una automatización del tablero pasa la bolsa a "Solicitud de Presupuesto"
+ * apenas se le crea un subelemento, y esta escritura tiene que quedar después.
+ */
+export async function marcarBolsaEnviada(bolsaId: string, creadoPor: string | null): Promise<void> {
+  const valores: Record<string, unknown> = { [COL_PRES.estado]: { label: ETIQUETA_PRES.presupuestoEnviado } }
+  if (creadoPor) valores[COL_PRES.creadoPor] = { personsAndTeams: [{ id: Number(creadoPor), kind: 'person' }] }
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_PRESUPUESTOS}, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
+    }`,
+    { id: bolsaId, valores: JSON.stringify(valores) },
+  )
 }
 
 /** A quién se le mandó esta vez (✋Enviar a), en una bolsa que ya existía. */

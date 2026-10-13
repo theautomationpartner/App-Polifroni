@@ -3,6 +3,7 @@ import {
   actualizarEnviarA,
   crearBolsa,
   crearPresupuestoEnviado,
+  marcarBolsaEnviada,
   nombrarPresupuestoEnviado,
   subirPdfPresupuesto,
 } from '@/services/monday'
@@ -13,8 +14,8 @@ import type { BorradorPresupuesto, PresupuestoCargado } from './borrador'
  * toca solo apenas el envío sale bien). Hasta acá no se escribió nada: los PDF vivían en la app.
  *
  * En orden:
- *  1. Crear: la bolsa (el ítem), con el cliente y/o el constructor, a quién se envió y en "Presupuesto
- *     Enviado". Cargar otro: la bolsa ya existe; se actualiza a quién se envió esta vez (el estado no se toca).
+ *  1. Crear: la bolsa (el ítem), con el cliente y/o el constructor, a quién se envió, quién la creó
+ *     (🤖Creado por) y en "Presupuesto Enviado". Cargar otro: la bolsa ya existe; se actualiza a quién se envió esta vez (el estado no se toca).
  *  2. Por CADA presupuesto de la lista, su subelemento: tipo de carpintería, color, Total Pactado,
  *     "Enviado", la fecha del envío y —sólo si el responsable tenía que confirmarlo— la clave del
  *     enlace que salió en el mensaje (`🤖Clave Confirmacion`). Después su PDF (`✋Presupuesto pdf`) y
@@ -25,9 +26,12 @@ import type { BorradorPresupuesto, PresupuestoCargado } from './borrador'
  */
 export async function registrarPresupuesto({
   borrador,
+  creadoPor,
   avanzar,
 }: {
   borrador: BorradorPresupuesto
+  /** El usuario logueado: queda en 🤖Creado por de la bolsa nueva. */
+  creadoPor: string | null
   avanzar: (cambios: Partial<BorradorPresupuesto>) => void
 }): Promise<void> {
   const { envio, cliente, arquitecto } = borrador
@@ -37,7 +41,7 @@ export async function registrarPresupuesto({
 
   let bolsaId = borrador.bolsaId ?? borrador.bolsa?.id ?? null
   if (!bolsaId) {
-    bolsaId = await crearBolsa({ nombre: nombreBolsa(cliente, arquitecto), cliente, arquitecto, enviarA })
+    bolsaId = await crearBolsa({ nombre: nombreBolsa(cliente, arquitecto), cliente, arquitecto, enviarA, creadoPor })
     avanzar({ bolsaId })
   } else if (borrador.bolsa && !borrador.bolsaId) {
     /* Otro presupuesto en una bolsa existente: a quién se le mandó esta vez. */
@@ -72,4 +76,9 @@ export async function registrarPresupuesto({
     }
     await nombrarPresupuestoEnviado(subitemId).catch((e) => console.warn('[presupuesto] no se pudo nombrar el subelemento', e))
   }
+
+  /* 3. Una bolsa nueva queda "Presupuesto Enviado" y con quién la creó. Se escribe de nuevo al final:
+     una automatización del tablero la pasa a "Solicitud de Presupuesto" al crearle el primer
+     subelemento. Cargar otro presupuesto no toca el estado (regla del usuario, 13/10/2026). */
+  if (borrador.modo === 'crear') await marcarBolsaEnviada(bolsaId, creadoPor)
 }

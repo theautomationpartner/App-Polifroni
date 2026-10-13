@@ -541,3 +541,83 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── Consultar y Gestionar: una fila por presupuesto (regla del usuario, 13/10/2026) ── */
+.presupuesto-v2 .pres-tabla--subs col.pres-w-fecha {
+  width: 104px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-tipo {
+  width: 108px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-color {
+  width: 132px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-total {
+  width: 118px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-pdf {
+  width: 92px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-estado {
+  width: 160px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-acc {
+  width: 330px;
+}
+.presupuesto-v2 .pres-tabla--subs .ant-col-der,
+.presupuesto-v2 .pres-tabla--subs thead th.ant-col-der {
+  text-align: right;
+}
+.presupuesto-v2 .pres-tabla--subs .ag-acciones {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+/* La fila abre la ficha del presupuesto. */
+.presupuesto-v2 tr.pres-fila-click {
+  cursor: pointer;
+}
+.presupuesto-v2 tr.pres-fila-click:focus-visible {
+  outline: 2px solid var(--marca);
+  outline-offset: -2px;
+}
+/* Ver el PDF desde la tabla: un botón chico, sin robar la fila. */
+.presupuesto-v2 .ant-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.presupuesto-v2 .ant-pdf-btn i {
+  color: #e2445c;
+}
+.presupuesto-v2 .ant-pdf-btn:hover {
+  border-color: var(--marca);
+  color: var(--marca);
+}
+/* La ficha: el recordatorio enviado (verde) o con error (rojo). */
+.ag-ficha-turno .pres-rec-ok {
+  color: var(--green);
+}
+.ag-ficha-turno .pres-rec-err {
+  color: var(--red);
+}
+/* En la tabla y en la ficha, las etiquetas de tipo y color van a la izquierda, como el resto de los datos. */
+.presupuesto-v2 .pres-tabla--subs .pres-fila-tags,
+.ag-ficha-turno .pres-fila-tags {
+  justify-content: flex-start;
+}
+.presupuesto-v2 .ant-pdf-btn {
+  white-space: nowrap;
+}
+/* El "Ver presupuesto" de la ficha: del tamaño de un dato, no de un botón principal. */
+.ag-ficha-turno .pres-ver {
+  padding: 6px 12px;
+  font-size: 13px;
+}

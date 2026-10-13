@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import type { Rol } from '@/lib/destinatario'
 import { etiquetaPresupuesto, textoPresupuestos } from '@/lib/presupuesto'
-import type { PresupuestoCargado } from './borrador'
+import type { PresupuestoAEnviar } from './EnvioPresupuestos'
 
 /**
  * Una línea con el formato de WhatsApp: lo que va entre asteriscos, en negrita. Cada enlace de
@@ -41,14 +41,17 @@ export function MensajePresupuesto({
   confirmador,
   presupuestos,
   aConfirmar,
+  reenvio = false,
   onClose,
 }: {
   nombres: { rol: Rol; nombre: string }[]
   /** El responsable de confirmar (o nadie: la confirmación es opcional). */
   confirmador: Rol | null
-  presupuestos: PresupuestoCargado[]
+  presupuestos: PresupuestoAEnviar[]
   /** Los que el responsable tiene que confirmar. */
   aConfirmar: string[]
+  /** Un reenvío: el texto lo dice. */
+  reenvio?: boolean
   onClose: () => void
 }) {
   const [viendo, setViendo] = useState(() => Math.max(0, nombres.findIndex((n) => n.rol === confirmador)))
@@ -60,11 +63,11 @@ export function MensajePresupuesto({
         .filter((p) => aConfirmar.includes(p.id))
         .map((p) => ({ etiqueta: etiquetaPresupuesto({ nombreArchivo: p.archivo.name, tipo: p.tipo, color: p.color }), clave: p.clave ?? 'clave' }))
     : []
-  const parrafos = textoPresupuestos(actual.nombre, Math.max(1, presupuestos.length), new Date(), confirmables).split(/\n{2,}/)
+  const parrafos = textoPresupuestos(actual.nombre, Math.max(1, presupuestos.length), new Date(), confirmables, reenvio).split(/\n{2,}/)
 
   return (
     <Modal
-      title="Mensaje que se envía"
+      title={reenvio ? 'Mensaje que se reenvía' : 'Mensaje que se envía'}
       icon={<i className="fab fa-whatsapp msj-ic" />}
       onClose={onClose}
       actions={

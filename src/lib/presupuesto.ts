@@ -26,6 +26,16 @@ export interface ContactoEnvio {
   email?: string
 }
 
+/** El ítem comodín "SIN ARQUITECTO" de 👤 Constructor/Arquitecto: el que se usa cuando no hay ninguno. */
+export const SIN_ARQUITECTO_ID = '10910009068'
+
+/**
+ * ¿Es el comodín "SIN ARQUITECTO" (por su id o por su nombre)? No es una persona: no se le envía nada
+ * ni coordina una obra (regla del usuario, 13/10/2026).
+ */
+export const esSinArquitecto = (c: { id: string; nombre: string } | null | undefined): boolean =>
+  !!c && (c.id === SIN_ARQUITECTO_ID || /^(\d+\s*-\s*)?sin\s+(arquitecto|constructor)\b/i.test(c.nombre.trim()))
+
 /**
  * Los contactos del presupuesto en la forma de los datos de la obra, para usar las MISMAS reglas de
  * destinatario que el envío de la OP (`destinoDe`, `faltantesDestino`, `advertenciasDestino`).
@@ -114,6 +124,8 @@ export function textoPresupuestos(
   cantidad: number,
   fecha: Date = new Date(),
   confirmar: readonly PresupuestoEnMensaje[] = [],
+  /** Un reenvío desde Consultar y Gestionar (regla del usuario, 13/10/2026): el mensaje lo dice. */
+  reenvio = false,
 ): string {
   const dos = (n: number) => String(n).padStart(2, '0')
   const dia = `${dos(fecha.getDate())}/${dos(fecha.getMonth() + 1)}/${fecha.getFullYear()}`
@@ -130,9 +142,9 @@ export function textoPresupuestos(
   }
   return `👋Hola *${sinCodigo(nombre) || 'Cliente'}*,
 
-Le adjuntamos ${varios ? 'los presupuestos solicitados' : 'el presupuesto solicitado'}. Si tenés alguna consulta sobre ${varios ? 'estos' : 'este'} o tu cuenta, por favor respondé a este mensaje o contactanos.
+${reenvio ? '🔁 Te *REENVIAMOS* ' : 'Le adjuntamos '}${varios ? 'los presupuestos solicitados' : 'el presupuesto solicitado'}. Si tenés alguna consulta sobre ${varios ? 'estos' : 'este'} o tu cuenta, por favor respondé a este mensaje o contactanos.
 
-📄 *Concepto:* ${varios ? `Presupuestos (${cantidad})` : 'Presupuesto'}
+📄 *Concepto:* ${reenvio ? 'Reenvío de ' : ''}${varios ? `${reenvio ? 'presupuestos' : 'Presupuestos'} (${cantidad})` : reenvio ? 'presupuesto' : 'Presupuesto'}
 📅 *Fecha:* ${dia}${parrafoConfirmar}
 
 Polifroni Aberturas
@@ -149,56 +161,78 @@ export function fechaLocal(d: Date): string {
  * Consultar y Gestionar Presupuestos
  * ──────────────────────────────────────────────────────────────────────────────── */
 
-/**
- * Los estados de `🤖Estado Presupuesto` que se gestionan: los que todavía no se ganaron ni se
- * perdieron. "Pend. de confirmar" junta a los enviados y a las bolsas abiertas ("Solicitud de
- * Presupuesto", que también ya se enviaron desde la app). "Proyecto Ganado con otro pres" no se
- * lista: ya está resuelto.
- */
-export const ESTADOS_GESTION = {
-  enviado: { indice: 1, etiqueta: 'Presupuesto Enviado' },
-  negociacion: { indice: 3, etiqueta: 'En Negociacion' },
-  vencido: { indice: 4, etiqueta: 'Presupuesto vencido' },
-  solicitud: { indice: 5, etiqueta: 'Solicitud de Presupuesto' },
-} as const
-
 export const ETIQUETA_GANADO = 'Ganado'
 export const ETIQUETA_PERDIDO = 'Perdido'
-
-/** Los índices que se piden a Monday para la consulta. */
-export const INDICES_GESTION: number[] = Object.values(ESTADOS_GESTION).map((e) => e.indice)
-
-/** ¿El presupuesto en este estado se puede ganar o dar por perdido? */
-export const gestionable = (etiqueta: string): boolean =>
-  Object.values(ESTADOS_GESTION).some((e) => e.etiqueta === etiqueta.trim())
+const ETIQUETA_VENCIDO = 'Presupuesto vencido'
 
 /**
- * ¿Se puede GANAR un presupuesto en este estado? Uno vencido no (regla del usuario, 05/10/2026): sólo
- * se puede dar por perdido.
+ * Los índices de `🤖Estado Presupuesto` de las bolsas que YA NO se gestionan: Ganado (0) y Perdido
+ * (2). La consulta lista los presupuestos de todas las demás (regla del usuario, 13/10/2026).
  */
-export const ganable = (etiqueta: string): boolean =>
-  gestionable(etiqueta) && etiqueta.trim() !== ESTADOS_GESTION.vencido.etiqueta
+export const INDICES_CERRADOS: number[] = [0, 2]
 
-export type FiltroGestion = 'todos' | 'pendientes' | 'negociacion' | 'vencidos'
+/** ¿La bolsa en este estado se gestiona? Todas menos las Ganadas y las Perdidas. */
+export const gestionable = (etiqueta: string): boolean => ![ETIQUETA_GANADO, ETIQUETA_PERDIDO].includes(etiqueta.trim())
+
+/**
+ * ¿Se puede CONFIRMAR un presupuesto de una bolsa en este estado? Una vencida no (regla del usuario,
+ * 05/10/2026): sólo se puede dar por perdido.
+ */
+export const ganable = (etiqueta: string): boolean => gestionable(etiqueta) && etiqueta.trim() !== ETIQUETA_VENCIDO
+
+/** La respuesta de un presupuesto (`🤖 Estado de Confirmacion`). */
+export type SituacionPresupuesto = 'pendiente' | 'confirmado' | 'rechazado' | 'error'
+
+export function situacionDe(confirmacion: string): SituacionPresupuesto {
+  const e = confirmacion.trim()
+  if (!e) return 'pendiente'
+  if (e === 'Rechazado') return 'rechazado'
+  if (e === 'Confirmado') return 'confirmado'
+  return 'error'
+}
+
+/** ¿El presupuesto ya salió por WhatsApp? Su `🤖 Estado de Envio` lo dice (no el estado de la bolsa). */
+export const yaEnviado = (estadoEnvio: string): boolean => estadoEnvio.trim() === 'Enviado'
+
+/**
+ * Qué se puede hacer con un presupuesto (regla del usuario, 13/10/2026). Sólo con uno que todavía no
+ * tiene respuesta:
+ *  - Enviar (si nunca salió) o Reenviar (si ya salió). Hace falta el PDF.
+ *  - Confirmar: hace falta el PDF y que la bolsa no esté vencida.
+ *  - Perdido (rechazarlo).
+ */
+export function accionesPresupuesto(
+  estadoBolsa: string,
+  p: { estadoEnvio: string; confirmacion: string; pdf: unknown },
+): { envio: 'enviar' | 'reenviar' | null; confirmar: boolean; perder: boolean } {
+  /* Sin respuesta y en una bolsa que se sigue gestionando (no recién Ganada o Perdida). */
+  if (situacionDe(p.confirmacion) !== 'pendiente' || !gestionable(estadoBolsa)) return { envio: null, confirmar: false, perder: false }
+  return {
+    envio: p.pdf ? (yaEnviado(p.estadoEnvio) ? 'reenviar' : 'enviar') : null,
+    confirmar: !!p.pdf && ganable(estadoBolsa),
+    perder: true,
+  }
+}
+
+export type FiltroGestion = 'todos' | 'paraEnviar' | 'enviados' | 'rechazados'
 
 export const FILTROS_GESTION: readonly { id: FiltroGestion; titulo: string }[] = [
   { id: 'todos', titulo: 'Todos' },
-  { id: 'pendientes', titulo: 'Pend. de confirmar' },
-  { id: 'negociacion', titulo: 'En negociación' },
-  { id: 'vencidos', titulo: 'Vencidos' },
+  { id: 'paraEnviar', titulo: 'Para enviar' },
+  { id: 'enviados', titulo: 'Pend. de confirmar' },
+  { id: 'rechazados', titulo: 'Rechazados' },
 ]
 
-export function pasaFiltro(filtro: FiltroGestion, etiqueta: string): boolean {
-  const e = etiqueta.trim()
-  if (filtro === 'todos') return gestionable(e)
-  if (filtro === 'pendientes') return e === ESTADOS_GESTION.enviado.etiqueta || e === ESTADOS_GESTION.solicitud.etiqueta
-  if (filtro === 'negociacion') return e === ESTADOS_GESTION.negociacion.etiqueta
-  return e === ESTADOS_GESTION.vencido.etiqueta
+export function pasaFiltro(filtro: FiltroGestion, p: { estadoEnvio: string; confirmacion: string }): boolean {
+  const s = situacionDe(p.confirmacion)
+  if (filtro === 'todos') return true
+  if (filtro === 'rechazados') return s === 'rechazado'
+  if (filtro === 'paraEnviar') return s === 'pendiente' && !yaEnviado(p.estadoEnvio)
+  return s === 'pendiente' && yaEnviado(p.estadoEnvio)
 }
 
-/** `✋Tipo` de la obra (Aluminio | PVC) según el tipo de carpintería del presupuesto ganado. */
 /** Las bolsas que ya no reciben presupuestos: "cargar otro" no las lista (regla del usuario, 13/10/2026). */
-const BOLSA_CERRADA = ['Ganado', 'Perdido']
+const BOLSA_CERRADA = [ETIQUETA_GANADO, ETIQUETA_PERDIDO]
 
 /**
  * Cargar otro presupuesto: de las bolsas del cliente, las que no están Ganadas ni Perdidas. Los
@@ -217,32 +251,7 @@ export function bolsaParaCargar(
   return { bolsa, enviados }
 }
 
-const escaparHtml = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-
-/**
- * La actividad "Confirmacion Presupuesto Obra" que deja en el cliente un presupuesto ganado desde la
- * app: la misma estructura que la de la confirmación por WhatsApp (`textoUpdate` de
- * `api/_confirmarMonday.ts`), con la última línea diciendo quién lo registró.
- */
-export function actividadConfirmacionApp(a: { contacto: string; ubicacion: string; autor: string; cuando?: Date }): string {
-  const fecha = new Intl.DateTimeFormat('es-AR', {
-    timeZone: 'America/Argentina/Buenos_Aires',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(a.cuando ?? new Date())
-  const renglones = [
-    `<p><b>✅ Confirmó el presupuesto:</b> ${escaparHtml(a.contacto || 'el cliente')}</p>`,
-    `<p><b>Fecha:</b> ${fecha} hs</p>`,
-  ]
-  if (a.ubicacion) renglones.push(`<p><b>Ubicación de la obra:</b> ${escaparHtml(a.ubicacion)}</p>`)
-  renglones.push(`<p><i>Registrado desde la app${a.autor ? ` por ${escaparHtml(a.autor)}` : ''} (Consultar y Gestionar Presupuestos).</i></p>`)
-  return renglones.join('')
-}
-
+/** `✋Tipo` de la obra (Aluminio | PVC) según el tipo de carpintería del presupuesto. */
 export const tipoObraDe = (tipoCarpinteria: string): 'PVC' | 'Aluminio' | '' =>
   !tipoCarpinteria.trim() ? '' : /pvc/i.test(tipoCarpinteria) ? 'PVC' : 'Aluminio'
 
@@ -271,26 +280,3 @@ export function formatoImporte(n: number): string {
   return `$ ${n.toLocaleString('es-AR', { minimumFractionDigits: entero ? 0 : 2, maximumFractionDigits: 2 })}`
 }
 
-/** Lo que falta para ganar un presupuesto y crear su obra. Vacío = se puede. */
-export function faltantesGanar(d: {
-  presupuestoElegido: boolean
-  conPdf: boolean
-  total: string
-  conCliente: boolean
-  cuentas: number
-  cuentaElegida: boolean
-}): string[] {
-  const f: string[] = []
-  if (!d.presupuestoElegido) f.push('Elegí cuál de los presupuestos enviados es el ganado.')
-  else if (!d.conPdf) f.push('El presupuesto elegido no tiene el PDF cargado en Monday.')
-  const total = importeDe(d.total)
-  if (total === null || total <= 0) f.push('Ingresá el Total Pactado (un importe mayor a cero).')
-  if (!d.conCliente) f.push('El presupuesto no tiene un cliente vinculado: la obra se registra en la cuenta corriente del cliente.')
-  else if (d.cuentas === 0) f.push('El cliente no tiene una cuenta corriente activa. Creala en Monday y volvé a intentar.')
-  else if (!d.cuentaElegida) f.push('Elegí en qué cuenta corriente se registra la obra.')
-  return f
-}
-
-/** El nombre del movimiento en la cuenta corriente, como lo deja hoy el escenario de Make. */
-export const nombreMovimiento = (idObra: string, nombreObra: string): string =>
-  [idObra.trim(), nombreObra.trim()].filter(Boolean).join(' - ')

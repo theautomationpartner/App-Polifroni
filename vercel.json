@@ -35,7 +35,10 @@
       "maxDuration": 120
     },
     "api/confirmar.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
+    },
+    "api/presupuesto-respuesta.ts": {
+      "maxDuration": 120
     }
   },
   "rewrites": [
