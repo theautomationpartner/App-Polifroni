@@ -11,6 +11,7 @@
  */
 import { formasDeClave, type DocumentoConfirmacion, type RolConfirmacion } from './_confirmacion.js'
 import { mondayServidor } from './_mondayApi.js'
+import { archivosMonday, completarConfirmacion, type Archivos } from './_confirmarPresupuesto.js'
 
 /** Hace la consulta. Por defecto, Monday con el token del servidor; los tests pasan otra. */
 export type Consulta = <T>(query: string, variables: Record<string, unknown>, opciones?: { escritura?: boolean }) => Promise<T>
@@ -129,7 +130,8 @@ const limpio = (v: unknown, multilinea = false): string =>
     .trim()
 
 /**
- * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar",
+ * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar"
+ * —"Rechazar" en el presupuesto—,
  * `motivo` y, en el presupuesto, `ubicacion` y `coordinador`), validado.
  *  - "No confirmar" exige el motivo.
  *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario). Si
@@ -142,7 +144,8 @@ export function leerRespuesta(
   coordinadores: Coordinador[] = [],
 ): { ok: true; respuesta: Respuesta } | { ok: false; error: string } {
   const r = limpio(campos.estado_obra).toLowerCase()
-  if (r === 'no confirmar') {
+  /* El presupuesto lo llama "Rechazar" (regla del usuario, 13/10/2026); la OP, "No confirmar". */
+  if (r === 'no confirmar' || r === 'rechazar') {
     const motivo = limpio(campos.motivo, true)
     if (!motivo) return { ok: false, error: 'Falta el motivo.' }
     if (motivo.length > LIMITES.motivo) return { ok: false, error: `El motivo puede tener hasta ${LIMITES.motivo} caracteres.` }
@@ -373,8 +376,9 @@ const fechaAr = (d: Date) =>
 /** El update que queda en el ítem: quién respondió, cuándo y lo que escribió. */
 export function textoUpdate(doc: Documento, nombre: string, r: Respuesta, cuando: Date = new Date()): string {
   const que = doc.documento === 'op' ? 'la Orden de Producción' : 'el presupuesto'
+  const rechazo = doc.documento === 'op' ? '❌ No confirmó' : '❌ Rechazó'
   const renglones = [
-    `<p><b>${r.tipo === 'confirmar' ? '✅ Confirmó' : '❌ No confirmó'} ${que}:</b> ${escaparHtml(nombre || 'el destinatario')}</p>`,
+    `<p><b>${r.tipo === 'confirmar' ? '✅ Confirmó' : rechazo} ${que}:</b> ${escaparHtml(nombre || 'el destinatario')}</p>`,
     `<p><b>Fecha:</b> ${fechaAr(cuando)} hs</p>`,
   ]
   if (r.tipo === 'rechazar') renglones.push(`<p><b>Motivo:</b> ${escaparHtml(r.motivo).replace(/\n/g, '<br>')}</p>`)
@@ -392,12 +396,17 @@ const mutacionColumnas = `mutation ($board: ID!, $id: ID!, $valores: JSON!) {
  * Deja la respuesta en Monday. Lo que decide —el estado de la OP o del presupuesto— tiene que
  * escribirse; si falla, falla todo y el cliente puede volver a intentar con el mismo enlace. Lo demás
  * (la obra, el update) es constancia: si falla, se registra en el log y la respuesta queda igual.
+ *
+ * Un presupuesto CONFIRMADO no deja update en el subelemento: lo mismo va como actividad en el cliente,
+ * y después pasa sus datos al ítem y crea la obra (ver `completarConfirmacion`, regla del usuario,
+ * 13/10/2026).
  */
 export async function registrarRespuesta(
   doc: Documento,
   nombre: string,
   r: Respuesta,
   consulta: Consulta = consultaMonday,
+  archivos: Archivos = archivosMonday(consulta),
 ): Promise<void> {
   const escribir = (board: number, id: string, valores: Record<string, unknown>) =>
     consulta(mutacionColumnas, { board: String(board), id, valores: JSON.stringify(valores) }, { escritura: true })
@@ -427,6 +436,15 @@ export async function registrarRespuesta(
       [COL_SUB_PRES.confirmacion]: { label: confirma ? ETIQUETAS.presupuesto.confirmada : ETIQUETAS.presupuesto.rechazada },
       [COL_SUB_PRES.motivo]: confirma ? '' : r.motivo.replace(/\s*\n\s*/g, ' ').slice(0, LIMITES.motivo),
     })
+  }
+
+  if (doc.documento === 'presupuesto' && confirma) {
+    await completarConfirmacion(
+      { subId: doc.id, titulo: `Confirmación de ${doc.titulo}`, contenido: textoUpdate(doc, nombre, r) },
+      consulta,
+      archivos,
+    ).catch((e) => console.warn('[confirmar] no se pudo completar la confirmación del presupuesto', e))
+    return
   }
 
   await consulta(

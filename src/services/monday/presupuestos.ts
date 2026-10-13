@@ -48,12 +48,17 @@ export const COL_SUB = {
   estadoEnvio: 'color_mkvgch3n',
   idPdf: 'pulse_id_mkvgbfmj',
   fechaEnvio: 'date_mm1zw6h1',
+  /** ✋Total Pactado del presupuesto. */
+  total: 'numeric_mm836j1t',
   /** 🤖Clave Confirmacion: la clave del enlace de confirmación que salió en el mensaje. */
   clave: 'text_mm7wn1jz',
 } as const
 
 /** Etiquetas del tablero que escribe la app. */
 export const ETIQUETA_PRES = {
+  /** El estado del ítem cuando se envía su primer presupuesto (regla del usuario, 13/10/2026). "Cargar
+      otro" sólo deja afuera las bolsas Ganadas o Perdidas (`bolsaParaCargar`). */
+  presupuestoEnviado: 'Presupuesto Enviado',
   solicitud: 'Solicitud de Presupuesto',
   /** Índice de "Solicitud de Presupuesto" en `🤖Estado Presupuesto`: más estable que el texto. */
   indiceSolicitud: 5,
@@ -240,6 +245,8 @@ export interface PresupuestoEnviado {
   estadoEnvio: string
   /** El PDF del presupuesto (`✋Presupuesto pdf`). `null` si no tiene. */
   pdf: ArchivoObra | null
+  /** ✋Total Pactado. `null` en los que no lo tienen (los anteriores a esta columna). */
+  total: number | null
 }
 
 /** Una bolsa de presupuestos, con a quién pertenece y lo que ya se le mandó. */
@@ -273,7 +280,7 @@ export const CAMPOS_BOLSA = `
   }
   subitems {
     id name
-    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio, COL_SUB.pdf])}) { id text value }
+    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio, COL_SUB.pdf, COL_SUB.total])}) { id text value }
   }
 `
 
@@ -312,6 +319,7 @@ export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
         fechaEnvio: valor(sc[COL_SUB.fechaEnvio]),
         estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
         pdf: pdfDe(sc[COL_SUB.pdf]),
+        total: valor(sc[COL_SUB.total]).trim() ? Number(valor(sc[COL_SUB.total])) : null,
       }
     }),
   }
@@ -362,6 +370,38 @@ export async function leerBolsa(id: string): Promise<(BolsaPresupuesto & { estad
   return { ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }
 }
 
+/**
+ * La relación inversa de cada contacto hacia sus presupuestos: en 👤 Clientes, "Presupuestos"; en
+ * 👤 Constructor/Arquitecto, "link to Presupuestos" (la que crea el ✋Constructor/Arquitecto de la bolsa).
+ */
+const COL_PRESUPUESTOS_DEL_CONTACTO: Record<TipoContacto, string> = {
+  Cliente: 'board_relation_mkvvkdg7',
+  Constructor: 'board_relation_mkvgpwq5',
+}
+
+/**
+ * Los presupuestos (bolsas) de un cliente o de un constructor, en CUALQUIER estado: el estado del ítem
+ * es sólo informativo (regla del usuario, 13/10/2026). Se leen desde el contacto, por su relación
+ * inversa, sin recorrer el tablero. Los archivados o borrados no van.
+ */
+export async function bolsasDeContacto(tipo: TipoContacto, id: string): Promise<(BolsaPresupuesto & { estado: string })[]> {
+  const rel = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_PRESUPUESTOS_DEL_CONTACTO[tipo]}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
+    { ids: [id] },
+  )
+  const ids = (rel.items[0]?.column_values[0]?.linked_item_ids ?? []).map(String)
+  if (!ids.length) return []
+  const d = await mondayApi<{ items: (ItemBolsa & { state: string; board: { id: string }; estado: CV[] })[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) { state board { id } ${CAMPOS_BOLSA} estado: column_values(ids: ["${COL_PRES.estado}"]) { id text } }
+    }`,
+    { ids },
+  )
+  return d.items
+    .filter((i) => i.state === 'active' && String(i.board.id) === String(BOARD_PRESUPUESTOS))
+    .map((i) => ({ ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }))
+}
+
 /* ────────────────────────────────────────────────────────────────────────────────
  * Escrituras
  * ──────────────────────────────────────────────────────────────────────────────── */
@@ -370,7 +410,7 @@ const relacion = (c: Contacto | null) => (c ? { item_ids: [Number(c.id)] } : und
 
 /**
  * Crea la bolsa: el ítem del presupuesto, con el cliente y/o el constructor, a quién se le envió y en
- * "Solicitud de Presupuesto" (abierta a recibir más presupuestos).
+ * "Presupuesto Enviado" (se crea al enviar el primero). El estado es sólo informativo.
  */
 export async function crearBolsa(a: {
   nombre: string
@@ -379,7 +419,7 @@ export async function crearBolsa(a: {
   enviarA: string
 }): Promise<string> {
   const valores: Record<string, unknown> = {
-    [COL_PRES.estado]: { label: ETIQUETA_PRES.solicitud },
+    [COL_PRES.estado]: { label: ETIQUETA_PRES.presupuestoEnviado },
   }
   if (a.cliente) valores[COL_PRES.cliente] = relacion(a.cliente)
   if (a.arquitecto) valores[COL_PRES.arquitecto] = relacion(a.arquitecto)
@@ -413,6 +453,8 @@ export async function crearPresupuestoEnviado(a: {
   color: string
   /** `YYYY-MM-DD`. */
   fechaEnvio: string
+  /** ✋Total Pactado. */
+  total: number
   /**
    * La clave del enlace de confirmación, sólo si se pidió confirmar este presupuesto. Sin ella la
    * columna queda vacía: nadie puede confirmarlo por enlace.
@@ -424,6 +466,7 @@ export async function crearPresupuestoEnviado(a: {
     [COL_SUB.color]: { labels: [a.color] },
     [COL_SUB.estadoEnvio]: { label: ETIQUETA_PRES.enviado },
     [COL_SUB.fechaEnvio]: { date: a.fechaEnvio },
+    [COL_SUB.total]: String(a.total),
   }
   if (a.clave) valores[COL_SUB.clave] = a.clave
   const d = await mondayApi<{ create_subitem: { id: string } }>(

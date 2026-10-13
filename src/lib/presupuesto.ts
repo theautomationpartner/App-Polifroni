@@ -6,10 +6,11 @@
  * mandan se juntan en una misma "bolsa" (el ítem del tablero), uno por subelemento.
  */
 import { ROLES, sinCodigo, type DatosContacto, type Rol } from '@/lib/destinatario'
+import type { BolsaPresupuesto, PresupuestoEnviado } from '@/services/monday/presupuestos'
 
 export { nuevaClave } from '@/lib/claveConfirmacion'
 
-/** Qué se hace en "Crear y Cargar Presupuestos": una bolsa nueva, u otro presupuesto en una abierta. */
+/** Qué se hace en "Crear y Cargar Presupuestos": una bolsa nueva, u otro presupuesto en una existente. */
 export type ModoPresupuesto = 'crear' | 'cargar'
 
 export const MODOS_PRESUPUESTO: readonly { id: ModoPresupuesto; titulo: string }[] = [
@@ -196,6 +197,52 @@ export function pasaFiltro(filtro: FiltroGestion, etiqueta: string): boolean {
 }
 
 /** `✋Tipo` de la obra (Aluminio | PVC) según el tipo de carpintería del presupuesto ganado. */
+/** Las bolsas que ya no reciben presupuestos: "cargar otro" no las lista (regla del usuario, 13/10/2026). */
+const BOLSA_CERRADA = ['Ganado', 'Perdido']
+
+/**
+ * Cargar otro presupuesto: de las bolsas del cliente, las que no están Ganadas ni Perdidas. Los
+ * presupuestos ya enviados de TODAS ellas se listan (por fecha de envío); los nuevos van a la más
+ * reciente (el id de Monday crece con el tiempo). `null` si no queda ninguna.
+ */
+export function bolsaParaCargar(
+  bolsas: (BolsaPresupuesto & { estado: string })[],
+): { bolsa: BolsaPresupuesto; enviados: PresupuestoEnviado[] } | null {
+  const abiertas = bolsas.filter((b) => !BOLSA_CERRADA.includes(b.estado.trim()))
+  if (!abiertas.length) return null
+  const bolsa = abiertas.reduce((m, b) => (Number(b.id) > Number(m.id) ? b : m))
+  const enviados = abiertas
+    .flatMap((b) => b.presupuestos)
+    .sort((a, b) => a.fechaEnvio.localeCompare(b.fechaEnvio) || Number(a.id) - Number(b.id))
+  return { bolsa, enviados }
+}
+
+const escaparHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+/**
+ * La actividad "Confirmacion Presupuesto Obra" que deja en el cliente un presupuesto ganado desde la
+ * app: la misma estructura que la de la confirmación por WhatsApp (`textoUpdate` de
+ * `api/_confirmarMonday.ts`), con la última línea diciendo quién lo registró.
+ */
+export function actividadConfirmacionApp(a: { contacto: string; ubicacion: string; autor: string; cuando?: Date }): string {
+  const fecha = new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(a.cuando ?? new Date())
+  const renglones = [
+    `<p><b>✅ Confirmó el presupuesto:</b> ${escaparHtml(a.contacto || 'el cliente')}</p>`,
+    `<p><b>Fecha:</b> ${fecha} hs</p>`,
+  ]
+  if (a.ubicacion) renglones.push(`<p><b>Ubicación de la obra:</b> ${escaparHtml(a.ubicacion)}</p>`)
+  renglones.push(`<p><i>Registrado desde la app${a.autor ? ` por ${escaparHtml(a.autor)}` : ''} (Consultar y Gestionar Presupuestos).</i></p>`)
+  return renglones.join('')
+}
+
 export const tipoObraDe = (tipoCarpinteria: string): 'PVC' | 'Aluminio' | '' =>
   !tipoCarpinteria.trim() ? '' : /pvc/i.test(tipoCarpinteria) ? 'PVC' : 'Aluminio'
 
@@ -216,6 +263,12 @@ export function importeDe(texto: string): number | null {
     t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, '') : t,
   )
   return Number.isFinite(n) ? n : null
+}
+
+/** 1297684 → "$ 1.297.684"; 1731694.48 → "$ 1.731.694,48". */
+export function formatoImporte(n: number): string {
+  const entero = Number.isInteger(n)
+  return `$ ${n.toLocaleString('es-AR', { minimumFractionDigits: entero ? 0 : 2, maximumFractionDigits: 2 })}`
 }
 
 /** Lo que falta para ganar un presupuesto y crear su obra. Vacío = se puede. */

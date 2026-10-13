@@ -349,7 +349,7 @@
 }
 .presupuesto-v2 .pres-fila {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto auto;
   column-gap: 12px;
   align-items: center;
   gap: 14px;
@@ -523,4 +523,21 @@
 /* Cargar sobre uno existente: una sola card, de todo el ancho. */
 .presupuesto-v2 .pres-fichas--unica {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* El Total Pactado de cada presupuesto, entre las etiquetas y las acciones. */
+.presupuesto-v2 .pres-fila-total {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+/* Etapa 2: tipo, color y total en una fila (uno debajo del otro si no hay ancho). */
+.presupuesto-v2 .pres-carga .pres-datos {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .presupuesto-v2 .pres-carga .pres-datos {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

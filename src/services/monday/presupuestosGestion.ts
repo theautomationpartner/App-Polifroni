@@ -36,8 +36,16 @@ const COL_GANAR = {
   obras: 'board_relation_mm1z59qx',
 } as const
 
+/**
+ * La actividad personalizada "Confirmacion Presupuesto Obra" de Emails & Activities (creada el
+ * 13/10/2026). La misma que usa la confirmación por WhatsApp (`api/_confirmarPresupuesto.ts`).
+ */
+export const ACTIVIDAD_CONFIRMACION_PRESUPUESTO = '2d7f3b88-04ca-410d-922c-333264e77c6c'
+
 /** `Estado` del subelemento: el presupuesto que se ganó queda "Confirmado". */
 const COL_SUB_ESTADO = 'color_mm0dsv6p'
+/** `🤖Motivo` del subelemento: por qué se rechazó. */
+const COL_SUB_MOTIVO = 'text_mm7wmv13'
 
 /* ────────────────────────────────────────────────────────────────────────────────
  * Lectura
@@ -349,6 +357,29 @@ export async function confirmarPresupuestoEnviado(subitemId: string): Promise<vo
       change_multiple_column_values(board_id: ${BOARD_SUB_PRESUPUESTOS}, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
     }`,
     { id: subitemId, valores: JSON.stringify({ [COL_SUB_ESTADO]: { label: 'Confirmado' } }) },
+  )
+}
+
+/**
+ * Los presupuestos enviados de una bolsa perdida quedan "Rechazado", con el motivo si se escribió: lo
+ * mismo que deja un "Rechazar" del enlace de WhatsApp (regla del usuario, 13/10/2026). Va en una sola
+ * mutation, un alias por subelemento.
+ */
+export async function rechazarPresupuestosEnviados(subitemIds: string[], motivo: string): Promise<void> {
+  if (!subitemIds.length) return
+  const valores: Record<string, unknown> = { [COL_SUB_ESTADO]: { label: 'Rechazado' } }
+  const m = motivo.replace(/\s*\n\s*/g, ' ').trim()
+  if (m) valores[COL_SUB_MOTIVO] = m
+  await mondayApi(
+    `mutation ($valores: JSON!) {
+      ${subitemIds
+        .map(
+          (id, i) =>
+            `r${i}: change_multiple_column_values(board_id: ${BOARD_SUB_PRESUPUESTOS}, item_id: ${Number(id)}, column_values: $valores, create_labels_if_missing: false) { id }`,
+        )
+        .join('\n      ')}
+    }`,
+    { valores: JSON.stringify(valores) },
   )
 }
 

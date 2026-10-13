@@ -33,7 +33,7 @@ export function EnviarPresupuestosView() {
   const { presupuesto, enviado } = useApp()
   const { modo, bolsa, cliente, arquitecto, presupuestos } = presupuesto
   const [aConfirmar, setAConfirmar] = useState<string[]>([])
-  const para = modo === 'cargar' ? bolsa?.nombre : [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
+  const para = [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
 
   return (
     <section className="view paso-layout obras-v2 presupuesto-v2">

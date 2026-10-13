@@ -33,6 +33,9 @@
     },
     "api/whatsapp-texto.ts": {
       "maxDuration": 120
+    },
+    "api/confirmar.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [

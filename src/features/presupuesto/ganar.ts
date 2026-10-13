@@ -1,5 +1,6 @@
-import { nombreMovimiento, tipoObraDe } from '@/lib/presupuesto'
+import { actividadConfirmacionApp, nombreMovimiento, tipoObraDe } from '@/lib/presupuesto'
 import {
+  ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
   SIN_ARQUITECTO_ID,
   cerrarGanado,
   confirmarPresupuestoEnviado,
@@ -8,6 +9,7 @@ import {
   getUrlArchivo,
   idDeObra,
   marcarObraRegistrada,
+  registrarActividad,
   subirArchivosGanado,
   subirArchivosObra,
   subirPdfMovimiento,
@@ -41,6 +43,7 @@ export interface ProgresoGanar {
   archivosPresupuesto?: boolean
   cerrado?: boolean
   confirmado?: boolean
+  actividad?: boolean
 }
 
 /** El PDF del presupuesto, bajado de Monday para volver a subirlo (Monday no copia entre columnas). */
@@ -62,6 +65,8 @@ export async function bajarPdf(a: ArchivoObra): Promise<File> {
  *  3. El presupuesto: el PDF final y el plano, y recién al final tipo, color, total, "Creado", la
  *     obra y "Ganado". Mientras no llega acá, sigue listándose y se puede reintentar.
  *  4. El subelemento ganado queda "Confirmado".
+ *  5. La constancia: la actividad "Confirmacion Presupuesto Obra" en el cliente (o en el constructor),
+ *     como la que deja la confirmación por WhatsApp (regla del usuario, 13/10/2026).
  *
  * `avance` guarda en quien llama lo que ya se hizo (ver `ProgresoGanar`).
  */
@@ -70,6 +75,7 @@ export async function ganarPresupuesto({
   datos,
   cliente,
   responsableId,
+  autor,
   hoy,
   progreso,
   avance,
@@ -78,6 +84,8 @@ export async function ganarPresupuesto({
   datos: DatosGanar
   cliente: DatosClienteObra
   responsableId: string | null
+  /** Quién lo registra en la app: va en la actividad. */
+  autor: string
   hoy: string
   progreso: ProgresoGanar
   avance: (cambios: Partial<ProgresoGanar>) => void
@@ -151,6 +159,21 @@ export async function ganarPresupuesto({
     await confirmarPresupuestoEnviado(datos.elegido.id)
       .then(() => marcar({ confirmado: true }))
       .catch((e) => console.warn('[presupuesto] no se pudo marcar el presupuesto ganado como Confirmado', e))
+  }
+
+  /* 5. La actividad. Es constancia: si falla, el presupuesto ya está ganado. */
+  const contacto = p.cliente ?? p.arquitecto
+  if (!pr.actividad && contacto) {
+    await registrarActividad(
+      contacto.id,
+      {
+        titulo: `Confirmación de Presupuesto ${datos.elegido.nombre}`.trim(),
+        content: actividadConfirmacionApp({ contacto: contacto.nombre, ubicacion: cliente.ubicacion?.address ?? '', autor }),
+      },
+      ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
+    )
+      .then(() => marcar({ actividad: true }))
+      .catch((e) => console.warn('[presupuesto] no se pudo registrar la actividad de la confirmación', e))
   }
 
   return { obraId, idObra }

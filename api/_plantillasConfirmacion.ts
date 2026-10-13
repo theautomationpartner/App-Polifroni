@@ -872,9 +872,9 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
               <i>✅</i>
             </label>
             <label class="opcion opcion--no">
-              <input type="radio" name="estado_obra" value="No confirmar" required />
+              <input type="radio" name="estado_obra" value="Rechazar" required />
               <span>
-                No confirmar
+                Rechazar
                 <small>Es necesario revisar o ajustar algún dato antes de aprobar.</small>
               </span>
               <i>✖️</i>
@@ -959,7 +959,7 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
       // Cambios al seleccionar opciones de radio
       for (const opcion of document.querySelectorAll('input[name="estado_obra"]')) {
         opcion.addEventListener('change', (e) => {
-          const rechaza = e.target.value === 'No confirmar';
+          const rechaza = e.target.value === 'Rechazar';
 
           bloqueMotivo.hidden = !rechaza;
           motivo.required = rechaza;
@@ -999,8 +999,8 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
           return; // Salimos de la función para que el usuario llene los datos
         }
 
-        // Si eligió "No confirmar", nos aseguramos que el action sea el original
-        if (estadoSeleccionado.value === 'No confirmar') {
+        // Si eligió "Rechazar", nos aseguramos que el action sea el original
+        if (estadoSeleccionado.value === 'Rechazar') {
           form.action = webhookOriginal;
         }
 

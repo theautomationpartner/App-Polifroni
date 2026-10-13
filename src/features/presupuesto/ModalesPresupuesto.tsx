@@ -302,7 +302,10 @@ export function ModalGanarPresupuesto({
   )
 }
 
-/** Dar el presupuesto por perdido: pasa a "Perdido" y deja de gestionarse. */
+/**
+ * Dar el presupuesto por perdido: pasa a "Perdido" y deja de gestionarse. Sus presupuestos enviados
+ * quedan "Rechazado", con el motivo si se escribe (opcional).
+ */
 export function ModalPerderPresupuesto({
   presupuesto: p,
   onClose,
@@ -310,8 +313,10 @@ export function ModalPerderPresupuesto({
 }: {
   presupuesto: PresupuestoGestion
   onClose: () => void
-  onConfirmar: () => void
+  onConfirmar: (motivo: string) => void
 }) {
+  const uid = useId()
+  const [motivo, setMotivo] = useState('')
   return (
     <Modal
       title="¿Dar el presupuesto por perdido?"
@@ -323,7 +328,7 @@ export function ModalPerderPresupuesto({
           <button type="button" className="btn btn-out" onClick={onClose}>
             Volver
           </button>
-          <button type="button" className="btn btn-danger" onClick={onConfirmar}>
+          <button type="button" className="btn btn-danger" onClick={() => onConfirmar(motivo.trim())}>
             <i className="fas fa-thumbs-down" /> Sí, dar por perdido
           </button>
         </>
@@ -332,7 +337,26 @@ export function ModalPerderPresupuesto({
       <Clave p={p} />
       <p className="modal-nota">
         El presupuesto pasa a <strong>Perdido</strong> y deja de listarse en la consulta.
+        {p.presupuestos.length > 0 && (
+          <>
+            {' '}
+            {p.presupuestos.length === 1 ? 'Su presupuesto enviado queda' : `Sus ${p.presupuestos.length} presupuestos enviados quedan`}{' '}
+            <strong>Rechazado</strong>.
+          </>
+        )}
       </p>
+      <label className="campo-l" htmlFor={`${uid}-motivo`}>
+        Motivo <span className="med-l-sub">opcional</span>
+      </label>
+      <textarea
+        id={`${uid}-motivo`}
+        className="motivo-in"
+        rows={3}
+        maxLength={1000}
+        placeholder="Ej.: el cliente eligió otro proveedor"
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
+      />
     </Modal>
   )
 }

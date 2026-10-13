@@ -19,6 +19,7 @@ import {
   listarPresupuestosGestion,
   mondayHabilitado,
   perderPresupuesto,
+  rechazarPresupuestosEnviados,
   type DatosClienteObra,
   type PresupuestoGestion,
 } from '@/services/monday'
@@ -198,6 +199,7 @@ export function GestionarPresupuestosView() {
         datos,
         cliente,
         responsableId: responsableId ?? usuario?.id ?? null,
+        autor: usuario?.name ?? '',
         hoy: hoyLocal(),
         progreso,
         avance: (c) => {
@@ -231,16 +233,21 @@ export function GestionarPresupuestosView() {
     }
   }
 
-  const perder = async (p: PresupuestoGestion) => {
+  const perder = async (p: PresupuestoGestion, motivo: string) => {
     setAbierta(null)
     setTrabajando({
       id: p.id,
       titulo: 'Dando el presupuesto por perdido...',
-      detalle: 'Se está pasando el presupuesto a Perdido.',
+      detalle: 'Se está pasando el presupuesto a Perdido y sus presupuestos enviados a Rechazado.',
     })
     try {
       const f = await fresco(p, 'perder')
       if (!f) return
+      /* Primero los subelementos: si fallan, el presupuesto sigue listado y se puede reintentar. */
+      await rechazarPresupuestosEnviados(
+        f.presupuestos.map((s) => s.id),
+        motivo,
+      )
       await perderPresupuesto(f.id)
       setResueltos((m) => ({ ...m, [p.id]: { como: 'perdido' } }))
       reemplazar({ ...f, estado: 'Perdido', colorEstado: '#df2f4a' })
@@ -514,7 +521,7 @@ export function GestionarPresupuestosView() {
         <ModalPerderPresupuesto
           presupuesto={abierta.p}
           onClose={() => setAbierta(null)}
-          onConfirmar={() => void perder(abierta.p)}
+          onConfirmar={(motivo) => void perder(abierta.p, motivo)}
         />
       )}
 

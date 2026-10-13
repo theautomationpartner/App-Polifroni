@@ -34,11 +34,14 @@ import {
   pasaFiltro,
   tipoObraDe,
   colorTipoCarpinteria,
+  formatoImporte,
   rolesDeEnviarA,
   rolesIniciales,
   etiquetaPresupuesto,
   marcaPresupuesto,
   textoPresupuestos,
+  actividadConfirmacionApp,
+  bolsaParaCargar,
 } from '../src/lib/presupuesto'
 
 /* ✋Enviar a: */
@@ -153,6 +156,8 @@ assert.equal(importeDe('$ 604500'), 604500)
 assert.equal(importeDe('604.500'), 604500, 'puntos de miles sin coma')
 assert.equal(importeDe('1.731.694'), 1731694)
 assert.equal(importeDe('abc'), null)
+assert.equal(formatoImporte(1297684), '$ 1.297.684', 'total del presupuesto, sin decimales si es entero')
+assert.equal(formatoImporte(1731694.48), '$ 1.731.694,48')
 assert.equal(importeDe(''), null)
 const listo = { presupuestoElegido: true, conPdf: true, total: '604.500', conCliente: true, cuentas: 1, cuentaElegida: true }
 assert.deepEqual(faltantesGanar(listo), [])
@@ -163,5 +168,34 @@ assert.ok(faltantesGanar({ ...listo, cuentas: 0 })[0].includes('cuenta corriente
 assert.equal(faltantesGanar({ ...listo, cuentas: 2, cuentaElegida: false }).length, 1, 'con varias cuentas, se elige')
 assert.equal(nombreMovimiento('IDOBRA-787', 'DIAZ CARLOS NICOLAS'), 'IDOBRA-787 - DIAZ CARLOS NICOLAS', 'como lo deja Make')
 assert.equal(nombreMovimiento('', 'DIAZ'), 'DIAZ')
+
+/* La actividad de un presupuesto ganado desde la app: la misma estructura que la de WhatsApp. */
+{
+  const t = actividadConfirmacionApp({ contacto: 'PEREZ <JUAN>', ubicacion: 'Pujol 1147', autor: 'Ana', cuando: new Date('2026-10-13T15:43:00Z') })
+  assert.ok(t.startsWith('<p><b>✅ Confirmó el presupuesto:</b> PEREZ &lt;JUAN&gt;</p>'), t)
+  assert.ok(t.includes('<p><b>Fecha:</b> 13/10/2026') && t.includes('12:43'), 'la hora de Argentina')
+  assert.ok(t.includes('<p><b>Ubicación de la obra:</b> Pujol 1147</p>'))
+  assert.ok(t.endsWith('<p><i>Registrado desde la app por Ana (Consultar y Gestionar Presupuestos).</i></p>'))
+  assert.ok(!actividadConfirmacionApp({ contacto: 'X', ubicacion: '', autor: '' }).includes('Ubicación'), 'sin ubicación, sin renglón')
+}
+
+/* Cargar otro: las bolsas del cliente sin ganar ni perder; los nuevos van a la más reciente. */
+{
+  const env = (id: string, fechaEnvio: string) =>
+    ({ id, nombre: id, tipo: 'PVC', color: 'Blanco', fechaEnvio, estadoEnvio: 'Enviado', pdf: null, total: 1 }) as const
+  const bolsa = (id: string, estado: string, presupuestos: ReturnType<typeof env>[]) => ({
+    id, nombre: 'PEREZ', idPresupuesto: '', creacion: '', cliente: null, arquitecto: null, enviarA: 'Cliente', presupuestos: [...presupuestos], estado,
+  })
+  const r = bolsaParaCargar([
+    bolsa('100', 'Presupuesto Enviado', [env('11', '2026-10-02')]),
+    bolsa('300', 'Ganado', [env('31', '2026-10-01')]),
+    bolsa('200', 'En Negociacion', [env('21', '2026-10-01'), env('22', '2026-10-05')]),
+    bolsa('400', 'Perdido', [env('41', '2026-10-03')]),
+  ])
+  assert.equal(r?.bolsa.id, '200', 'la más reciente de las abiertas (no la ganada ni la perdida)')
+  assert.deepEqual(r?.enviados.map((e) => e.id), ['21', '11', '22'], 'los enviados de las abiertas, por fecha')
+  assert.equal(bolsaParaCargar([bolsa('1', 'Ganado', []), bolsa('2', 'Perdido', [])]), null, 'sin abiertas: no se avanza')
+  assert.equal(bolsaParaCargar([]), null)
+}
 
 console.log('presupuesto: todas las reglas pasan')

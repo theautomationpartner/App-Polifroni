@@ -33,6 +33,16 @@ import {
   type Documento,
 } from '../api/_confirmarMonday'
 import { manejarConfirmar } from '../api/_confirmarHttp'
+import {
+  ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
+  COL_BOLSA,
+  COL_OBRA,
+  COL_SUB,
+  INDICE,
+  completarConfirmacion,
+  tipoObraDe,
+  type Archivos,
+} from '../api/_confirmarPresupuesto'
 import { MARCA_ENLACE } from '../api/_confirmacion'
 import { textoParaDestino } from '../api/_whatsappHttp'
 import { esc } from '../api/_confirmarPaginas'
@@ -123,6 +133,12 @@ assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicac
 assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'No confirmar', motivo: 'línea 1\nlínea 2' }), {
   ok: true,
   respuesta: { tipo: 'rechazar', motivo: 'línea 1\nlínea 2' },
+})
+
+/* El presupuesto llama "Rechazar" a no confirmar (regla del usuario, 13/10/2026). */
+assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'Rechazar', motivo: 'Muy caro' }), {
+  ok: true,
+  respuesta: { tipo: 'rechazar', motivo: 'Muy caro' },
 })
 
 /* ── Monday simulado ───────────────────────────────────────────────────────────────────────────── */
@@ -477,9 +493,16 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   globalThis.fetch = (async (_url: string, init: { body: string }) => {
     const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
     if (query.trim().startsWith('mutation')) {
-      escritas.push(String(variables.valores ?? variables.cuerpo))
+      escritas.push(String(variables.valores ?? variables.cuerpo ?? variables.content))
       if (String(variables.valores ?? '').includes('Confirmado')) estadoPres = 'Confirmado'
       return new Response(JSON.stringify({ data: { ok: true } }))
+    }
+    /* Lo que lee la confirmación después de responder: el subelemento con su bolsa, y el cliente. */
+    if (query.includes('items(ids:')) {
+      const items = query.includes('parent_item')
+        ? [{ id: '701', name: 'IDPDF-1221', column_values: [], parent_item: { id: '700', name: 'PEREZ JUAN', column_values: [{ id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', linked_item_ids: ['1'] }] } }]
+        : [{ column_values: [] }]
+      return new Response(JSON.stringify({ data: { items } }))
     }
     const sub = {
       id: '701',
@@ -514,6 +537,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.ok(previa.cuerpo.includes('<meta property="og:title" content="Confirmación de Presupuesto" />'), 'título del presupuesto')
   assert.ok(previa.cuerpo.includes('content="Revisar presupuesto enviado y solicitud de confirmación"'))
   assert.ok(form.cuerpo.includes('<select id="coordinador" name="coordinador"'), 'el coordinador se elige de una lista')
+  assert.ok(form.cuerpo.includes('value="Rechazar"') && !form.cuerpo.includes('No confirmar'), 'la opción se llama Rechazar')
   assert.ok(form.cuerpo.includes('<option value="PEREZ JUAN">PEREZ JUAN · Cliente</option>'), 'con el cliente de la bolsa')
 
   assert.equal((await pedir('POST', rutaPres, 'estado_obra=Confirmar')).status, 422, 'falta el paso 2')
@@ -527,7 +551,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.equal(ok.status, 200)
   assert.ok(ok.cuerpo.includes('¡Confirmación recibida<span id="nombreOk">, PEREZ JUAN</span>!'), 'el agradecimiento del presupuesto')
   assert.ok(!ok.cuerpo.includes('<h1>¡Confirmamos tu pedido'), 'no el de la OP')
-  assert.ok(escritas.some((e) => e.includes('Ubicación de la obra:</b> Av. San Martín 1500')), 'el update con los datos de la obra')
+  assert.ok(escritas.some((e) => e.includes('Ubicación de la obra:</b> Av. San Martín 1500')), 'la actividad con los datos de la obra')
 }
 
 /* ── El enlace va SÓLO a quien confirma ────────────────────────────────────────────────────────── */
@@ -567,6 +591,133 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.equal(faltaConfiguracion(dev), null)
   const op = textoParaDestino('op', { tipo: 'Cliente', nombre: 'X', confirmador: true, texto: '' }, { reenvio: false, clave: CLAVE, origen: dev })
   assert.ok(op.includes('https://app-polifroni-git-dev-tap.vercel.app/c/'), 'el texto de la OP usa el origen del envío')
+}
+
+/* ── Lo que sigue a la confirmación del presupuesto: actividad, ítem y obra ───────────────────── */
+{
+  const subConDatos = (cambios: { tipo?: string; color?: string; total?: string; pdf?: boolean; obra?: boolean; cliente?: boolean } = {}) => ({
+    id: '701',
+    name: 'IDPDF-1221',
+    column_values: [
+      { id: COL_SUB.tipo, text: cambios.tipo ?? 'Aluminio A30New' },
+      { id: COL_SUB.color, text: cambios.color ?? 'Blanco' },
+      { id: COL_SUB.total, text: cambios.total ?? '1297684' },
+      { id: COL_SUB.pdf, text: '', value: cambios.pdf === false ? '{"files":[]}' : '{"files":[{"assetId":555,"name":"Pres.pdf"}]}' },
+    ],
+    parent_item: {
+      id: '700',
+      name: 'PEREZ JUAN',
+      column_values: [
+        { id: COL_BOLSA.cliente, text: 'PEREZ JUAN', linked_item_ids: cambios.cliente === false ? [] : ['1'] },
+        { id: COL_BOLSA.arquitecto, text: '', linked_item_ids: [] },
+        { id: COL_BOLSA.idPresupuesto, text: 'IDPRES-90' },
+        { id: COL_BOLSA.obras, text: '', linked_item_ids: cambios.obra ? ['9'] : [] },
+      ],
+    },
+  })
+  const clienteMonday = {
+    column_values: [
+      { id: 'board_relation_mkt5f7n4', text: '', linked_items: [{ id: '44', state: 'archived', board: { id: '9617990272' } }, { id: '45', state: 'active', board: { id: '9617990272' } }] },
+      { id: 'phone_mksydcv6', text: '+54 9 249 401-4611' },
+      { id: 'location_mkt9ewya', text: '', value: '{"lat":"-37.3","lng":"-59.1","address":"Pujol 1147"}' },
+    ],
+  }
+  const montar = (sub: ReturnType<typeof subConDatos>) => {
+    const llamadas: Llamada[] = []
+    const subidas: { itemId: string; columna: string; nombre: string }[] = []
+    const consulta: Consulta = async <T,>(query: string, variables: Record<string, unknown>) => {
+      llamadas.push({ query, variables })
+      if (query.includes('create_item')) return { create_item: { id: '800' } } as T
+      if (query.trim().startsWith('mutation')) return { ok: true } as T
+      if (query.includes('parent_item')) return { items: [sub] } as T
+      return { items: [clienteMonday] } as T
+    }
+    const archivos: Archivos = {
+      bajar: async (id) => ({ nombre: `pdf-${id}.pdf`, datos: new Blob(['%PDF']) }),
+      subir: async (itemId, columna, a) => {
+        subidas.push({ itemId, columna, nombre: a.nombre })
+      },
+    }
+    const escrituras = () => llamadas.filter((l) => l.query.trim().startsWith('mutation'))
+    const valores = (l: Llamada) => JSON.parse(String(l.variables.valores ?? '{}'))
+    return { consulta, archivos, llamadas, subidas, escrituras, valores }
+  }
+  const correr = (m: ReturnType<typeof montar>) =>
+    completarConfirmacion({ subId: '701', titulo: 'Confirmación', contenido: '<p>✅ Confirmó</p>', cuando: new Date('2026-10-13T15:43:00Z') }, m.consulta, m.archivos)
+
+  {
+    const m = montar(subConDatos())
+    await correr(m)
+    const [actividad, item, obra, vinculo] = m.escrituras()
+    assert.ok(actividad.query.includes('create_timeline_item'), '1. la actividad')
+    assert.equal(actividad.variables.item, '1', 'en el cliente')
+    assert.equal(actividad.variables.actividad, ACTIVIDAD_CONFIRMACION_PRESUPUESTO, '"Confirmacion Presupuesto Obra"')
+    assert.equal(actividad.variables.content, '<p>✅ Confirmó</p>', 'con lo que decía el update')
+    assert.ok(!m.escrituras().some((l) => l.query.includes('create_update')), 'sin update en el subelemento')
+
+    assert.equal(item.variables.id, '700', '2. el ítem')
+    assert.deepEqual(m.valores(item), {
+      [COL_BOLSA.tipo]: { labels: ['Aluminio A30New'] },
+      [COL_BOLSA.color]: { labels: ['Blanco'] },
+      [COL_BOLSA.total]: '1297684',
+      [COL_BOLSA.estado]: { index: INDICE.ganado },
+      [COL_BOLSA.pdf]: { clear_all: true },
+    })
+    assert.equal(item.variables.crear, true, 'las etiquetas que falten en el ítem se crean')
+
+    assert.ok(obra.query.includes('create_item') && obra.query.includes('9617181553'), '3. la obra')
+    assert.equal(obra.variables.nombre, 'PEREZ JUAN')
+    const v = m.valores(obra)
+    assert.deepEqual(v[COL_OBRA.ctaCte], { item_ids: [45] }, 'la cuenta corriente ACTIVA del cliente')
+    assert.deepEqual(v[COL_OBRA.arquitecto], { item_ids: [10910009068] }, 'sin constructor, "SIN ARQUITECTO"')
+    assert.deepEqual(v[COL_OBRA.etapaVenta], { index: INDICE.obraGanada }, 'Ganado/Aceptado/Anticipo')
+    assert.equal(v[COL_OBRA.total], '1297684')
+    assert.deepEqual(v[COL_OBRA.tipo], { label: 'Aluminio' })
+    assert.deepEqual(v[COL_OBRA.aceptacion], { date: '2026-10-13' })
+    assert.deepEqual(v[COL_OBRA.presupuestos], { item_ids: [700] })
+    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492494014611', countryShortName: 'AR' })
+    assert.deepEqual(v[COL_OBRA.ubicacion], { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' })
+
+    assert.equal(vinculo.variables.id, '700')
+    assert.deepEqual(m.valores(vinculo), { [COL_BOLSA.obras]: { item_ids: [800] }, [COL_BOLSA.creacionObra]: { index: INDICE.creado } })
+    assert.deepEqual(m.subidas, [
+      { itemId: '700', columna: COL_BOLSA.pdf, nombre: 'pdf-555.pdf' },
+      { itemId: '800', columna: COL_OBRA.presupuestoAceptado, nombre: 'pdf-555.pdf' },
+    ], 'el PDF, al ítem y a la obra')
+  }
+  {
+    /* Sin total ni PDF: nada en el ítem; el subelemento "Error de Confirmacion" y la obra no se crea. */
+    const m = montar(subConDatos({ total: '', pdf: false }))
+    await correr(m)
+    const e = m.escrituras()
+    assert.ok(e[0].query.includes('create_timeline_item'), 'la actividad va igual')
+    assert.equal(e[1].variables.id, '701')
+    assert.deepEqual(m.valores(e[1]), { [COL_SUB.confirmacion]: { index: INDICE.errorConfirmacion } })
+    const u = String(e[2].variables.cuerpo)
+    assert.ok(e[2].query.includes('create_update') && e[2].variables.id === '701', 'el update, en el subelemento')
+    assert.ok(u.includes('❌ Total Pactado') && u.includes('❌ Presupuesto pdf') && u.includes('✅ Color'), u)
+    assert.deepEqual(m.valores(e[3]), { [COL_BOLSA.creacionObra]: { index: INDICE.errorCreacion } }, 'Error Creacion')
+    assert.ok(e[4].query.includes('create_update') && e[4].variables.id === '700', 'con su update en el presupuesto')
+    assert.ok(!e.some((l) => l.query.includes('create_item')) && m.subidas.length === 0, 'ni obra ni archivos')
+  }
+  {
+    /* Sin cliente: la obra no se crea (no hay cuenta corriente). */
+    const m = montar(subConDatos({ cliente: false }))
+    await correr(m)
+    assert.ok(!m.escrituras().some((l) => l.query.includes('create_item')))
+    const u = m.escrituras().find((l) => l.query.includes('create_update'))
+    assert.ok(String(u?.variables.cuerpo).includes('❌ Cliente') && String(u?.variables.cuerpo).includes('❌ Cuenta corriente del cliente'))
+  }
+  {
+    /* La bolsa ya tenía obra: no se crea otra. */
+    const m = montar(subConDatos({ obra: true }))
+    await correr(m)
+    assert.ok(!m.escrituras().some((l) => l.query.includes('create_item')))
+    const u = m.escrituras().find((l) => l.query.includes('create_update'))
+    assert.ok(String(u?.variables.cuerpo).includes('Ya se creó una obra para el presupuesto <b>IDPRES-90</b>'))
+  }
+  assert.equal(tipoObraDe('PVC'), 'PVC')
+  assert.equal(tipoObraDe('Alumino'), 'Aluminio')
 }
 
 console.log('confirmar: ok')

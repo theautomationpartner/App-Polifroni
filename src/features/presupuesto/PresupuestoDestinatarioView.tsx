@@ -1,22 +1,20 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
-import { SelectBuscable } from '@/components/ui/SelectBuscable'
+import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ModalErrorConsulta, conTope } from '@/features/agenda/ModalErrorConsulta'
 import { BuscadorObras, ayudaDe, useBuscadorObras, type ObraEncontrada } from '@/features/shared/BuscadorObras'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { indexar } from '@/lib/busquedaObras'
 import { etiquetaPaso } from '@/lib/pasos'
+import { bolsaParaCargar } from '@/lib/presupuesto'
 import {
+  bolsasDeContacto,
   buscarContactos,
   cargarIndiceContactos,
   getContacto,
-  leerBolsa,
-  listarBolsasAbiertas,
   mondayHabilitado,
-  ETIQUETA_PRES,
-  type BolsaPresupuesto,
   type Contacto,
   type TipoContacto,
 } from '@/services/monday'
@@ -35,6 +33,7 @@ const TIPO: Record<TipoContacto, { etiqueta: string; color: string; articulo: st
 }
 
 const SIN_RESULTADOS = 'Sin resultados para la búsqueda ingresada. Probá con otro nombre de cliente o de constructor/arquitecto.'
+const SIN_RESULTADOS_CLIENTE = 'Sin resultados para la búsqueda ingresada. Probá con otro nombre de cliente.'
 
 /** Una fila del desplegable: el nombre, la pastilla de lo que es (la misma `op-estado` de los estados) y el id. */
 function FilaContacto({ f }: { f: ObraEncontrada }) {
@@ -60,6 +59,8 @@ function FilaContacto({ f }: { f: ObraEncontrada }) {
  * los dos. Lo elegido va a su card: el cliente a la del cliente, el constructor a la suya.
  *
  * Si ya había un cliente (o un constructor) elegido y se elige otro, se pregunta antes de reemplazarlo.
+ *
+ * Cargar otro presupuesto: busca SÓLO clientes (regla del usuario, 13/10/2026), en una sola card.
  */
 function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   const { presupuesto } = useApp()
@@ -73,13 +74,17 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   /** Se eligió otro con la card ya ocupada: se pregunta antes de reemplazar. */
   const [reemplazo, setReemplazo] = useState<{ tipo: TipoContacto; nuevo: Contacto } | null>(null)
 
-  /* Los dos índices llegan de a una página: cada una ya sirve para sugerir. */
+  /** Cargar sobre uno existente: UN solo contacto, y sólo cliente. */
+  const unico = presupuesto.modo === 'cargar'
+  const tiposBusqueda: TipoContacto[] = unico ? ['Cliente'] : ['Cliente', 'Constructor']
+
+  /* Los índices llegan de a una página: cada una ya sirve para sugerir. */
   useEffect(() => {
-    const dejar = (['Cliente', 'Constructor'] as const).map((t) =>
-      cargarIndiceContactos(t, (lista) => setListas((l) => ({ ...l, [t]: lista }))),
-    )
+    const dejar = tiposBusqueda.map((t) => cargarIndiceContactos(t, (lista) => setListas((l) => ({ ...l, [t]: lista }))))
     return () => dejar.forEach((f) => f())
-  }, [])
+    // Sólo cuando cambia el modo (y con él, qué se busca).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unico])
 
   const marcar = (t: TipoContacto) => (c: { id: string; nombre: string }) => {
     tipos.current.set(c.id, t)
@@ -87,15 +92,10 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   }
 
   const indice = useMemo(
-    () => indexar([...listas.Cliente.map(marcar('Cliente')), ...listas.Constructor.map(marcar('Constructor'))]),
-    [listas],
+    () => indexar([...listas.Cliente.map(marcar('Cliente')), ...(unico ? [] : listas.Constructor.map(marcar('Constructor')))]),
+    [listas, unico],
   )
 
-  /**
-   * Cargar sobre uno existente: UN solo contacto, cliente o constructor —el que se buscó—. Elegir otro
-   * (de cualquiera de los dos tipos) lo reemplaza.
-   */
-  const unico = presupuesto.modo === 'cargar'
   const actual = (t: TipoContacto) =>
     unico ? (presupuesto.cliente ?? presupuesto.arquitecto) : t === 'Cliente' ? presupuesto.cliente : presupuesto.arquitecto
   /** De qué tipo es el contacto que hay (para nombrarlo al preguntar si se reemplaza). */
@@ -113,8 +113,8 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
         /* Con un solo contacto, el del otro tipo se va. */
         ...(unico && c ? (t === 'Cliente' ? { arquitecto: null } : { cliente: null }) : {}),
         envio: null,
-        /* Cargar sobre uno existente: otro contacto tiene otros presupuestos abiertos. */
-        ...(presupuesto.modo === 'cargar' ? { bolsa: null } : {}),
+        /* Cargar sobre uno existente: otro cliente tiene otros presupuestos. */
+        ...(presupuesto.modo === 'cargar' ? { bolsa: null, enviados: [] } : {}),
       },
     })
 
@@ -125,8 +125,8 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
       let c: Contacto | null = null
       if (tipo) c = await conTope(getContacto(tipo, id))
       else {
-        /* Un id pegado que no está en los índices: se prueba en los dos tableros. */
-        for (const t of ['Cliente', 'Constructor'] as const) {
+        /* Un id pegado que no está en los índices: se prueba en los tableros que se buscan. */
+        for (const t of tiposBusqueda) {
           c = await conTope(getContacto(t, id))
           if (c) {
             tipo = t
@@ -155,40 +155,40 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
       try {
         const [clientes, constructores] = await Promise.all([
           conTope(buscarContactos('Cliente', texto)),
-          conTope(buscarContactos('Constructor', texto)),
+          unico ? Promise.resolve([]) : conTope(buscarContactos('Constructor', texto)),
         ])
         return [...clientes.map(marcar('Cliente')), ...constructores.map(marcar('Constructor'))]
       } catch (e) {
-        onError('buscar el cliente o el constructor/arquitecto')
+        onError(unico ? 'buscar el cliente' : 'buscar el cliente o el constructor/arquitecto')
         throw e
       }
     },
     abrir,
     onSinResultados: () => {},
-    pedidoVacio: 'Escribí el nombre del cliente o del constructor/arquitecto para buscar.',
+    pedidoVacio: unico ? 'Escribí el nombre del cliente para buscar.' : 'Escribí el nombre del cliente o del constructor/arquitecto para buscar.',
   })
-  const listo = listas.Cliente.length > 0 || listas.Constructor.length > 0
+  const listo = listas.Cliente.length > 0 || (!unico && listas.Constructor.length > 0)
   const ayudaBuscador = ayudaDe(b, listo, true, '')
-  const ayuda = ayudaBuscador === SIN_RESULTADOS_BUSCADOR ? (b.error ? '' : SIN_RESULTADOS) : ayudaBuscador
+  const ayuda =
+    ayudaBuscador === SIN_RESULTADOS_BUSCADOR ? (b.error ? '' : unico ? SIN_RESULTADOS_CLIENTE : SIN_RESULTADOS) : ayudaBuscador
 
   return (
     <>
       <BuscadorObras
         b={b}
-        placeholder="Buscar cliente o constructor/arquitecto por nombre"
+        placeholder={unico ? 'Buscar cliente por nombre' : 'Buscar cliente o constructor/arquitecto por nombre'}
         ayuda={ayuda}
         ayudaEnRojo={false}
         deshabilitado={!mondayHabilitado()}
         ocupado={leyendo !== null}
-        tituloBuscar="Buscar directamente en Monday, en Clientes y en Constructor/Arquitecto"
+        tituloBuscar={unico ? 'Buscar directamente en Monday, en Clientes' : 'Buscar directamente en Monday, en Clientes y en Constructor/Arquitecto'}
         renderFila={(f) => <FilaContacto f={f} />}
       />
       {unico ? (
         <ContactoUnicoFicha
           cliente={presupuesto.cliente}
-          arquitecto={presupuesto.arquitecto}
-          leyendo={leyendo === 'Cliente' || leyendo === 'Constructor' ? leyendo : null}
-          onQuitar={(t) => asignar(t, null)}
+          leyendo={leyendo !== null}
+          onQuitar={() => asignar('Cliente', null)}
         />
       ) : (
         <ContactosFichas
@@ -228,126 +228,9 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
       )}
       {noEncontrado && (
         <AvisoModal titulo="No se encontró" onClose={() => setNoEncontrado(false)}>
-          Lo que buscaste no está en el tablero de Clientes ni en el de Constructor/Arquitecto. Probá con parte del nombre o
-          pegá el id del ítem.
-        </AvisoModal>
-      )}
-    </>
-  )
-}
-
-/** Cómo se nombra una bolsa en el selector: su nombre, su ID y cuántos presupuestos tiene. */
-const rotuloBolsa = (b: BolsaPresupuesto) =>
-  `${b.nombre}${b.idPresupuesto ? ` · ${b.idPresupuesto}` : ''} · ${b.presupuestos.length} ${
-    b.presupuestos.length === 1 ? 'presupuesto' : 'presupuestos'
-  }`
-
-/**
- * Cargar otro presupuesto sobre uno ya existente: con el cliente y/o el constructor elegidos arriba
- * (el mismo buscador de "Crear nuevo presupuesto"), sus presupuestos abiertos —en "Solicitud de
- * Presupuesto"—. Si tiene uno, se toma solo; si tiene varios, se elige sobre cuál; si no tiene
- * ninguno, se dice. La bolsa no se muestra en una ficha aparte: sólo la card del contacto (regla del
- * usuario, 09/10/2026).
- */
-function BolsasDelContacto({ onError }: { onError: (accion: string) => void }) {
-  const uid = useId()
-  const { presupuesto } = useApp()
-  const dispatch = useDispatch()
-  const { cliente, arquitecto, bolsa } = presupuesto
-  const [bolsas, setBolsas] = useState<BolsaPresupuesto[] | null>(null)
-  const [cargando, setCargando] = useState(false)
-  const [cerrada, setCerrada] = useState<string | null>(null)
-
-  /* Las abiertas son pocas: se leen todas una vez y se filtran por el contacto elegido. */
-  useEffect(() => {
-    let vivo = true
-    conTope(listarBolsasAbiertas())
-      .then((l) => vivo && setBolsas(l))
-      .catch(() => {
-        if (!vivo) return
-        setBolsas([])
-        onError('leer los presupuestos abiertos')
-      })
-    return () => {
-      vivo = false
-    }
-    // Una sola lectura al entrar: el aviso de error no la vuelve a disparar.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const hayContacto = !!(cliente || arquitecto)
-  const delContacto = useMemo(
-    () =>
-      (bolsas ?? []).filter(
-        (b) => (!!cliente && b.cliente?.id === cliente.id) || (!!arquitecto && b.arquitecto?.id === arquitecto.id),
-      ),
-    [bolsas, cliente, arquitecto],
-  )
-
-  /* Se relee la bolsa elegida: puede haber cambiado de estado desde que se listó, y trae sus
-     presupuestos enviados al día. */
-  const elegir = async (id: string) => {
-    setCargando(true)
-    try {
-      const b = await conTope(leerBolsa(id))
-      if (!b || b.estado !== ETIQUETA_PRES.solicitud) {
-        setCerrada(b?.nombre ?? 'El presupuesto')
-        setBolsas((l) => (l ?? []).filter((x) => x.id !== id))
-        return
-      }
-      dispatch({ type: 'setPresupuesto', cambios: { bolsa: b, envio: null } })
-    } catch {
-      onError('leer el presupuesto')
-    } finally {
-      setCargando(false)
-    }
-  }
-
-  /* Con UN presupuesto abierto no hay nada que elegir: se toma solo. */
-  const unico = delContacto.length === 1 ? delContacto[0].id : null
-  useEffect(() => {
-    if (unico && bolsa?.id !== unico && !cargando) void elegir(unico)
-    // Sólo cuando cambia cuál es el único.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unico])
-
-  if (!hayContacto) return null
-
-  return (
-    <>
-      {bolsas === null ? (
-        <Aviso tono="info">
-          Leyendo los presupuestos abiertos…
-        </Aviso>
-      ) : delContacto.length === 0 ? (
-        <Aviso tono="err">
-          {[cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')} no{' '}
-          {cliente && arquitecto ? 'tienen' : 'tiene'} presupuestos abiertos («Solicitud de Presupuesto»). Elegí otro
-          contacto o creá un presupuesto nuevo.
-        </Aviso>
-      ) : (
-        delContacto.length > 1 && (
-          /* `carga-grid`: el desplegable en bordó, como en la carga. */
-          <div className="card carga-datos carga-grid pres-elegir-bolsa">
-            <label className="med-l" htmlFor={`${uid}-bolsa`}>
-              ¿Sobre qué presupuesto vas a cargar? *
-            </label>
-            <SelectBuscable
-              id={`${uid}-bolsa`}
-              valor={bolsa?.id ?? ''}
-              opciones={delContacto.map((b) => ({ valor: b.id, texto: rotuloBolsa(b) }))}
-              placeholder={`Tiene ${delContacto.length} presupuestos abiertos: elegí uno`}
-              cargando={cargando}
-              textoCargando="Leyendo el presupuesto…"
-              onElegir={(id) => void elegir(id)}
-            />
-          </div>
-        )
-      )}
-      {cerrada && (
-        <AvisoModal titulo="El presupuesto ya no está abierto" onClose={() => setCerrada(null)}>
-          <strong>{cerrada}</strong> ya no está en «Solicitud de Presupuesto»: no se le pueden cargar más presupuestos.
-          Elegí otro o creá uno nuevo.
+          {unico
+            ? 'Lo que buscaste no está en el tablero de Clientes. Probá con parte del nombre o pegá el id del ítem.'
+            : 'Lo que buscaste no está en el tablero de Clientes ni en el de Constructor/Arquitecto. Probá con parte del nombre o pegá el id del ítem.'}
         </AvisoModal>
       )}
     </>
@@ -357,9 +240,10 @@ function BolsasDelContacto({ onError }: { onError: (accion: string) => void }) {
 /**
  * Crear y Cargar Presupuestos · Etapa 1: a quién es el presupuesto.
  *
- * Arriba, qué se va a hacer: crear un presupuesto nuevo o cargar otro sobre uno ya existente. En los
- * dos se elige el cliente y/o el constructor (no todos los presupuestos llevan constructor); al cargar
- * sobre uno existente, además, cuál de sus presupuestos abiertos (ver `BolsasDelContacto`).
+ * Arriba, qué se va a hacer: crear un presupuesto nuevo o cargar otro sobre uno ya existente. Al crear
+ * se elige el cliente y/o el constructor (no todos los presupuestos llevan constructor). Al cargar
+ * sobre uno existente se elige SÓLO el cliente; sus presupuestos se buscan al continuar: los de sus
+ * bolsas que no están Ganadas ni Perdidas (ver `bolsaParaCargar`). Sin ninguna, se avisa y no se avanza.
  */
 export function PresupuestoDestinatarioView() {
   const dispatch = useDispatch()
@@ -367,8 +251,11 @@ export function PresupuestoDestinatarioView() {
   const { modo } = presupuesto
   const [errorMonday, setErrorMonday] = useState<string | null>(null)
   const [falta, setFalta] = useState<'modo' | 'destinatario' | null>(null)
+  const [buscando, setBuscando] = useState(false)
+  const [sinPresupuestos, setSinPresupuestos] = useState<string | null>(null)
 
-  const continuar = () => {
+  const continuar = async () => {
+    if (buscando) return
     if (!modo) {
       setFalta('modo')
       return
@@ -376,6 +263,23 @@ export function PresupuestoDestinatarioView() {
     if (!conDestinatario(presupuesto)) {
       setFalta('destinatario')
       return
+    }
+    if (modo === 'cargar' && presupuesto.cliente) {
+      /* Los presupuestos del cliente se buscan recién ahora, al día: puede haber cambiado alguno. */
+      setBuscando(true)
+      try {
+        const r = bolsaParaCargar(await conTope(bolsasDeContacto('Cliente', presupuesto.cliente.id)))
+        if (!r) {
+          setSinPresupuestos(presupuesto.cliente.nombre)
+          return
+        }
+        dispatch({ type: 'setPresupuesto', cambios: { bolsa: r.bolsa, enviados: r.enviados, envio: null } })
+      } catch {
+        setErrorMonday('buscar los presupuestos del cliente')
+        return
+      } finally {
+        setBuscando(false)
+      }
     }
     dispatch({ type: 'goto', paso: 'carga' })
   }
@@ -392,7 +296,7 @@ export function PresupuestoDestinatarioView() {
         titulo={etiquetaPaso('obra', null, null, 'presupuestos', modo)}
         descripcion={
           modo === 'cargar'
-            ? 'Buscá el cliente o el constructor/arquitecto: se toma su presupuesto abierto para cargarle otro.'
+            ? 'Buscá el cliente: al continuar se buscan sus presupuestos ya enviados para cargarle otro.'
             : 'Elegí a quién es el presupuesto: un cliente, un constructor/arquitecto o los dos.'
         }
       />
@@ -404,11 +308,8 @@ export function PresupuestoDestinatarioView() {
         </Aviso>
       )}
 
-      {/* Los dos modos eligen el cliente y/o el constructor con el mismo buscador; al cargar sobre uno
-          existente, además, sobre cuál de sus presupuestos abiertos. */}
-      {modo && <BuscadorContactos onError={setErrorMonday} />}
-
-      {modo === 'cargar' && <BolsasDelContacto onError={setErrorMonday} />}
+      {/* Los dos modos usan el mismo buscador; al cargar sobre uno existente, sólo de clientes. */}
+      {modo && <BuscadorContactos key={modo} onError={setErrorMonday} />}
 
       <div className="actions-footer">
         <span className="paso-siguiente">
@@ -418,18 +319,26 @@ export function PresupuestoDestinatarioView() {
               {[presupuesto.cliente?.nombre, presupuesto.arquitecto?.nombre].filter(Boolean).join(' y ')}
             </>
           )}
-          {modo === 'cargar' && presupuesto.bolsa && (
+          {modo === 'cargar' && presupuesto.cliente && (
             <>
-              <i className="fas fa-file-invoice-dollar paso-siguiente-ic" /> {presupuesto.bolsa.presupuestos.length}{' '}
-              {presupuesto.bolsa.presupuestos.length === 1 ? 'presupuesto cargado' : 'presupuestos cargados'}
+              <i className="fas fa-file-invoice-dollar paso-siguiente-ic" /> Presupuestos de {presupuesto.cliente.nombre}
             </>
           )}
         </span>
-        <button type="button" className="btn btn-primary" onClick={continuar}>
+        <button type="button" className="btn btn-primary" disabled={buscando} onClick={() => void continuar()}>
           Continuar a {etiquetaPaso('carga', null, null, 'presupuestos', modo)} <i className="fas fa-arrow-right" />
         </button>
       </div>
 
+      {buscando && (
+        <ModalCargando titulo="Buscando los presupuestos del cliente..." detalle="Se leen sus presupuestos ya enviados. Esperá unos segundos." />
+      )}
+      {sinPresupuestos && (
+        <AvisoModal titulo="El cliente no tiene presupuestos para cargar" onClose={() => setSinPresupuestos(null)}>
+          <strong>{sinPresupuestos}</strong> no tiene presupuestos cargados (o los que tiene ya están Ganados o Perdidos). Para
+          enviarle uno, elegí «Crear nuevo presupuesto».
+        </AvisoModal>
+      )}
       {errorMonday && <ModalErrorConsulta accion={errorMonday} onClose={() => setErrorMonday(null)} />}
       {falta === 'modo' && (
         <AvisoModal titulo="Falta elegir qué vas a hacer" onClose={() => setFalta(null)}>
@@ -438,11 +347,11 @@ export function PresupuestoDestinatarioView() {
       )}
       {falta === 'destinatario' && (
         <AvisoModal
-          titulo={modo === 'cargar' ? 'Falta elegir el presupuesto' : 'Falta elegir a quién es el presupuesto'}
+          titulo={modo === 'cargar' ? 'Falta elegir el cliente' : 'Falta elegir a quién es el presupuesto'}
           onClose={() => setFalta(null)}
         >
           {modo === 'cargar'
-            ? 'Buscá y cargá el presupuesto abierto al que le vas a sumar otro presupuesto.'
+            ? 'Buscá y cargá el cliente al que le vas a sumar otro presupuesto.'
             : 'Buscá y cargá un cliente, un constructor/arquitecto o los dos. Al menos uno es obligatorio.'}
         </AvisoModal>
       )}

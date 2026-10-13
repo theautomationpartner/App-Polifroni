@@ -7,6 +7,7 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { etiquetaPaso } from '@/lib/pasos'
+import { importeDe } from '@/lib/presupuesto'
 import { ArchivoMuyPesado, prepararArchivoParaSubir } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { idFila, type PresupuestoCargado } from './borrador'
@@ -16,7 +17,7 @@ import { TablaPresupuestos, useOpcionesPresupuesto } from './TablaPresupuestos'
  * Crear y Cargar Presupuestos · Etapa 2: los presupuestos que se van a enviar (uno o varios).
  *
  * A la izquierda, "Datos del presupuesto": el tipo de carpintería, el color (las etiquetas de las
- * columnas del tablero) y el PDF (arrastrar y soltar, sólo de carga). "Agregar a la lista" lo suma a
+ * columnas del tablero), el Total Pactado (obligatorio; va a `✋Total Pactado` del subelemento) y el PDF (arrastrar y soltar, sólo de carga). "Agregar a la lista" lo suma a
  * "Presupuestos a enviar", a la derecha, y deja el formulario listo para el siguiente. En la lista, el
  * lápiz corrige el tipo y el color, y el tacho lo saca.
  *
@@ -26,7 +27,7 @@ export function CargarPresupuestoView() {
   const uid = useId()
   const dispatch = useDispatch()
   const { presupuesto, enviado } = useApp()
-  const { archivo, tipo, color, modo, bolsa, cliente, arquitecto, presupuestos } = presupuesto
+  const { archivo, tipo, color, total, modo, enviados, cliente, arquitecto, presupuestos } = presupuesto
   const [errorMonday, setErrorMonday] = useState<string | null>(null)
   const opciones = useOpcionesPresupuesto(() => setErrorMonday('leer los tipos de carpintería y los colores'))
   const [error, setError] = useState('')
@@ -59,15 +60,18 @@ export function CargarPresupuestoView() {
     }
   }
 
+  const importe = importeDe(total)
+  const totalValido = importe !== null && importe > 0
   const faltan = [
     ...(!tipo ? ['Indicá el tipo de carpintería.'] : []),
     ...(!color ? ['Indicá el color.'] : []),
+    ...(!totalValido ? ['Ingresá el Total Pactado (un importe mayor a cero).'] : []),
     ...(!archivo ? ['Cargá el PDF del presupuesto.'] : []),
   ]
 
   const agregar = () => {
     if (preparando) return
-    if (faltan.length || !archivo) {
+    if (faltan.length || !archivo || !totalValido) {
       setMarcar(true)
       setAviso({ titulo: 'Todavía no se puede agregar', texto: 'Completá lo siguiente para sumarlo a la lista:', faltantes: faltan })
       return
@@ -76,10 +80,13 @@ export function CargarPresupuestoView() {
       setAviso({ titulo: 'Ese PDF ya está en la lista', texto: `«${archivo.name}» ya se agregó a «Presupuestos a enviar».` })
       return
     }
-    cambiarLista([...presupuestos, { id: idFila(), archivo, tipo, color, clave: null, subitemId: null, pdfSubido: false }])
-    /* El formulario queda vacío para el siguiente: tipo de carpintería, color y PDF (regla del usuario,
-       09/10/2026). */
-    cambiar({ archivo: null, tipo: '', color: '' })
+    cambiarLista([
+      ...presupuestos,
+      { id: idFila(), archivo, tipo, color, total: importe ?? 0, clave: null, subitemId: null, pdfSubido: false },
+    ])
+    /* El formulario queda vacío para el siguiente: tipo de carpintería, color, total y PDF (regla del
+       usuario, 09/10/2026). */
+    cambiar({ archivo: null, tipo: '', color: '', total: '' })
     setMarcar(false)
   }
 
@@ -103,7 +110,7 @@ export function CargarPresupuestoView() {
     dispatch({ type: 'goto', paso: 'envio' })
   }
 
-  const para = modo === 'cargar' ? bolsa?.nombre : [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
+  const para = [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
 
   return (
     <section className="view paso-layout obras-v2 presupuesto-v2">
@@ -112,11 +119,11 @@ export function CargarPresupuestoView() {
         titulo={etiquetaPaso('carga', null, null, 'presupuestos', modo)}
         descripcion={
           <>
-            Indicá el tipo de carpintería y el color, cargá el PDF y agregalo a la lista. Podés agregar más de un
-            presupuesto.{' '}
+            Indicá el tipo de carpintería, el color y el total pactado, cargá el PDF y agregalo a la lista. Podés
+            agregar más de un presupuesto.{' '}
             {para && (
               <>
-                {modo === 'cargar' ? 'Presupuesto: ' : 'Para: '}
+                Para: 
                 <strong>{para}</strong>
               </>
             )}
@@ -143,7 +150,7 @@ export function CargarPresupuestoView() {
                       id={`${uid}-tipo`}
                       valor={tipo}
                       opciones={(opciones?.tipos ?? []).map((t) => ({ valor: t, texto: t }))}
-                      placeholder="Elegí el tipo de carpintería"
+                      placeholder="Elegí el tipo"
                       cargando={!opciones}
                       textoCargando="Leyendo los tipos…"
                       disabled={enviado}
@@ -167,6 +174,25 @@ export function CargarPresupuestoView() {
                       falta={marcar && !color}
                       onElegir={(v) => cambiar({ color: v })}
                     />
+                  </div>
+
+                  <div className="med-campo">
+                    <label className="med-l" htmlFor={`${uid}-total`}>
+                      Total pactado *
+                    </label>
+                    <div className={`med-conic ${marcar && !totalValido ? 'pres-falta' : ''}`}>
+                      <i className="fas fa-dollar-sign" aria-hidden="true" />
+                      <input
+                        id={`${uid}-total`}
+                        className="med-input"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Ej.: 1.297.684"
+                        value={total}
+                        disabled={enviado}
+                        onChange={(e) => cambiar({ total: e.target.value })}
+                      />
+                    </div>
                   </div>
                 </div>
               </fieldset>
@@ -194,8 +220,8 @@ export function CargarPresupuestoView() {
 
         <TablaPresupuestos
           presupuestos={presupuestos}
-          /* Cargar sobre uno existente: arriba, los que ya se le mandaron (sólo para ver). */
-          enviados={modo === 'cargar' ? (bolsa?.presupuestos ?? []) : []}
+          /* Cargar sobre uno existente: arriba, los que ya se le mandaron al cliente (sólo para ver). */
+          enviados={modo === 'cargar' ? enviados : []}
           sinCard
           bloqueado={enviado}
           onEditar={(id, c) => cambiarLista(presupuestos.map((p) => (p.id === id ? { ...p, ...c } : p)))}

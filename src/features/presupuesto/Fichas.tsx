@@ -13,14 +13,6 @@ const ROTULO: Record<TipoContacto, { titulo: string; id: string; vacio: string; 
   },
 }
 
-/** La card única de "cargar sobre uno existente" antes de elegir: puede ser cualquiera de los dos. */
-const ROTULO_UNICO = {
-  titulo: 'Cliente o Constructor/Arquitecto',
-  id: 'ID',
-  vacio: 'Sin cliente ni constructor/arquitecto elegido',
-  icono: 'fa-address-card',
-}
-
 /** El punto verde o rojo de la ficha: si al contacto se le puede mandar el presupuesto. */
 function EstadoCelular({ celular }: { celular: string }) {
   return (
@@ -50,14 +42,13 @@ function ContactoFicha({
   onQuitar,
   onEditar,
 }: {
-  /** `null`: la card única, todavía sin saber si va un cliente o un constructor. */
-  tipo: TipoContacto | null
+  tipo: TipoContacto
   contacto: Contacto | null
   cargando?: boolean
   onQuitar?: () => void
   onEditar?: () => void
 }) {
-  const r = tipo ? ROTULO[tipo] : ROTULO_UNICO
+  const r = ROTULO[tipo]
   /* Hay un contacto cargado y a la vista. */
   const lleno = !!contacto && !cargando
   const vacio = !contacto && !cargando
@@ -79,7 +70,7 @@ function ContactoFicha({
             type="button"
             className="btn btn-primary pres-ficha-btn pres-ficha-btn--editar"
             disabled={!lleno || !onEditar}
-            title={!lleno ? `Primero elegí ${tipo === 'Cliente' ? 'un cliente' : tipo ? 'un constructor/arquitecto' : 'un cliente o un constructor/arquitecto'}` : onEditar ? `Editar el ${r.titulo.toLowerCase()}` : 'Disponible próximamente'}
+            title={!lleno ? `Primero elegí ${tipo === 'Cliente' ? 'un cliente' : 'un constructor/arquitecto'}` : onEditar ? `Editar el ${r.titulo.toLowerCase()}` : 'Disponible próximamente'}
             onClick={onEditar}
           >
             <i className="fas fa-pen" /> Editar
@@ -166,33 +157,23 @@ export function ContactosFichas({
 }
 
 /**
- * Cargar otro presupuesto sobre uno ya existente: UNA sola card, la del contacto que se buscó —el
- * cliente o el constructor/arquitecto—. Sin elegir, la card no dice de qué tipo es.
+ * Cargar otro presupuesto sobre uno ya existente: UNA sola card, la del cliente (en este modo sólo se
+ * busca cliente, regla del usuario, 13/10/2026).
  */
 export function ContactoUnicoFicha({
   cliente,
-  arquitecto,
-  leyendo = null,
+  leyendo = false,
   onQuitar,
   onEditar,
 }: {
   cliente: Contacto | null
-  arquitecto: Contacto | null
-  leyendo?: TipoContacto | null
-  onQuitar: (tipo: TipoContacto) => void
-  onEditar?: (tipo: TipoContacto) => void
+  leyendo?: boolean
+  onQuitar: () => void
+  onEditar?: () => void
 }) {
-  const tipo: TipoContacto | null = leyendo ?? (cliente ? 'Cliente' : arquitecto ? 'Constructor' : null)
-  const contacto = leyendo ? null : (cliente ?? arquitecto)
   return (
     <div className="pres-fichas pres-fichas--unica">
-      <ContactoFicha
-        tipo={tipo}
-        contacto={contacto}
-        cargando={!!leyendo}
-        onQuitar={tipo ? () => onQuitar(tipo) : undefined}
-        onEditar={tipo && onEditar ? () => onEditar(tipo) : undefined}
-      />
+      <ContactoFicha tipo="Cliente" contacto={leyendo ? null : cliente} cargando={leyendo} onQuitar={onQuitar} onEditar={onEditar} />
     </div>
   )
 }
