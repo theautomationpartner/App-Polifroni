@@ -39,10 +39,6 @@ export function etiquetaPaso(
     if (paso === 'obra') return modoPresupuesto === 'cargar' ? 'Seleccionar Presupuesto' : 'Seleccionar Cliente'
     return 'Cargar y Enviar Presupuesto'
   }
-  /* Agenda · Crear Turno: el cliente, los datos del turno y el registro en la Agenda. */
-  if (operacion === 'crearTurno') {
-    return paso === 'obra' ? 'Seleccionar Cliente' : paso === 'carga' ? 'Datos del Turno' : 'Registrar Turno'
-  }
   /* Editar Órdenes de Producción: la orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
   if (operacion === 'editar') {
     return paso === 'obra' ? 'Buscar Orden' : paso === 'carga' ? 'Cargar Nuevo Dibujo HETMO' : 'Enviar Nueva OP Final'

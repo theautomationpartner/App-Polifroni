@@ -1381,10 +1381,11 @@ td {
 /* ===== Overlay de espera =====
    Tapa la pantalla mientras se escribe en Monday, en cualquier paso. Sin namespace a
    propósito: antes vivía bajo `.cobro-v2` y fuera del cobro el overlay quedaba sin estilos. */
+/* Por encima de cualquier ventana (las ventanas usan z-index 1000): la espera nunca queda tapada. */
 .modal-cargando {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1672,3 +1673,9 @@ td {
   color: #1e293b;
 }
 
+
+/* Un botón de contorno deshabilitado se ve deshabilitado (p. ej. "No enviar" mientras sale el mensaje). */
+.btn.btn-out:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

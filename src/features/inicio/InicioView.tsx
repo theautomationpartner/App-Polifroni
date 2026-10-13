@@ -156,9 +156,8 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   editar: { icono: 'fa-pen-ruler', titulo: 'Editar Órdenes de Producción', etapas: PASOS.length },
   vidrios: { icono: 'fa-border-all', titulo: 'Solicitud de Cortes de Vidrio', etapas: PASOS.length },
   /* Una sola pantalla: la tabla de las órdenes enviadas al taller. */
-  crearTurno: { icono: 'fa-calendar-plus', titulo: 'Crear Turnos', etapas: PASOS.length },
-  /* La gestión es una sola pantalla, como la consulta de órdenes. */
-  gestionarTurnos: { icono: 'fa-calendar-check', titulo: 'Consultar y Gestionar Turnos', etapas: 1 },
+  /* El calendario es una sola pantalla: el turno nuevo y su gestión se abren en ventanas. */
+  calendario: { icono: 'fa-calendar-days', titulo: 'Agenda de Turnos', etapas: 1 },
   /* Dos etapas: a quién es el presupuesto, y el presupuesto con su envío. */
   presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear y Cargar Presupuestos', etapas: 2 },
   /* Una sola pantalla, como la consulta de órdenes y la de turnos. */

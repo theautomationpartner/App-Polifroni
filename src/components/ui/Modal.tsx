@@ -35,7 +35,7 @@ export function Modal({ title, icon, children, actions, onClose, cerrable = true
           </button>
         )}
         {icon && <div className="modal-icon">{icon}</div>}
-        <h3 className="modal-title">{title}</h3>
+        {title && <h3 className="modal-title">{title}</h3>}
         <div className="modal-body">{children}</div>
         {actions && <div className="modal-actions">{actions}</div>}
       </div>

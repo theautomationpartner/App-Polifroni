@@ -8,10 +8,7 @@ import { EnviarOpView } from '@/features/envio/EnviarOpView'
 import { SeleccionarOpView } from '@/features/envio/SeleccionarOpView'
 import { InicioView, ProduccionInicioView } from '@/features/inicio/InicioView'
 import { ListadoView } from '@/features/listado/ListadoView'
-import { CrearTurnoClienteView } from '@/features/agenda/CrearTurnoClienteView'
-import { CrearTurnoDatosView } from '@/features/agenda/CrearTurnoDatosView'
-import { CrearTurnoRegistrarView } from '@/features/agenda/CrearTurnoRegistrarView'
-import { GestionarTurnosView } from '@/features/agenda/GestionarTurnosView'
+import { AgendaView } from '@/features/agenda/AgendaView'
 import { conDestinatario } from '@/features/presupuesto/borrador'
 import { CargarPresupuestoView } from '@/features/presupuesto/CargarPresupuestoView'
 import { GestionarPresupuestosView } from '@/features/presupuesto/GestionarPresupuestosView'
@@ -41,7 +38,7 @@ import { areaPermitida, type AppState } from '@/state/appState'
  * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
  * taller se elige una OP confirmada y se envía.
  */
-function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, edicion, usuario }: AppState): () => JSX.Element {
+function vistaDe({ proceso, operacion, destino, paso, obra, presupuesto, edicion, usuario }: AppState): () => JSX.Element {
   /* Lo que el team del usuario no habilita no se dibuja, llegue como llegue (ver `lib/permisos`). */
   if (proceso === null || !areaPermitida(proceso, usuario?.roles)) return InicioView
   if (operacion === null || !puedeOperar(usuario?.roles, operacion)) return ProduccionInicioView
@@ -52,15 +49,8 @@ function vistaDe({ proceso, operacion, destino, paso, obra, turno, presupuesto, 
   if (operacion === 'presupuestos') {
     return paso === 'obra' || !conDestinatario(presupuesto) ? PresupuestoDestinatarioView : CargarPresupuestoView
   }
-  /* Agenda: crear un turno (cliente, datos, registro) o gestionar los que ya están. */
-  if (operacion === 'gestionarTurnos') return GestionarTurnosView
-  if (operacion === 'crearTurno') {
-    if (!turno.cliente || paso === 'obra') return CrearTurnoClienteView
-    /* El registro necesita los datos completos: si se cambió el tipo y se saltó con el stepper, la
-       obra elegida ya no vale y se vuelve a los datos. */
-    const completo = Boolean(turno.elementos && turno.tipo && turno.elementoId)
-    return paso === 'carga' || !completo ? CrearTurnoDatosView : CrearTurnoRegistrarView
-  }
+  /* Agenda: el calendario, donde se crean y se gestionan los turnos. */
+  if (operacion === 'calendario') return AgendaView
   if (operacion === 'consultar') return ListadoView
   /* Editar OP: la orden, el dibujo nuevo (la IA detecta qué cambió) y el envío de la OP final nueva
      (sólo con ella generada). */
