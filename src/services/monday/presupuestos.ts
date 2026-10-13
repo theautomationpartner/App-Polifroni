@@ -413,16 +413,19 @@ export async function crearPresupuestoEnviado(a: {
   color: string
   /** `YYYY-MM-DD`. */
   fechaEnvio: string
-  /** La clave del enlace de confirmación (`itemId` del enlace). */
-  clave: string
+  /**
+   * La clave del enlace de confirmación, sólo si se pidió confirmar este presupuesto. Sin ella la
+   * columna queda vacía: nadie puede confirmarlo por enlace.
+   */
+  clave: string | null
 }): Promise<string> {
-  const valores = {
+  const valores: Record<string, unknown> = {
     [COL_SUB.tipo]: { labels: [a.tipo] },
     [COL_SUB.color]: { labels: [a.color] },
     [COL_SUB.estadoEnvio]: { label: ETIQUETA_PRES.enviado },
     [COL_SUB.fechaEnvio]: { date: a.fechaEnvio },
-    [COL_SUB.clave]: a.clave,
   }
+  if (a.clave) valores[COL_SUB.clave] = a.clave
   const d = await mondayApi<{ create_subitem: { id: string } }>(
     `mutation ($padre: ID!, $valores: JSON!) {
       create_subitem(parent_item_id: $padre, item_name: "Presupuesto", column_values: $valores, create_labels_if_missing: false) { id }

@@ -16,8 +16,7 @@
  * Se corre con esbuild + node (`npm run test:presupuesto`); vive fuera de `src/`.
  */
 import assert from 'node:assert/strict'
-import { MARCA_ENLACE as MARCA_ENLACE_SERVIDOR } from '../api/_confirmacion'
-import { MARCA_ENLACE } from '../src/lib/claveConfirmacion'
+import { marcaPresupuesto as marcaPresupuestoServidor, textoPresupuestoDestino } from '../api/_whatsappHttp'
 import { destinoDe, faltantesDestino } from '../src/lib/destinatario'
 import { etiquetasPasos } from '../src/lib/pasos'
 import {
@@ -34,9 +33,12 @@ import {
   nombreMovimiento,
   pasaFiltro,
   tipoObraDe,
+  colorTipoCarpinteria,
   rolesDeEnviarA,
   rolesIniciales,
-  textoPresupuesto,
+  etiquetaPresupuesto,
+  marcaPresupuesto,
+  textoPresupuestos,
 } from '../src/lib/presupuesto'
 
 /* ✋Enviar a: */
@@ -69,27 +71,50 @@ assert.ok(
 assert.equal(nombreBolsa({ nombre: 'PEREZ JUAN', celular: '' }, { nombre: 'ARQ. GOMEZ', celular: '' }), 'PEREZ JUAN')
 assert.equal(nombreBolsa(null, { nombre: 'ARQ. GOMEZ', celular: '' }), 'ARQ. GOMEZ')
 
-/* Mensaje */
+/* Mensaje: uno o varios presupuestos, texto genérico */
 assert.equal(
-  textoPresupuesto('1111 - PEREZ JUAN', new Date(2026, 9, 5, 15, 0)),
+  textoPresupuestos('1111 - PEREZ JUAN', 1, new Date(2026, 9, 5, 15, 0)),
   [
     '👋Hola *PEREZ JUAN*,',
-    'Adjuntamos el presupuesto. Si tenés alguna consulta sobre este o tu cuenta, por favor respondé a este mensaje o contactanos.',
+    'Le adjuntamos el presupuesto solicitado. Si tenés alguna consulta sobre este o tu cuenta, por favor respondé a este mensaje o contactanos.',
     '📄 *Concepto:* Presupuesto\n📅 *Fecha:* 05/10/2026',
     'Polifroni Aberturas\nAutomatizado por *The Automation Partner*',
   ].join('\n\n'),
-  'la plantilla del usuario, sin el código de la cuenta y con la fecha del envío',
+  'un presupuesto: la plantilla del usuario, sin el código de la cuenta y con la fecha del envío',
 )
-assert.ok(!/https?:\/\//.test(textoPresupuesto('X')), 'el presupuesto no lleva enlace')
-assert.ok(textoPresupuesto('').startsWith('👋Hola *Cliente*'))
+const varios = textoPresupuestos('PEREZ JUAN', 3, new Date(2026, 9, 5))
+assert.ok(varios.includes('Le adjuntamos los presupuestos solicitados.'), 'varios: en plural')
+assert.ok(varios.includes('📄 *Concepto:* Presupuestos (3)'))
+assert.ok(!/ENLACE_CONFIRMACION|https?:\/\//.test(varios), 'sin confirmación, sin enlaces')
+assert.ok(textoPresupuestos('', 1).startsWith('👋Hola *Cliente*'))
+assert.equal(
+  etiquetaPresupuesto({ nombreArchivo: 'Presupuesto_Cocina.pdf', tipo: 'Aluminio', color: 'Negro' }),
+  'Presupuesto_Cocina (Aluminio · Negro)',
+)
 
-/* Enlace de confirmación: sólo para quien confirma. La app pone la marca; el servidor, el enlace firmado */
-const conEnlace = textoPresupuesto('PEREZ JUAN', new Date(2026, 9, 5), true)
-assert.ok(conEnlace.includes(`podés confirmarlo haciendo click en el siguiente enlace: ${MARCA_ENLACE}`))
-assert.ok(conEnlace.indexOf(MARCA_ENLACE) < conEnlace.indexOf('Polifroni Aberturas'), 'el enlace va antes de la firma')
-assert.ok(!textoPresupuesto('PEREZ JUAN', new Date(2026, 9, 5)).includes(MARCA_ENLACE), 'sin confirmador, sin enlace')
-assert.ok(!/hook\.us1\.make\.com/.test(conEnlace), 'ninguna URL de Make en el mensaje')
-assert.equal(MARCA_ENLACE, MARCA_ENLACE_SERVIDOR, 'la app y el servidor usan la misma marca')
+/* Confirmación opcional: el responsable recibe un enlace por presupuesto a confirmar (uno o todos) */
+const k1 = nuevaClave()
+const k2 = nuevaClave()
+const uno = textoPresupuestos('PEREZ JUAN', 2, new Date(2026, 9, 5), [{ etiqueta: 'Cocina (PVC · BLANCO)', clave: k1 }])
+assert.ok(uno.includes(`el presupuesto *Cocina (PVC · BLANCO)* te parece correcto, podés confirmarlo haciendo click en el siguiente enlace: ${marcaPresupuesto(k1)}`))
+assert.ok(uno.indexOf(marcaPresupuesto(k1)) < uno.indexOf('Polifroni Aberturas'), 'el enlace va antes de la firma')
+const todos = textoPresupuestos('PEREZ JUAN', 2, new Date(2026, 9, 5), [
+  { etiqueta: 'Cocina', clave: k1 },
+  { etiqueta: 'Baño', clave: k2 },
+])
+assert.ok(todos.includes(`• *Cocina*: ${marcaPresupuesto(k1)}`) && todos.includes(`• *Baño*: ${marcaPresupuesto(k2)}`), 'todos: un enlace por presupuesto')
+assert.ok(!/hook\.us1\.make\.com/.test(todos), 'ninguna URL de Make en el mensaje')
+assert.equal(marcaPresupuesto(k1), marcaPresupuestoServidor(k1), 'la app y el servidor usan la misma marca')
+
+/* El servidor pone los enlaces firmados: sólo a quien confirma, y sólo de claves pedidas */
+process.env.CONFIRMACION_URL = 'https://app.ejemplo.com'
+process.env.CONFIRMACION_SECRET = 'x'.repeat(40)
+const firmado = textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: todos }, [k1, k2])
+assert.ok(firmado && !firmado.includes('ENLACE_CONFIRMACION') && (firmado.match(/https:\/\/app\.ejemplo\.com\/c\//g) ?? []).length === 2)
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: false, texto: todos }, [k1, k2]), null, 'el que no confirma no lleva enlaces')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: todos }, [k1]), null, 'una marca de una clave no pedida')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: uno }, [k1, k2]), null, 'una clave pedida sin su enlace')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: false, texto: varios }, []), varios, 'sin confirmación, el texto tal cual')
 const c1 = nuevaClave()
 const c2 = nuevaClave()
 assert.ok(c1.length >= 32 && c1 !== c2, 'claves únicas')
@@ -98,8 +123,8 @@ assert.ok(c1.length >= 32 && c1 !== c2, 'claves únicas')
 assert.equal(fechaLocal(new Date(2026, 9, 5, 23, 30)), '2026-10-05')
 
 /* Etapas */
-assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'crear'), ['Seleccionar Cliente', 'Cargar y Enviar Presupuesto'])
-assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'cargar'), ['Seleccionar Presupuesto', 'Cargar y Enviar Presupuesto'])
+assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'crear'), ['Seleccionar Cliente', 'Cargar Presupuestos', 'Enviar Presupuestos'])
+assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'cargar'), ['Seleccionar Presupuesto', 'Cargar Presupuestos', 'Enviar Presupuestos'])
 assert.equal(etiquetasPasos(null, null, 'enviar').length, 3, 'Producción sigue con tres etapas')
 
 /* Consultar y Gestionar: qué se lista */
@@ -120,6 +145,8 @@ assert.equal(tipoObraDe('PVC'), 'PVC')
 assert.equal(tipoObraDe('Alumino'), 'Aluminio')
 assert.equal(tipoObraDe('Aluminio A30New'), 'Aluminio')
 assert.equal(tipoObraDe(''), '')
+assert.equal(colorTipoCarpinteria('PVC'), '#00c875', 'PVC: verde')
+for (const t of ['Aluminio', 'Alumino', 'Aluminio A30New']) assert.equal(colorTipoCarpinteria(t), '#ffcb00', `${t}: amarillo`)
 assert.equal(importeDe('1.731.694,48'), 1731694.48)
 assert.equal(importeDe('1731694.48'), 1731694.48)
 assert.equal(importeDe('$ 604500'), 604500)

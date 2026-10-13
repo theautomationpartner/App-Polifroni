@@ -13,7 +13,7 @@ import {
   formatoMonday,
   type Rol,
 } from '@/lib/destinatario'
-import { datosContacto, nuevaClave, rolesIniciales, textoPresupuesto } from '@/lib/presupuesto'
+import { datosContacto, etiquetaPresupuesto, nuevaClave, rolesIniciales, textoPresupuestos } from '@/lib/presupuesto'
 import { actualizarCelularContacto } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { MensajePresupuesto } from './MensajePresupuesto'
@@ -41,33 +41,43 @@ const ERROR_RED =
  * el celular sin salir, ver el mensaje, y el botón que pasa a "Enviando…", "Enviado exitosamente" o
  * "Error de Envío"—.
  *
- * Como en la OP, con los dos destinatarios se elige el "Responsable de confirmar el presupuesto"; con
- * uno solo, confirma ése. Sólo a quien confirma le llega el enlace para confirmarlo, con la clave del
- * presupuesto (`nuevaClave`), que al finalizar queda guardada en el subelemento. Sale por la misma ruta
- * que la OP (`/api/whatsapp`: el PDF a Google Drive y el mensaje por 360messenger), que confirma en la
- * cola que cada mensaje salió.
+ * Salen TODOS los presupuestos de la lista: el texto genérico ("Le adjuntamos los presupuestos
+ * solicitados...") y después cada PDF, en su mensaje.
+ *
+ * La confirmación es OPCIONAL (regla del usuario, 09/10/2026): si se quiere, se elige el "Responsable de
+ * confirmar el presupuesto" (el mismo selector de la OP) y, con más de un presupuesto, cuál tiene que
+ * confirmar —todos o uno—. Sólo a él le llega un enlace por cada presupuesto a confirmar, con la clave
+ * de ese presupuesto (`nuevaClave`), que al finalizar queda guardada en su subelemento. Sale por la
+ * misma ruta que la OP (`/api/whatsapp`: los PDF a Google Drive y los mensajes por 360messenger), que
+ * confirma en la cola que cada mensaje salió.
  *
  * Enviar no escribe nada en Monday: lo que salió queda en el borrador y se registra al finalizar.
  */
-export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avisoNoListo: string }) {
+export function EnviarPresupuesto({ onAConfirmar }: { onAConfirmar?: (ids: string[]) => void }) {
   const { presupuesto, enviado } = useApp()
   const dispatch = useDispatch()
-  const { cliente, arquitecto, bolsa, archivo } = presupuesto
+  const { cliente, arquitecto, bolsa, presupuestos } = presupuesto
   const datos = datosContacto(cliente, arquitecto)
   const wsp = useEnviarWhatsapp(ERROR_RED)
 
   /** A quiénes se envía: los que ya tenía la bolsa o, en una nueva, los contactos elegidos. */
   const [roles, setRoles] = useState<Rol[]>(() => rolesIniciales(bolsa?.enviarA ?? '', !!cliente, !!arquitecto))
-  /**
-   * Quién confirma el presupuesto cuando se envía a los DOS: lo elige el usuario. Con uno solo,
-   * confirma ése y no se pregunta.
-   */
+  /** Quién confirma: lo elige el usuario si quiere (`null` = sin confirmación). */
   const [confirmadorElegido, setConfirmadorElegido] = useState<Rol | null>(null)
+  /** Con más de un presupuesto, cuál confirma: `todos` o el id de uno. */
+  const [cual, setCual] = useState<string>('')
   const [verMensaje, setVerMensaje] = useState(false)
   const [editandoCel, setEditandoCel] = useState<Rol | null>(null)
-  const [faltan, setFaltan] = useState<{ titulo: string; items: string[] } | null>(null)
+  const [faltan, setFaltan] = useState<{
+    titulo: string
+    items: string[]
+  } | null>(null)
   /** Los destinatarios con que salió ESTA corrida: el cierre los usa aunque la pantalla cambie. */
-  const enCurso = useRef<{ roles: Rol[]; confirmador: Rol | null } | null>(null)
+  const enCurso = useRef<{
+    roles: Rol[]
+    confirmador: Rol | null
+    aConfirmar: string[]
+  } | null>(null)
 
   const enviando = wsp.enCurso
   useAccionEnCurso('Esperá a que termine el envío del presupuesto.', enviando)
@@ -77,11 +87,23 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
   const disponibles = candidatos.filter((c) => !roles.includes(c.r))
   const advertencias = [...new Set(roles.flatMap((r) => advertenciasDestino(datos, r)))]
   const sinDestinatarios = roles.length === 0
-  const ambos = roles.length === 2
-  /* El confirmador vigente: el único destinatario, o el elegido si sigue en la lista. */
-  const confirmador: Rol | null =
-    roles.length === 1 ? roles[0] : confirmadorElegido && roles.includes(confirmadorElegido) ? confirmadorElegido : null
-  const sinDocumento = !listo || !archivo
+  /* El confirmador vigente: el elegido, si sigue en la lista. Sin elegir, no se pide confirmación. */
+  const confirmador: Rol | null = confirmadorElegido && roles.includes(confirmadorElegido) ? confirmadorElegido : null
+  const varios = presupuestos.length > 1
+  /** Los presupuestos que el responsable tiene que confirmar (ninguno sin responsable). */
+  const aConfirmar: string[] = !confirmador
+    ? []
+    : !varios
+      ? presupuestos.map((p) => p.id)
+      : cual === 'todos'
+        ? presupuestos.map((p) => p.id)
+        : presupuestos.some((p) => p.id === cual)
+          ? [cual]
+          : []
+  const clavesAConfirmar = aConfirmar.join(',')
+  useEffect(() => onAConfirmar?.(aConfirmar), [clavesAConfirmar]) // eslint-disable-line react-hooks/exhaustive-deps
+  const sinDocumento = presupuestos.length === 0
+  const avisoNoListo = 'No hay presupuestos para enviar: volvé a la etapa anterior y agregá al menos uno'
   const fase = wsp.estado.fase
   const estadoBoton: 'idle' | 'enviando' | 'enviado' | 'error' = enviado
     ? 'enviado'
@@ -93,43 +115,70 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
   const estadoFila: EstadoFila = enviado ? 'ok' : enviando ? 'enviando' : estadoBoton === 'error' ? 'error' : 'idle'
 
   const confirmar = () => {
-    if (enviando || enviado || sinDocumento || !archivo) return
+    if (enviando || enviado || sinDocumento) return
     const f = roles.length ? roles.flatMap((r) => faltantesDestino(datos, r)) : faltantesDestino(datos, '')
     if (f.length) {
       setFaltan({ titulo: 'Todavía no se puede enviar', items: f })
       return
     }
-    /* A los dos sin decir quién confirma: no sale nada. */
-    if (ambos && !confirmador) {
+    /* Con responsable y varios presupuestos, hay que decir cuál confirma. */
+    if (confirmador && aConfirmar.length === 0) {
       setFaltan({
-        titulo: 'Falta indicar quién confirma el presupuesto',
-        items: ['Elegí en «Responsable de confirmar el presupuesto» si confirma el cliente o el constructor.'],
+        titulo: 'Falta indicar qué presupuesto se confirma',
+        items: ['Elegí en «¿Qué presupuesto tiene que confirmar?» uno de la lista o «Todos los presupuestos».'],
       })
       return
     }
-    /* La clave del enlace: una por presupuesto. Un reintento manda el mismo enlace. */
-    const clave = presupuesto.clave ?? nuevaClave()
-    if (!presupuesto.clave) dispatch({ type: 'setPresupuesto', cambios: { clave } })
-    enCurso.current = { roles: [...roles], confirmador }
+    /* La clave de cada presupuesto a confirmar: una por presupuesto, fija. Un reintento manda los
+       mismos enlaces. */
+    const lista = presupuestos.map((p) => (aConfirmar.includes(p.id) && !p.clave ? { ...p, clave: nuevaClave() } : p))
+    if (lista.some((p, i) => p !== presupuestos[i]))
+      dispatch({ type: 'setPresupuesto', cambios: { presupuestos: lista } })
+    const confirmables = lista
+      .filter((p) => aConfirmar.includes(p.id))
+      .map((p) => ({
+        etiqueta: etiquetaPresupuesto({
+          nombreArchivo: p.archivo.name,
+          tipo: p.tipo,
+          color: p.color,
+        }),
+        clave: p.clave,
+      }))
+    enCurso.current = {
+      roles: [...roles],
+      confirmador,
+      aConfirmar: [...aConfirmar],
+    }
+    const [primero, ...resto] = lista
     void wsp.correr(
       {
         documento: 'presupuesto',
         destinos: roles.map((r) => {
           const d = destinoDe(datos, r)
           const confirma = r === confirmador
-          /* El texto de quien confirma lleva la marca del enlace: el servidor pone ahí el enlace
-             firmado con la clave. */
-          return { tipo: d.tipo, nombre: d.nombre, whatsapp: d.whatsapp, confirmador: confirma, texto: textoPresupuesto(d.nombre, new Date(), confirma) }
+          /* El texto de quien confirma lleva una marca por presupuesto a confirmar: el servidor pone
+             ahí el enlace firmado con su clave. */
+          return {
+            tipo: d.tipo,
+            nombre: d.nombre,
+            whatsapp: d.whatsapp,
+            confirmador: confirma,
+            texto: textoPresupuestos(d.nombre, lista.length, new Date(), confirma ? confirmables : []),
+          }
         }),
-        clave,
+        claves: confirmables.map((c) => c.clave ?? ''),
         reenvio: false,
         ordenId: null,
         obraId: '',
         numero: '',
-        tipo: presupuesto.tipo,
+        tipo: primero.tipo,
       },
-      archivo,
-      archivo.name || 'Presupuesto.pdf',
+      primero.archivo,
+      primero.archivo.name || 'Presupuesto.pdf',
+      resto.map((p) => ({
+        archivo: p.archivo,
+        nombre: p.archivo.name || 'Presupuesto.pdf',
+      })),
     )
   }
 
@@ -139,7 +188,14 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
     if (!e || fase !== 'listo') return
     dispatch({
       type: 'setPresupuesto',
-      cambios: { envio: { roles: e.roles, confirmador: e.confirmador, cuando: new Date().toISOString() } },
+      cambios: {
+        envio: {
+          roles: e.roles,
+          confirmador: e.confirmador,
+          aConfirmar: e.aConfirmar,
+          cuando: new Date().toISOString(),
+        },
+      },
     })
     dispatch({ type: 'setEnviado' })
     // Sólo importa el cambio de fase; el resto se lee de `enCurso`.
@@ -198,26 +254,55 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
         )}
       </div>
 
-      {ambos && (
-        <div className="igp">
-          <label htmlFor="pres-confirmador">Responsable de confirmar el presupuesto *</label>
-          <select
-            id="pres-confirmador"
-            className={`full w-contactos ${faltan && !confirmador ? 'is-falta' : ''}`}
-            style={{ cursor: 'pointer' }}
-            value={confirmador ?? ''}
-            disabled={enviando || enviado}
-            onChange={(e) => setConfirmadorElegido((e.target.value || null) as Rol | null)}
-          >
-            <option value="" disabled>
-              Elegí quién confirma…
-            </option>
-            {elegidos.map(({ r, d }) => (
-              <option key={r} value={r}>
-                {r} ({d.nombre || 'sin nombre'})
-              </option>
-            ))}
-          </select>
+      {/* El responsable y, a su derecha, qué presupuesto confirma (uno debajo del otro si no hay ancho). */}
+      {elegidos.length > 0 && (
+        <div className="pres-confirmar-fila">
+          <div className="igp">
+            <label htmlFor="pres-confirmador">Responsable de confirmar el presupuesto (opcional)</label>
+            <select
+              id="pres-confirmador"
+              className="full w-contactos"
+              style={{ cursor: 'pointer' }}
+              value={confirmador ?? ''}
+              disabled={enviando || enviado}
+              onChange={(e) => setConfirmadorElegido((e.target.value || null) as Rol | null)}
+            >
+              <option value="">Sin confirmación</option>
+              {elegidos.map(({ r, d }) => (
+                <option key={r} value={r}>
+                  {r} ({d.nombre || 'sin nombre'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {confirmador && varios && (
+            <div className="igp">
+              <label htmlFor="pres-cual">¿Qué presupuesto tiene que confirmar? *</label>
+              <select
+                id="pres-cual"
+                className={`full w-contactos ${faltan && aConfirmar.length === 0 ? 'is-falta' : ''}`}
+                style={{ cursor: 'pointer' }}
+                value={cual}
+                disabled={enviando || enviado}
+                onChange={(e) => setCual(e.target.value)}
+              >
+                <option value="" disabled>
+                  Elegí qué presupuesto confirma…
+                </option>
+                <option value="todos">Todos los presupuestos ({presupuestos.length})</option>
+                {presupuestos.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {etiquetaPresupuesto({
+                      nombreArchivo: p.archivo.name,
+                      tipo: p.tipo,
+                      color: p.color,
+                    })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -282,7 +367,11 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
           className="btn-block btn-block--enviar btn-mayus"
           style={{
             background:
-              estadoBoton === 'enviado' ? 'var(--green)' : estadoBoton === 'error' ? 'var(--red)' : 'var(--primary-blue)',
+              estadoBoton === 'enviado'
+                ? 'var(--green)'
+                : estadoBoton === 'error'
+                  ? 'var(--red)'
+                  : 'var(--primary-blue)',
             ...(estadoBoton === 'enviado' ? { opacity: 1 } : {}),
           }}
           disabled={enviando || enviado || sinDocumento || sinDestinatarios}
@@ -366,7 +455,9 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
             const cambios =
               editandoCel === 'Cliente'
                 ? { cliente: cliente ? { ...cliente, celular } : null }
-                : { arquitecto: arquitecto ? { ...arquitecto, celular } : null }
+                : {
+                    arquitecto: arquitecto ? { ...arquitecto, celular } : null,
+                  }
             dispatch({ type: 'setPresupuesto', cambios })
           }}
         />
@@ -376,13 +467,17 @@ export function EnviarPresupuesto({ listo, avisoNoListo }: { listo: boolean; avi
         <MensajePresupuesto
           nombres={elegidos.map(({ r, d }) => ({ rol: r, nombre: d.nombre }))}
           confirmador={confirmador}
+          presupuestos={presupuestos}
+          aConfirmar={aConfirmar}
           onClose={() => setVerMensaje(false)}
         />
       )}
 
       {faltan && (
         <AvisoModal titulo={faltan.titulo} faltantes={faltan.items} onClose={() => setFaltan(null)}>
-          {faltan.items.length > 1 ? 'No se envió nada. Corregí lo siguiente y volvé a tocar "Confirmar y Enviar":' : null}
+          {faltan.items.length > 1
+            ? 'No se envió nada. Corregí lo siguiente y volvé a tocar "Confirmar y Enviar":'
+            : null}
         </AvisoModal>
       )}
     </div>

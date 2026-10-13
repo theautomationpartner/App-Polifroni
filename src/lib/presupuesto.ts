@@ -5,7 +5,6 @@
  * Un presupuesto es de un cliente, de un constructor/arquitecto o de los dos. Todos los que se le
  * mandan se juntan en una misma "bolsa" (el ítem del tablero), uno por subelemento.
  */
-import { MARCA_ENLACE } from '@/lib/claveConfirmacion'
 import { ROLES, sinCodigo, type DatosContacto, type Rol } from '@/lib/destinatario'
 
 export { nuevaClave } from '@/lib/claveConfirmacion'
@@ -15,7 +14,7 @@ export type ModoPresupuesto = 'crear' | 'cargar'
 
 export const MODOS_PRESUPUESTO: readonly { id: ModoPresupuesto; titulo: string }[] = [
   { id: 'crear', titulo: 'Crear nuevo presupuesto' },
-  { id: 'cargar', titulo: 'Cargar otro presupuesto' },
+  { id: 'cargar', titulo: 'Cargar otro presupuesto sobre uno ya existente' },
 ]
 
 /** Lo mínimo de un contacto para mandarle el presupuesto. */
@@ -77,28 +76,63 @@ export function nombreBolsa(cliente: ContactoEnvio | null, arquitecto: ContactoE
 }
 
 /**
- * El texto del WhatsApp con que sale el presupuesto, en el formato de WhatsApp (*negrita*): la
- * plantilla del usuario (05/10/2026). Va con el PDF adjunto. La fecha es la del envío, como el
- * `formatDate(…triggerTime; "DD/MM/YYYY")` del escenario de Make.
+ * Dónde va el enlace para confirmar UN presupuesto en el texto que arma la app: el servidor cambia cada
+ * marca por el enlace firmado con esa clave (`api/_whatsappHttp.ts`, `marcaPresupuesto`). Lleva la clave
+ * adentro porque un mismo mensaje puede pedir confirmar varios presupuestos, cada uno con el suyo.
+ */
+export const marcaPresupuesto = (clave: string): string => `[[ENLACE_CONFIRMACION:${clave}]]`
+
+/** Un presupuesto en el mensaje: cómo se lo nombra y, si hay que confirmarlo, su clave. */
+export interface PresupuestoEnMensaje {
+  etiqueta: string
+  /** La clave del enlace, sólo en los que el responsable tiene que confirmar. */
+  clave: string | null
+}
+
+/** "Presupuesto_Cocina.pdf" + Aluminio + Negro → "Presupuesto_Cocina (Aluminio · Negro)". */
+export function etiquetaPresupuesto(p: { nombreArchivo: string; tipo: string; color: string }): string {
+  const nombre = p.nombreArchivo.replace(/\.[^.]+$/, '').trim() || 'Presupuesto'
+  const datos = [p.tipo, p.color].filter((x) => x.trim()).join(' · ')
+  return datos ? `${nombre} (${datos})` : nombre
+}
+
+/**
+ * El texto del WhatsApp con que salen los presupuestos, en el formato de WhatsApp (*negrita*): la
+ * plantilla del usuario (05/10/2026), con el texto genérico para uno o varios presupuestos (regla del
+ * 09/10/2026: "Le adjuntamos los presupuestos solicitados..."). Después del texto sale cada PDF, como
+ * un mensaje aparte. La fecha es la del envío.
  *
- * `conEnlace`: sólo el responsable de confirmar el presupuesto recibe el párrafo con el enlace para
- * confirmarlo; al otro destinatario le llega sin él. El enlace va como `MARCA_ENLACE`: lo pone el
- * servidor al enviar, firmado (la app no conoce el secreto con que se firma).
+ * `confirmar`: sólo el responsable de confirmar recibe el párrafo con los enlaces —uno por cada
+ * presupuesto que tiene que confirmar (todos, o uno solo)—. Al otro destinatario, o si no se pidió
+ * confirmación, le llega sin él. Los enlaces van como `marcaPresupuesto(clave)`: los firma el servidor.
  *
  * Es el único lugar donde está: lo muestra "Ver el mensaje que le llega" y lo manda el envío.
  */
-export function textoPresupuesto(nombre: string, fecha: Date = new Date(), conEnlace = false): string {
+export function textoPresupuestos(
+  nombre: string,
+  cantidad: number,
+  fecha: Date = new Date(),
+  confirmar: readonly PresupuestoEnMensaje[] = [],
+): string {
   const dos = (n: number) => String(n).padStart(2, '0')
   const dia = `${dos(fecha.getDate())}/${dos(fecha.getMonth() + 1)}/${fecha.getFullYear()}`
-  const confirmar = conEnlace
-    ? `\n\n✅ Si lo indicado en el presupuesto te parece correcto, podés confirmarlo haciendo click en el siguiente enlace: ${MARCA_ENLACE}`
-    : ''
+  const varios = cantidad > 1
+  const aConfirmar = confirmar.filter((p) => p.clave)
+  let parrafoConfirmar = ''
+  if (aConfirmar.length === 1) {
+    const p = aConfirmar[0]
+    parrafoConfirmar = `\n\n✅ Si lo indicado en ${varios ? `el presupuesto *${p.etiqueta}*` : 'el presupuesto'} te parece correcto, podés confirmarlo haciendo click en el siguiente enlace: ${marcaPresupuesto(p.clave ?? '')}`
+  } else if (aConfirmar.length > 1) {
+    parrafoConfirmar = `\n\n✅ Si lo indicado en los presupuestos te parece correcto, podés confirmar cada uno haciendo click en su enlace:\n${aConfirmar
+      .map((p) => `• *${p.etiqueta}*: ${marcaPresupuesto(p.clave ?? '')}`)
+      .join('\n')}`
+  }
   return `👋Hola *${sinCodigo(nombre) || 'Cliente'}*,
 
-Adjuntamos el presupuesto. Si tenés alguna consulta sobre este o tu cuenta, por favor respondé a este mensaje o contactanos.
+Le adjuntamos ${varios ? 'los presupuestos solicitados' : 'el presupuesto solicitado'}. Si tenés alguna consulta sobre ${varios ? 'estos' : 'este'} o tu cuenta, por favor respondé a este mensaje o contactanos.
 
-📄 *Concepto:* Presupuesto
-📅 *Fecha:* ${dia}${confirmar}
+📄 *Concepto:* ${varios ? `Presupuestos (${cantidad})` : 'Presupuesto'}
+📅 *Fecha:* ${dia}${parrafoConfirmar}
 
 Polifroni Aberturas
 Automatizado por *The Automation Partner*`
@@ -164,6 +198,13 @@ export function pasaFiltro(filtro: FiltroGestion, etiqueta: string): boolean {
 /** `✋Tipo` de la obra (Aluminio | PVC) según el tipo de carpintería del presupuesto ganado. */
 export const tipoObraDe = (tipoCarpinteria: string): 'PVC' | 'Aluminio' | '' =>
   !tipoCarpinteria.trim() ? '' : /pvc/i.test(tipoCarpinteria) ? 'PVC' : 'Aluminio'
+
+/**
+ * El color de la etiqueta del tipo de carpintería (regla del usuario, 09/10/2026): PVC en verde y el
+ * aluminio —"Aluminio", "Alumino", "Aluminio A30New"— en amarillo, los colores de Monday.
+ */
+export const colorTipoCarpinteria = (tipo: string): string =>
+  tipoObraDe(tipo) === 'PVC' ? '#00c875' : tipoObraDe(tipo) === 'Aluminio' ? '#ffcb00' : '#c4c4c4'
 
 /** "1.731.694,48" o "1731694.48" → 1731694.48. `null` si no es un importe válido. */
 export function importeDe(texto: string): number | null {

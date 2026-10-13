@@ -3,14 +3,34 @@ import type { ModoPresupuesto } from '@/lib/presupuesto'
 import type { BolsaPresupuesto, Contacto } from '@/services/monday/presupuestos'
 
 /**
- * Lo que se va cargando en "Crear y Cargar Presupuestos" entre sus dos etapas.
+ * Un presupuesto de la lista "Presupuestos a enviar": su PDF, su tipo de carpintería y su color. Cada
+ * uno queda en Monday como un subelemento de la bolsa.
+ */
+export interface PresupuestoCargado {
+  /** Id local de la fila (no es de Monday). */
+  id: string
+  archivo: File
+  tipo: string
+  color: string
+  /**
+   * La clave del enlace de confirmación, sólo si el responsable tiene que confirmarlo. Se genera al
+   * enviar y queda fija: un reintento manda el MISMO enlace, y al finalizar se guarda en su subelemento.
+   */
+  clave: string | null
+  /* Lo que ya quedó en Monday (para que un reintento no lo repita). */
+  subitemId: string | null
+  pdfSubido: boolean
+}
+
+/**
+ * Lo que se va cargando en "Crear y Cargar Presupuestos" entre sus tres etapas.
  *
  * Vive en el estado global —como el borrador de la OP y el del turno— porque el stepper deja ir y
- * volver entre etapas: lo elegido y el PDF cargado tienen que seguir ahí.
+ * volver entre etapas: lo elegido y los PDF cargados tienen que seguir ahí.
  *
- * En Monday no se escribe NADA hasta que el presupuesto sale: recién al finalizar se crea la bolsa
- * (al crear uno nuevo) y su subelemento con el PDF. Lo que ya quedó escrito se anota acá, para que un
- * reintento no lo duplique.
+ * En Monday no se escribe NADA hasta que los presupuestos salen: recién al finalizar se crea la bolsa
+ * (al crear uno nuevo) y un subelemento por presupuesto, con su PDF. Lo que ya quedó escrito se anota
+ * acá, para que un reintento no lo duplique.
  */
 export interface BorradorPresupuesto {
   /** Crear una bolsa nueva o cargar otro presupuesto en una abierta. `null` = todavía no se eligió. */
@@ -20,22 +40,19 @@ export interface BorradorPresupuesto {
   arquitecto: Contacto | null
   /** Cargar otro: la bolsa elegida (en "Solicitud de Presupuesto"). */
   bolsa: BolsaPresupuesto | null
-  /** El PDF del presupuesto. Vive en la app hasta finalizar. */
+  /* El formulario de la etapa 2: el presupuesto que se está por agregar a la lista. */
   archivo: File | null
   tipo: string
   color: string
-  /** El envío ya salió: a quiénes y cuándo. Se registra al finalizar. */
-  envio: { roles: Rol[]; cuando: string; confirmador: Rol | null } | null
+  /** "Presupuestos a enviar": los que ya se agregaron. Viven en la app hasta finalizar. */
+  presupuestos: PresupuestoCargado[]
   /**
-   * La clave del enlace de confirmación (ver `nuevaClave`). Se genera al primer envío y queda fija
-   * para este presupuesto: un reintento manda el MISMO enlace, y al finalizar se guarda en el
-   * subelemento.
+   * El envío ya salió: a quiénes, cuándo, quién confirma (o nadie: en el presupuesto la confirmación
+   * es opcional) y qué presupuestos tiene que confirmar. Se registra al finalizar.
    */
-  clave: string | null
-  /* Lo que ya quedó en Monday (para que un reintento no lo repita). */
+  envio: { roles: Rol[]; cuando: string; confirmador: Rol | null; aConfirmar: string[] } | null
+  /** La bolsa que ya quedó en Monday (un reintento no la vuelve a crear). */
   bolsaId: string | null
-  subitemId: string | null
-  archivoSubido: File | null
 }
 
 export const presupuestoInicial = (): BorradorPresupuesto => ({
@@ -46,11 +63,9 @@ export const presupuestoInicial = (): BorradorPresupuesto => ({
   archivo: null,
   tipo: '',
   color: '',
+  presupuestos: [],
   envio: null,
-  clave: null,
   bolsaId: null,
-  subitemId: null,
-  archivoSubido: null,
 })
 
 /** Ya hay a quién mandarle el presupuesto: se puede pasar a la carga. */
@@ -59,4 +74,8 @@ export const conDestinatario = (p: BorradorPresupuesto): boolean =>
 
 /** Hay algo elegido o cargado del presupuesto: salir lo descarta, y se pregunta antes. */
 export const presupuestoEnCurso = (p: BorradorPresupuesto): boolean =>
-  !!(p.cliente || p.arquitecto || p.bolsa || p.archivo)
+  !!(p.cliente || p.arquitecto || p.bolsa || p.archivo || p.presupuestos.length)
+
+/** Un id local para una fila nueva de la lista. */
+export const idFila = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`

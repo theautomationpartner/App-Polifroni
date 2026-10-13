@@ -26,9 +26,16 @@ export interface PedidoWsp {
   obra?: string
   /**
    * La clave (UUID) del enlace de confirmación (`nuevaClave`). El servidor arma con ella el enlace
-   * firmado, y queda guardada en `🤖Clave Confirmacion` de la OP o del presupuesto.
+   * firmado, y queda guardada en `🤖Clave Confirmacion` de la OP. La OP la lleva siempre; el
+   * presupuesto usa `claves`.
    */
-  clave: string
+  clave?: string
+  /**
+   * Presupuesto: las claves de los presupuestos que el responsable tiene que confirmar (una por
+   * presupuesto; vacío si no se pidió confirmación). El texto de quien confirma lleva una marca por
+   * clave, y el servidor pone ahí el enlace firmado de cada una.
+   */
+  claves?: string[]
   /** La OP final nueva de una orden editada: sale con su propio mensaje. */
   edicion?: boolean
 }
@@ -63,13 +70,15 @@ export function useEnviarWhatsapp(errorRed: string = ERROR_RED) {
   const [estado, setEstado] = useState<{ fase: FaseWsp; problema: string }>({ fase: 'idle', problema: '' })
   const respuesta = useRef<RespuestaWsp | null>(null)
 
-  const correr = useCallback(async (pedido: PedidoWsp, archivo: Blob, nombreArchivo: string) => {
+  /** `adicionales`: más PDF que salen en el mismo envío (los presupuestos: uno por mensaje). */
+  const correr = useCallback(async (pedido: PedidoWsp, archivo: Blob, nombreArchivo: string, adicionales: { archivo: Blob; nombre: string }[] = []) => {
     respuesta.current = null
     setEstado({ fase: 'corriendo', problema: '' })
     try {
       const form = new FormData()
       form.append('datos', JSON.stringify(pedido))
       form.append('archivo', archivo, nombreArchivo)
+      for (const a of adicionales) form.append('archivo', a.archivo, a.nombre)
       const r = await fetch('/api/whatsapp', {
         method: 'POST',
         /* Sin Content-Type a mano: el navegador lo pone con su boundary. */
