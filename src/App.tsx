@@ -14,6 +14,9 @@ import { CargarPresupuestoView } from '@/features/presupuesto/CargarPresupuestoV
 import { EnviarPresupuestosView } from '@/features/presupuesto/EnviarPresupuestosView'
 import { GestionarPresupuestosView } from '@/features/presupuesto/GestionarPresupuestosView'
 import { PresupuestoDestinatarioView } from '@/features/presupuesto/PresupuestoDestinatarioView'
+import { FacturarObraView } from '@/features/facturacion/FacturarObraView'
+import { FacturarTipoView } from '@/features/facturacion/FacturarTipoView'
+import { FacturarEmitirView } from '@/features/facturacion/FacturarEmitirView'
 import { VidriosObraView } from '@/features/vidrios/VidriosObraView'
 import { VidriosSeleccionView } from '@/features/vidrios/VidriosSeleccionView'
 import { VidriosSolicitudView } from '@/features/vidrios/VidriosSolicitudView'
@@ -39,7 +42,7 @@ import { areaPermitida, type AppState } from '@/state/appState'
  * de obra (ver `lib/pasos`): al cliente, PVC carga HETMO y emite; Aluminio carga el PDF y envía; al
  * taller se elige una OP confirmada y se envía.
  */
-function vistaDe({ proceso, operacion, destino, paso, obra, presupuesto, edicion, usuario }: AppState): () => JSX.Element {
+function vistaDe({ proceso, operacion, destino, paso, obra, presupuesto, edicion, factura, usuario }: AppState): () => JSX.Element {
   /* Lo que el team del usuario no habilita no se dibuja, llegue como llegue (ver `lib/permisos`). */
   if (proceso === null || !areaPermitida(proceso, usuario?.roles)) return InicioView
   if (operacion === null || !puedeOperar(usuario?.roles, operacion)) return ProduccionInicioView
@@ -51,6 +54,12 @@ function vistaDe({ proceso, operacion, destino, paso, obra, presupuesto, edicion
     if (paso === 'obra' || !conDestinatario(presupuesto)) return PresupuestoDestinatarioView
     /* Sin presupuestos en la lista no hay qué enviar: cualquier paso cae en la carga. */
     return paso === 'carga' || presupuesto.presupuestos.length === 0 ? CargarPresupuestoView : EnviarPresupuestosView
+  }
+  /* Obras · Facturar una Obra: la obra, qué se le factura y por cuánto, y la emisión con su envío. Sin
+     obra (y su cuenta) no hay qué facturar; sin monto elegido, no hay qué emitir. */
+  if (operacion === 'facturar') {
+    if (paso === 'obra' || !factura.cuenta || !factura.obras.length) return FacturarObraView
+    return paso === 'carga' || factura.elegidas.length === 0 ? FacturarTipoView : FacturarEmitirView
   }
   /* Agenda: el calendario, donde se crean y se gestionan los turnos. */
   if (operacion === 'calendario') return AgendaView

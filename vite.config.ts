@@ -105,6 +105,13 @@ export default defineConfig(({ mode }) => {
         await mod.manejarConfirmar(req, res)
       })
 
+      /* Confirmar y Perdido de Consultar y Gestionar Presupuestos: lo mismo que el enlace. En local no
+         hay sesión de Monday: el nombre de quien lo registra viene en el pedido. */
+      server.middlewares.use('/api/presupuesto-respuesta', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_presupuestoRespuestaHttp.ts')
+        await mod.manejarRespuestaPresupuesto(req, res, null)
+      })
+
       /* Va ANTES de '/api/whatsapp': un mensaje de texto suelto (los avisos de la Agenda). */
       server.middlewares.use('/api/whatsapp-texto', async (req, res) => {
         const mod = await server.ssrLoadModule('/api/_whatsappHttp.ts')

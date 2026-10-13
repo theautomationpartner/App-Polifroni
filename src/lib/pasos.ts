@@ -39,6 +39,10 @@ export function etiquetaPaso(
     if (paso === 'obra') return modoPresupuesto === 'cargar' ? 'Seleccionar Presupuesto' : 'Seleccionar Cliente'
     return paso === 'carga' ? 'Cargar Presupuestos' : 'Enviar Presupuestos'
   }
+  /* Obras · Facturar una Obra: la obra, qué se le factura (y por cuánto) y la emisión con su envío. */
+  if (operacion === 'facturar') {
+    return paso === 'obra' ? 'Seleccionar Obra' : paso === 'carga' ? 'Tipo de Facturación' : 'Emitir y Enviar Factura'
+  }
   /* Editar Órdenes de Producción: la orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
   if (operacion === 'editar') {
     return paso === 'obra' ? 'Buscar Orden' : paso === 'carga' ? 'Cargar Nuevo Dibujo HETMO' : 'Enviar Nueva OP Final'

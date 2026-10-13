@@ -14,7 +14,7 @@ export interface ProcesoDef {
 
 /**
  * Catálogo de secciones, fuera de la vista que las dibuja: agregar una es agregar una entrada acá.
- * Las que todavía no están construidas (hoy, Obras) se listan apagadas a propósito, porque verlas
+ * Las que todavía no están construidas (`id: null`) se listan apagadas a propósito, porque verlas
  * dice que existen y que todavía no están.
  */
 export const PROCESOS: ProcesoDef[] = [
@@ -26,7 +26,14 @@ export const PROCESOS: ProcesoDef[] = [
       'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp, y gana o pierde cada uno: el ganado se registra como obra.',
     detalle: '2 operaciones',
   },
-  { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
+  {
+    id: 'gestionObras',
+    icono: 'fa-person-digging',
+    titulo: 'Obras',
+    descripcion:
+      'Factura las obras de tus clientes según lo pendiente de facturar de cada una, emite el comprobante en ARCA y envíalo por WhatsApp.',
+    detalle: '1 operación',
+  },
   {
     id: 'obras',
     icono: 'fa-industry',

@@ -126,6 +126,7 @@ export type Operacion =
   | 'calendario'
   | 'presupuestos'
   | 'gestionarPresupuestos'
+  | 'facturar'
 
 /** Qué puede hacer el usuario según su team de Monday (ver `lib/permisos`). */
 export type Rol = 'admin' | 'produccion' | 'administracion' | 'ventas'
@@ -133,8 +134,11 @@ export type Rol = 'admin' | 'produccion' | 'administracion' | 'ventas'
 /** A quién se le envía la orden: al cliente o constructor (para que la confirme) o al taller. */
 export type Destino = 'cliente' | 'taller'
 
-/** Operaciones que ofrece la pantalla principal. */
-export type Proceso = 'obras' | 'agenda' | 'presupuesto'
+/**
+ * Las áreas de la pantalla principal. OJO: `obras` es Producción (el nombre quedó de cuando era la
+ * única); el área Obras es `gestionObras`.
+ */
+export type Proceso = 'obras' | 'agenda' | 'presupuesto' | 'gestionObras'
 
 /**
  * Quién está usando la app, ya verificado por el backend (firma de Monday + lista blanca).

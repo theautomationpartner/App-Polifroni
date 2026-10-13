@@ -10,6 +10,8 @@ export interface DestinoWsp {
   confirmador: boolean
   /** Presupuesto: el texto que se le manda a este destinatario (lo arma la app). */
   texto?: string
+  /** Factura: un texto por PDF, en el mismo orden (cada comprobante sale con su monto). */
+  textos?: string[]
 }
 
 export interface PedidoWsp {
@@ -20,8 +22,11 @@ export interface PedidoWsp {
   obraId: string
   numero: string
   tipo: string
-  /** Qué documento sale. Sin él, la Orden de Producción al cliente o constructor; `taller`, la OP al taller. */
-  documento?: 'presupuesto' | 'taller'
+  /**
+   * Qué documento sale. Sin él, la Orden de Producción al cliente o constructor; `taller`, la OP al
+   * taller; `factura`, los comprobantes emitidos (sin enlace de confirmación).
+   */
+  documento?: 'presupuesto' | 'taller' | 'factura'
   /** El nombre de la obra (el mensaje al taller lo nombra). */
   obra?: string
   /**
