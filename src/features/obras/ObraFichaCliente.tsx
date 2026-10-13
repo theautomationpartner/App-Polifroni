@@ -38,14 +38,38 @@ const sinCodigo = (n: string) => n.replace(/^\s*\d+\s*-\s*/, '').trim()
  *    `situacionOrdenes`).
  *  - Abajo: las tres cajas de importes (total pactado, cancelado, pendiente) y la fila con quién
  *    coordina, su celular —con el formato de Monday— y la fecha pactada de colocación.
+ *
+ * `facturacion`: la ficha de Facturar una Obra (reglas del usuario, 13/10/2026). Sin lo de las órdenes
+ * de producción (si requiere HETMO y cuántas tiene) ni la fila del coordinador, su celular y la fecha de
+ * colocación; en su lugar, lo facturado, lo pendiente de facturar y la torta del porcentaje facturado,
+ * con los mismos colores que la del cancelado. `null`: todavía se están leyendo (en esqueleto).
  */
-export function ObraFichaCliente({ obra, cargando = false, children }: { obra: Obra | null; cargando?: boolean; children?: ReactNode }) {
+export interface FacturacionFicha {
+  facturado: number
+  pendiente: number
+  /** De 0 a 100. `null`: sin base para calcularlo. */
+  porcentaje: number | null
+}
+
+export function ObraFichaCliente({
+  obra,
+  cargando = false,
+  facturacion,
+  children,
+}: {
+  obra: Obra | null
+  cargando?: boolean
+  facturacion?: FacturacionFicha | null
+  children?: ReactNode
+}) {
+  /** Es la ficha de Facturar una Obra. */
+  const enFacturacion = facturacion !== undefined
   const vacio = !obra || cargando
   const total = obra ? aNumero(obra.totalPactado) : null
   const saldo = obra ? aNumero(obra.saldo) : null
   const cancelado = total !== null && saldo !== null ? total - saldo : null
   const pct = obra ? porcentajeCancelado(obra.pctCancelado, cancelado, total) : null
-  const situacion = obra ? situacionOrdenes(obra) : null
+  const situacion = obra && !enFacturacion ? situacionOrdenes(obra) : null
   const coord = obra ? coordinador(obra) : null
   const cel = obra ? formatoMonday(obra.celCoordinar) : ''
 
@@ -108,7 +132,7 @@ export function ObraFichaCliente({ obra, cargando = false, children }: { obra: O
           {vacio ? (
             <>
               <span className="skeleton skeleton--tipo" />
-              <span className="skeleton skeleton--estado" />
+              {!enFacturacion && <span className="skeleton skeleton--estado" />}
             </>
           ) : (
             <>
@@ -120,7 +144,7 @@ export function ObraFichaCliente({ obra, cargando = false, children }: { obra: O
                 {obra.tipo.texto || 'Sin tipo'}
               </span>
               {/* PVC se carga desde la orden de HETMO: se avisa acá, antes de seguir. */}
-              {tipoDe(obra) === 'PVC' && (
+              {!enFacturacion && tipoDe(obra) === 'PVC' && (
                 <div className="status-indicator">
                   <span className="status-dot" style={{ background: obra.tipo.color || '#00c875' }} />
                   Requiere de una orden de producción de HETMO
@@ -166,36 +190,63 @@ export function ObraFichaCliente({ obra, cargando = false, children }: { obra: O
           </div>
         </div>
 
-        <div className="credito-fila-inferior">
-          <div className="credito-metrica">
-            <span className="kpi-label">Coordinador</span>
-            {val(
-              coord ? (
-                <>
-                  {coord.nombre || 'Sin nombre'} <span className="obra-coord-rol">({coord.rol})</span>
-                </>
+        {enFacturacion ? (
+          /* Lo facturado y lo que falta facturar, con la torta del porcentaje facturado a la derecha. */
+          <div className="kpi-grid kpi-grid--torta ficha-facturacion">
+            <div className="kpi-card">
+              <span className="kpi-label">Total facturado</span>
+              {facturacion ? val(dinero(facturacion.facturado)) : <span className="skeleton skeleton--valor" />}
+            </div>
+            <div className="kpi-card">
+              <span className="kpi-label">Pendiente de facturar</span>
+              {facturacion ? (
+                val(dinero(facturacion.pendiente), facturacion.pendiente > 0 ? 'v-red' : 'v-green')
               ) : (
-                obra?.coordinarEntrega.texto || 'Sin definir'
-              ),
-              coord ? '' : 'v-red',
-            )}
-          </div>
-          <div className="credito-metrica">
-            <span className="kpi-label">Cel a coordinar</span>
-            {val(
-              cel ? (
-<span className="obra-cel">{cel}</span>
+                <span className="skeleton skeleton--valor" />
+              )}
+            </div>
+            <div className="kpi-torta" aria-label="Porcentaje facturado">
+              <span className="kpi-torta-t">Equivale a:</span>
+              {vacio || !facturacion || facturacion.porcentaje === null ? (
+                <span className="skeleton kpi-torta-sk" />
               ) : (
-                'Sin cargar'
-              ),
-              cel ? '' : 'v-red',
-            )}
+                <Donut porcentaje={facturacion.porcentaje} color={colorCancelado(facturacion.porcentaje)} etiqueta="" size="md" />
+              )}
+              <span className="kpi-torta-l">facturado</span>
+            </div>
           </div>
-          <div className="credito-metrica">
-            <span className="kpi-label">Fecha pactada de colocación</span>
-            {val(obra?.fechaColocacion ? obra.fechaColocacion.split('-').reverse().join('/') : '—')}
+        ) : (
+          <div className="credito-fila-inferior">
+            <div className="credito-metrica">
+              <span className="kpi-label">Coordinador</span>
+              {val(
+                coord ? (
+                  <>
+                    {coord.nombre || 'Sin nombre'} <span className="obra-coord-rol">({coord.rol})</span>
+                  </>
+                ) : (
+                  obra?.coordinarEntrega.texto || 'Sin definir'
+                ),
+                coord ? '' : 'v-red',
+              )}
+            </div>
+            <div className="credito-metrica">
+              <span className="kpi-label">Cel a coordinar</span>
+              {val(
+                cel ? (
+                  <span className="obra-cel">{cel}</span>
+                ) : (
+                  'Sin cargar'
+                ),
+                cel ? '' : 'v-red',
+              )}
+            </div>
+            <div className="credito-metrica">
+              <span className="kpi-label">Fecha pactada de colocación</span>
+              {val(obra?.fechaColocacion ? obra.fechaColocacion.split('-').reverse().join('/') : '—')}
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
       {children && (

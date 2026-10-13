@@ -507,7 +507,7 @@ export async function completarConfirmacion(
   }
 
   const p = await leerConfirmado(consulta, subId)
-  if (!p) throw new Error(`no se encontró el presupuesto ${subId} ni su bolsa`)
+  if (!p) throw new Error(`no se encontró el presupuesto ${subId} ni su ítem en el tablero`)
 
   /* 2. El ítem, con los datos del presupuesto confirmado. */
   const datos = datosConfirmacion(p)

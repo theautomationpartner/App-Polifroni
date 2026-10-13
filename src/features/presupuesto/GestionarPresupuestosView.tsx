@@ -199,7 +199,7 @@ export function GestionarPresupuestosView() {
       id: f.p.id,
       titulo: confirma ? 'Confirmando el presupuesto...' : 'Dando el presupuesto por perdido...',
       detalle: confirma
-        ? 'El presupuesto queda Confirmado y sus datos pasan a la bolsa. La obra y su registro en la cuenta corriente se crean enseguida.'
+        ? 'El presupuesto queda Confirmado y Ganado, con su tipo, color, total y PDF. La obra y su registro en la cuenta corriente se crean enseguida.'
         : 'El presupuesto queda Rechazado.',
     })
     try {
@@ -243,7 +243,7 @@ export function GestionarPresupuestosView() {
       <PasoHeader />
       <PasoTitulo
         titulo="Consultar y Gestionar Presupuestos"
-        descripcion="Los presupuestos de las bolsas que todavía no se ganaron ni se perdieron. Envialos o reenvialos, confirmalos o dalos por perdidos. Tocá una fila para ver su ficha."
+        descripcion="Los presupuestos que todavía no se ganaron ni se perdieron. Envialos o reenvialos, confirmalos o dalos por perdidos. Tocá una fila para ver su ficha."
         sinNumero
       />
 
@@ -468,7 +468,7 @@ export function GestionarPresupuestosView() {
                                 presupuestos={[{ id: p.id, archivo: envio.archivo, tipo: p.tipo, color: p.color, clave: envio.clave }]}
                                 enviado={enviados.has(p.id)}
                                 reenvio={envio.reenvio}
-                                sinContactos="La bolsa no tiene un cliente ni un constructor/arquitecto vinculado: vinculalo en Monday."
+                                sinContactos="El presupuesto no tiene un cliente ni un constructor/arquitecto vinculado: vinculalo en Monday."
                                 onClaves={(l) => setEnvio((e) => (e && e.subId === p.id ? { ...e, clave: l[0]?.clave ?? e.clave } : e))}
                                 onEnviado={(e) => {
                                   setEnviados((s) => new Set(s).add(p.id))

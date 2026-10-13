@@ -152,7 +152,7 @@ export function ModalConfirmarPresupuesto({
             id={`${uid}-coord`}
             valor={coordinador}
             opciones={opciones.map((o) => ({ valor: o.nombre, texto: `${o.nombre} · ${o.rol}` }))}
-            placeholder={opciones.length ? 'Elegí quién coordina la obra' : 'La bolsa no tiene cliente ni constructor'}
+            placeholder={opciones.length ? 'Elegí quién coordina la obra' : 'El presupuesto no tiene cliente ni constructor'}
             falta={faltan.some((x) => x.includes('coordina'))}
             onElegir={(v) => {
               setCoordinador(v)
@@ -210,7 +210,7 @@ export function ModalPerderPresupuesto({
     >
       <Clave f={f} />
       <p className="modal-nota">
-        El presupuesto queda <strong>Rechazado</strong>. La bolsa y sus otros presupuestos no cambian.
+        Este presupuesto queda <strong>Rechazado</strong>. Los demás presupuestos del mismo cliente no cambian.
       </p>
       <label className="campo-l" htmlFor={`${uid}-motivo`}>
         Motivo <span className="med-l-sub">opcional</span>
