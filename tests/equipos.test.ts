@@ -33,8 +33,7 @@ const OPERACIONES = [
   { id: 'enviar', proceso: 'obras' },
   { id: 'consultar', proceso: 'obras' },
   { id: 'vidrios', proceso: 'obras' },
-  { id: 'crearTurno', proceso: 'agenda' },
-  { id: 'gestionarTurnos', proceso: 'agenda' },
+  { id: 'calendario', proceso: 'agenda' },
 ] as const
 
 process.env.MONDAY_API_TOKEN = 'token-de-prueba'
@@ -119,10 +118,10 @@ assert.throws(() => exigirAdmin(sesion), ErrorAuth, 'sin rol resuelto, tampoco')
 
 /* ── La interfaz ───────────────────────────────────────────────────────────────────────────────── */
 assert.ok(puedeOperar(['produccion'], 'consultar'), 'produccion entra a Consultar órdenes')
-for (const op of ['enviar', 'vidrios', 'crearTurno', 'gestionarTurnos'] as const) {
+for (const op of ['enviar', 'vidrios', 'calendario'] as const) {
   assert.ok(!puedeOperar(['produccion'], op), `produccion no ve ${op}`)
 }
-for (const op of ['enviar', 'consultar', 'vidrios', 'crearTurno', 'gestionarTurnos'] as const) {
+for (const op of ['enviar', 'consultar', 'vidrios', 'calendario'] as const) {
   assert.ok(puedeOperar(['admin'], op), `admin ve ${op}`)
   assert.ok(puedeOperar(['produccion', 'admin'], op), `en los dos teams, la suma: ve ${op}`)
 }
@@ -192,8 +191,7 @@ console.log('equipos (rol por team): OK')
     { id: 'consultar', proceso: 'obras' },
     { id: 'editar', proceso: 'obras' },
     { id: 'vidrios', proceso: 'obras' },
-    { id: 'crearTurno', proceso: 'agenda' },
-    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'calendario', proceso: 'agenda' },
     { id: 'presupuestos', proceso: 'presupuesto' },
     { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
   ] as const
@@ -208,7 +206,8 @@ console.log('equipos (rol por team): OK')
     ['consultar'],
     'y en ella sólo Consultar: ni cargar y enviar, ni editar, ni vidrios',
   )
-  assert.deepEqual(AREAS.filter((a) => puedeEntrar(['admin'], a, TODAS)), [...AREAS], 'Admin, todas')
+  /* Presupuesto está bloqueado en producción (rama main) para todos, admin incluido. */
+  assert.deepEqual(AREAS.filter((a) => puedeEntrar(['admin'], a, TODAS)), ['obras', 'agenda'], 'Admin, todas menos Presupuesto')
 }
 
 /* Un team sin permisos (Reparto) entra, pero no ve ningún área ni operación. */
@@ -226,8 +225,7 @@ console.log('equipos (rol por team): OK')
     { id: 'consultar', proceso: 'obras' },
     { id: 'editar', proceso: 'obras' },
     { id: 'vidrios', proceso: 'obras' },
-    { id: 'crearTurno', proceso: 'agenda' },
-    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'calendario', proceso: 'agenda' },
     { id: 'presupuestos', proceso: 'presupuesto' },
     { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
   ] as const
@@ -235,15 +233,16 @@ console.log('equipos (rol por team): OK')
     areas: AREAS.filter((a) => puedeEntrar(roles, a, TODAS)),
     ops: TODAS.filter((o) => puedeOperar(roles, o.id)).map((o) => o.id),
   })
-  assert.deepEqual(ve(['admin']).ops.length, TODAS.length, 'Admin: todas las operaciones')
-  assert.deepEqual(ve(['administracion']), { areas: ['agenda'], ops: ['crearTurno', 'gestionarTurnos'] }, 'Administracion: Agenda entera')
-  assert.deepEqual(ve(['ventas']), { areas: ['presupuesto'], ops: ['presupuestos', 'gestionarPresupuestos'] }, 'Ventas: Presupuesto entero')
+  assert.deepEqual(ve(['admin']).ops.length, TODAS.length - 2, 'Admin: todas las operaciones menos las de Presupuesto')
+  assert.deepEqual(ve(['administracion']), { areas: ['agenda'], ops: ['calendario'] }, 'Administracion: Agenda entera')
+  assert.deepEqual(ve(['ventas']), { areas: [], ops: [] }, 'Ventas: Presupuesto bloqueado en producción')
   assert.deepEqual(ve(['produccion']), { areas: ['obras'], ops: ['consultar'] }, 'Produccion: sólo Consultar')
-  assert.deepEqual(ve(['administracion', 'ventas']).areas, ['agenda', 'presupuesto'], 'en dos teams, las dos áreas')
+  assert.deepEqual(ve(['administracion', 'ventas']).areas, ['agenda'], 'en dos teams: Presupuesto sigue bloqueado')
 
   /* El servidor: cada rol, sólo las rutas de su área. */
   const con = (roles: ('admin' | 'produccion' | 'administracion' | 'ventas')[]) => ({ ...sesion, roles })
-  assert.ok(puedeUsar(con(['ventas']), 'subir') && puedeUsar(con(['ventas']), 'escribir'))
+  /* Con Presupuesto bloqueado, Ventas no escribe ni envía nada desde el servidor. */
+  assert.ok(!puedeUsar(con(['ventas']), 'subir') && !puedeUsar(con(['ventas']), 'escribir') && !puedeUsar(con(['ventas']), 'whatsapp'))
   assert.ok(puedeUsar(con(['administracion']), 'whatsapp') && !puedeUsar(con(['administracion']), 'subir'))
   assert.ok(!puedeUsar(con(['produccion']), 'escribir'), 'Produccion no escribe por el proxy')
   assert.ok(puedeUsar(con(['produccion']), 'finalizar'))

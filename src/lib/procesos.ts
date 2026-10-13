@@ -18,14 +18,8 @@ export interface ProcesoDef {
  * dice que existen y que todavía no están.
  */
 export const PROCESOS: ProcesoDef[] = [
-  {
-    id: 'presupuesto',
-    icono: 'fa-file-invoice-dollar',
-    titulo: 'Presupuesto',
-    descripcion:
-      'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp, y gana o pierde cada uno: el ganado se registra como obra.',
-    detalle: '2 operaciones',
-  },
+  /* Bloqueada en producción (rama main) hasta terminar de probarla en dev: se ve, apagada. */
+  { id: null, icono: 'fa-file-invoice-dollar', titulo: 'Presupuesto', detalle: 'Próximamente' },
   { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
   {
     id: 'obras',
@@ -41,7 +35,7 @@ export const PROCESOS: ProcesoDef[] = [
     titulo: 'Agenda',
     descripcion:
       'Registra turnos de colocación, reparación, entrega y medición con tus clientes, avísales por WhatsApp y gestiona cada turno hasta que se cumpla.',
-    detalle: '2 operaciones',
+    detalle: '1 operación',
   },
 ]
 

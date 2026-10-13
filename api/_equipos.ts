@@ -127,7 +127,8 @@ export type Ruta = 'escribir' | 'obras' | 'whatsapp' | 'subir' | 'finalizar' | '
 const RUTAS_DEL_ROL: Record<Exclude<Rol, 'admin'>, readonly Ruta[]> = {
   produccion: ['finalizar'],
   administracion: ['escribir', 'obras', 'whatsapp'],
-  ventas: ['escribir', 'obras', 'whatsapp', 'subir'],
+  /* Presupuesto está bloqueado en producción (rama main): Ventas no usa ninguna ruta. */
+  ventas: [],
 }
 
 /** ¿Alguno de los roles de la sesión usa esta ruta? La suma de lo de cada team. */
