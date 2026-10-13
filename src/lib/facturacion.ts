@@ -54,6 +54,15 @@ export function porcentajeCanceladoObra(texto: string, o: PartesObra): number | 
   return base ? Math.round((o.cancelado / base) * 1000) / 10 : null
 }
 
+/**
+ * Qué parte de la obra ya se facturó, de 0 a 100: Facturado / (Total pactado + Diferencia). `null`: no
+ * hay base (sin total pactado ni diferencia).
+ */
+export function porcentajeFacturado(o: PartesObra): number | null {
+  const base = o.total + o.diferencia
+  return base ? Math.round((o.facturado / base) * 1000) / 10 : null
+}
+
 /** Una obra con algo para facturar: lo pendiente no es cero (al centavo). */
 export const conPendienteDeFacturar = (o: PartesObra): boolean => Math.abs(pendienteDeFacturar(o)) >= 0.01
 
@@ -71,18 +80,62 @@ export const facturable = (o: PartesObra): boolean => pendienteDeFacturar(o) >= 
 export type TipoFacturacion = 'saldo' | 'diferencia' | 'notaCredito'
 
 /**
- * Las opciones de "¿Qué querés facturar?". Por ahora sólo el saldo pendiente de facturar está
- * habilitado: la diferencia queda apagada (regla del usuario, 13/10/2026) y la nota de crédito espera
- * su definición.
+ * Las opciones de "¿Qué querés facturar?". La diferencia queda apagada (regla del usuario, 13/10/2026).
  */
 export const TIPOS_FACTURACION: readonly { id: TipoFacturacion; titulo: string; habilitado: boolean }[] = [
   { id: 'saldo', titulo: 'Saldo Pend de Facturar', habilitado: true },
   { id: 'diferencia', titulo: 'Diferencia', habilitado: false },
-  { id: 'notaCredito', titulo: 'Nota de Crédito', habilitado: false },
+  { id: 'notaCredito', titulo: 'Nota de Crédito', habilitado: true },
 ]
 
 export const tipoHabilitado = (t: TipoFacturacion | null): boolean =>
   !!t && !!TIPOS_FACTURACION.find((x) => x.id === t)?.habilitado
+
+/** Es una nota de crédito: anula parte de lo facturado (va en negativo en la obra). */
+export const esNotaCredito = (t: TipoFacturacion | null): boolean => t === 'notaCredito'
+
+/** Cómo se nombra el comprobante en pantalla ("la factura" / "la nota de crédito"). */
+export const NOMBRE_COMPROBANTE = {
+  factura: { titulo: 'Factura', articulo: 'la factura', tipoTablero: 'Factura' },
+  notaCredito: { titulo: 'Nota de Crédito', articulo: 'la nota de crédito', tipoTablero: 'Nota de Credito' },
+} as const
+export const nombreComprobante = (t: TipoFacturacion | null) => NOMBRE_COMPROBANTE[esNotaCredito(t) ? 'notaCredito' : 'factura']
+
+/**
+ * Cómo queda la obra con el comprobante: lo que cancela (o anula) de lo pendiente, el nuevo total
+ * facturado y lo que queda pendiente de facturar.
+ *  - Saldo: suma a lo facturado y baja lo pendiente.
+ *  - Nota de crédito: la operación inversa; resta de lo facturado y vuelve a lo pendiente.
+ */
+export function proyeccion(
+  o: { facturado: number; pendiente: number },
+  monto: number,
+  tipo: TipoFacturacion | null,
+): { monto: number; nuevoFacturado: number; quedaPendiente: number } {
+  const m = aCentavos(Math.max(0, monto))
+  const signo = esNotaCredito(tipo) ? -1 : 1
+  return {
+    monto: m,
+    nuevoFacturado: aCentavos(o.facturado + signo * m),
+    quedaPendiente: aCentavos(o.pendiente - signo * m),
+  }
+}
+
+/**
+ * Formatea el importe MIENTRAS se escribe, como el importe del anticipo de La Batea (registrar cobro):
+ * "30409" → "30.409"; la coma agrega hasta dos centavos ("30409,5" → "30.409,5"). Devuelve el texto
+ * para el campo y su valor.
+ */
+export function formatearImporte(entrada: string): { texto: string; valor: number } {
+  const limpio = entrada.replace(/\./g, '').replace(/[^\d,]/g, '')
+  const iComa = limpio.indexOf(',')
+  const enteroRaw = (iComa >= 0 ? limpio.slice(0, iComa) : limpio).replace(/^0+(?=\d)/, '')
+  const decRaw = iComa >= 0 ? limpio.slice(iComa + 1).replace(/,/g, '').slice(0, 2) : ''
+  const enteroFmt = (enteroRaw || (iComa >= 0 ? '0' : '')).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const texto = iComa >= 0 ? `${enteroFmt},${decRaw}` : enteroFmt
+  const valor = aCentavos(Number(`${enteroRaw || '0'}.${decRaw || '0'}`))
+  return { texto, valor }
+}
 
 /* ────────────────────────────────────────────────────────────────────────────────
  * El monto a facturar
@@ -118,6 +171,20 @@ export function problemaMonto(texto: string, pendiente: number): string | null {
   if (n <= 0) return 'El monto a facturar tiene que ser mayor a cero.'
   if (Math.abs(aCentavos(n) - n) > 1e-9) return 'El monto admite dos decimales como máximo.'
   if (aCentavos(n) > aCentavos(pendiente)) return `El monto no puede superar lo pendiente de facturar (${pesos(pendiente)}).`
+  return null
+}
+
+/**
+ * Lo mismo para la nota de crédito: mayor a cero, dos decimales a lo sumo, y sin pasar lo que se puede
+ * anular de la factura asociada (su importe menos las notas de crédito que ya tiene).
+ */
+export function problemaMontoNotaCredito(texto: string, disponible: number): string | null {
+  const n = importeEscrito(texto)
+  if (n === null) return 'Ingresá el monto de la nota de crédito.'
+  if (n <= 0) return 'El monto de la nota de crédito tiene que ser mayor a cero.'
+  if (Math.abs(aCentavos(n) - n) > 1e-9) return 'El monto admite dos decimales como máximo.'
+  if (aCentavos(n) > aCentavos(disponible))
+    return `El monto no puede superar lo que queda por anular de la factura asociada (${pesos(disponible)}).`
   return null
 }
 

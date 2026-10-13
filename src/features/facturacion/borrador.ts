@@ -1,6 +1,6 @@
 import type { Rol } from '@/lib/destinatario'
 import type { FaseComprobante, TipoFacturacion } from '@/lib/facturacion'
-import type { ComprobanteLeido, CuentaCorriente, ObraFacturable } from '@/services/monday'
+import type { ComprobanteLeido, CuentaCorriente, FacturaEmitida, ObraFacturable } from '@/services/monday'
 import type { Obra } from '@/types'
 
 /** La obra que se factura, con el monto (tal como se escribe: "1.297.684,50"). */
@@ -46,6 +46,8 @@ export interface BorradorFactura {
   obras: ObraFacturable[]
   /** Qué se factura (etapa 2). */
   tipo: TipoFacturacion | null
+  /** Nota de crédito: la factura de la obra que anula (su CAE va en el comprobante). */
+  asociada: FacturaEmitida | null
   /** La obra que se factura, con su monto. Vacío mientras no se eligió qué facturar. */
   elegidas: ObraElegida[]
   /** El CUIT/CUIL/DNI a facturar. Arranca con el del cliente; vacío = Consumidor Final. */
@@ -61,6 +63,7 @@ export const facturaInicial = (): BorradorFactura => ({
   cuenta: null,
   obras: [],
   tipo: null,
+  asociada: null,
   elegidas: [],
   documento: '',
   comprobantes: [],

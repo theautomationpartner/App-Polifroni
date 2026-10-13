@@ -27,6 +27,10 @@ import {
   letraEsperada,
   pendienteDeFacturar,
   porcentajeCanceladoObra,
+  porcentajeFacturado,
+  formatearImporte,
+  problemaMontoNotaCredito,
+  proyeccion,
   problemaDocumento,
   problemaMonto,
   saldoObra,
@@ -72,6 +76,42 @@ prueba('saldo y % cancelado: la fórmula del tablero, o rearmado con las partes'
   assert.equal(porcentajeCanceladoObra('96%', o), 96)
   assert.equal(porcentajeCanceladoObra('', o), 96)
   assert.equal(porcentajeCanceladoObra('', { total: 0, diferencia: 0, cancelado: 0, facturado: 0 }), null)
+})
+
+prueba('% facturado = facturado / (total + diferencia)', () => {
+  assert.equal(porcentajeFacturado({ total: 1_000_000, diferencia: 0, cancelado: 0, facturado: 750_000 }), 75)
+  assert.equal(porcentajeFacturado({ total: 900_000, diferencia: 100_000, cancelado: 0, facturado: 1_000_000 }), 100)
+  assert.equal(porcentajeFacturado({ total: 0, diferencia: 0, cancelado: 0, facturado: 0 }), null)
+})
+
+prueba('el importe se formatea mientras se escribe (el del anticipo de La Batea)', () => {
+  assert.deepEqual(formatearImporte('30409'), { texto: '30.409', valor: 30409 })
+  assert.deepEqual(formatearImporte('6020500,5'), { texto: '6.020.500,5', valor: 6020500.5 })
+  assert.deepEqual(formatearImporte('1.234,567'), { texto: '1.234,56', valor: 1234.56 })
+  assert.equal(formatearImporte('abc').texto, '')
+})
+
+prueba('saldo: cancela de lo pendiente y suma a lo facturado', () => {
+  assert.deepEqual(proyeccion({ facturado: 1_000_000, pendiente: 500_000 }, 200_000, 'saldo'), {
+    monto: 200_000,
+    nuevoFacturado: 1_200_000,
+    quedaPendiente: 300_000,
+  })
+})
+
+prueba('nota de crédito: la operación inversa (resta de lo facturado, vuelve a lo pendiente)', () => {
+  assert.deepEqual(proyeccion({ facturado: 1_000_000, pendiente: 500_000 }, 200_000, 'notaCredito'), {
+    monto: 200_000,
+    nuevoFacturado: 800_000,
+    quedaPendiente: 700_000,
+  })
+})
+
+prueba('nota de crédito: mayor a cero y sin pasar lo que la factura asociada admite anular', () => {
+  assert.equal(problemaMontoNotaCredito('100.000', 100_000), null)
+  assert.match(problemaMontoNotaCredito('0', 100_000) ?? '', /mayor a cero/)
+  assert.match(problemaMontoNotaCredito('100.000,01', 100_000) ?? '', /no puede superar/)
+  assert.match(problemaMontoNotaCredito('', 100_000) ?? '', /Ingresá/)
 })
 
 prueba('el importe se escribe como en la app', () => {

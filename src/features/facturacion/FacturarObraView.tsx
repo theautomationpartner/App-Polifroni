@@ -8,8 +8,17 @@ import { ObraFichaCliente } from '@/features/obras/ObraFichaCliente'
 import { BuscadorObras, ayudaDe, useBuscadorObras } from '@/features/shared/BuscadorObras'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { indexar, type EntradaIndice } from '@/lib/busquedaObras'
+import { pendienteDeFacturar, porcentajeFacturado } from '@/lib/facturacion'
 import { etiquetaPaso } from '@/lib/pasos'
-import { buscarObras, getCuentaCorriente, getIndiceObras, getObra, mondayHabilitado, obrasDeCuenta } from '@/services/monday'
+import {
+  buscarObras,
+  getCuentaCorriente,
+  getIndiceObras,
+  getObra,
+  mondayHabilitado,
+  obrasDeCuenta,
+  type ObraFacturable,
+} from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra } from '@/types'
 import { emisionIniciada, facturaInicial } from './borrador'
@@ -33,6 +42,8 @@ export function FacturarObraView() {
 
   /** La obra a la vista en la ficha. Es la de la operación recién al continuar. */
   const [vista, setVista] = useState<Obra | null>(factura.obra)
+  /** Lo facturado de la obra a la vista (total, diferencia y facturado), para su ficha. */
+  const [importes, setImportes] = useState<ObraFacturable | null>(factura.obras[0] ?? null)
   const [cargandoObra, setCargandoObra] = useState(false)
   const [leyendo, setLeyendo] = useState(false)
   const [indice, setIndice] = useState<EntradaIndice[]>([])
@@ -54,8 +65,11 @@ export function FacturarObraView() {
 
   const abrir = async (id: string) => {
     setCargandoObra(true)
+    setImportes(null)
     try {
-      const obra = await getObra(id)
+      /* La obra y, a la par, lo que ya se le facturó: la ficha lo muestra en lugar del coordinador. */
+      const [obra, facturadas] = await Promise.all([getObra(id), obrasDeCuenta([id]).catch(() => [])])
+      setImportes(facturadas[0] ?? null)
       if (!obra) {
         setVista(null)
         setAviso({
@@ -167,7 +181,15 @@ export function FacturarObraView() {
       )}
       {b.error && <Aviso tono="err">{b.error}</Aviso>}
 
-      <ObraFichaCliente obra={cargandoObra ? null : vista} cargando={cargandoObra} />
+      <ObraFichaCliente
+        obra={cargandoObra ? null : vista}
+        cargando={cargandoObra}
+        facturacion={
+          importes && vista && importes.id === vista.id
+            ? { facturado: importes.facturado, pendiente: pendienteDeFacturar(importes), porcentaje: porcentajeFacturado(importes) }
+            : null
+        }
+      />
 
       <div className="actions-footer">
         <span className="paso-siguiente">

@@ -106,6 +106,8 @@ const COL_FACT = {
   razonSocial: 'text_mm48dwc6',
   iva: 'dropdown_mm48c9m4',
   cae: 'text_mm3k93vs',
+  /** ✋CAE de Fact a NC/ND: en una nota de crédito, el CAE de la factura que anula. */
+  caeAsociado: 'numeric_mm3kqm31',
   obra: 'board_relation_mm3ksj4p',
   estadoEnvio: 'color_mm3kg5dm',
   sobre: 'color_mm3x1kd',
@@ -124,6 +126,8 @@ const COL_RENGLON = {
 /** Los ids de las etiquetas de los desplegables del tablero (Factura, Pesos, Cuenta Corriente…). */
 const OPCION = {
   factura: 1,
+  /** "Nota de Credito" en Tipo de Comprobante. */
+  notaCredito: 2,
   pesos: 2,
   cuentaCorriente: 2,
   unidades: 1,
@@ -373,14 +377,23 @@ export async function obrasDeCuenta(obraIds: string[], constructorId: string | n
  * Etapa 3 · el comprobante
  * ──────────────────────────────────────────────────────────────────────────────── */
 
+/** Qué comprobante se emite: una factura, o una nota de crédito con el CAE de la factura que anula. */
+export type ComprobanteAEmitir = { tipo: 'factura' } | { tipo: 'notaCredito'; caeAsociado: string }
+
 /**
- * 1. El ítem del comprobante, como lo crea el botón "Emitir Factura": Factura, en Pesos, Cuenta
- *    Corriente, sobre una Obra, con las fechas del día (vencimiento a 30). Las automatizaciones del
- *    tablero ponen lo mismo; escribirlo acá asegura que esté aunque alguna no corra.
+ * 1. El ítem del comprobante, como lo crea el botón "Emitir Factura": Factura (o Nota de Credito, con
+ *    el CAE de la factura asociada, como las notas de crédito que ya están en el tablero), en Pesos,
+ *    Cuenta Corriente, sobre una Obra, con las fechas del día (vencimiento a 30). Las automatizaciones
+ *    del tablero ponen lo mismo; escribirlo acá asegura que esté aunque alguna no corra.
  * 2. Recién después se le vincula la obra: es el cambio que dispara el escenario que completa el
  *    renglón (igual que hoy, donde el vínculo llega después de crear el ítem).
  */
-export async function crearComprobante(obraId: string, hoy = new Date()): Promise<string> {
+export async function crearComprobante(
+  obraId: string,
+  comprobante: ComprobanteAEmitir = { tipo: 'factura' },
+  hoy = new Date(),
+): Promise<string> {
+  const nc = comprobante.tipo === 'notaCredito'
   const f = fechasComprobante(hoy)
   const d = await mondayApi<{ create_item: { id: string } }>(
     `mutation ($board: ID!, $grupo: String!, $nombre: String!, $valores: JSON!) {
@@ -391,7 +404,8 @@ export async function crearComprobante(obraId: string, hoy = new Date()): Promis
       grupo: GRUPO_FACTURAS,
       nombre: 'fact',
       valores: JSON.stringify({
-        [COL_FACT.tipo]: { ids: [OPCION.factura] },
+        [COL_FACT.tipo]: { ids: [nc ? OPCION.notaCredito : OPCION.factura] },
+        ...(nc ? { [COL_FACT.caeAsociado]: comprobante.caeAsociado.replace(/\D/g, '') } : {}),
         [COL_FACT.moneda]: { ids: [OPCION.pesos] },
         [COL_FACT.condicionVenta]: { ids: [OPCION.cuentaCorriente] },
         [COL_FACT.sobre]: { index: OPCION.sobreObra },
@@ -410,6 +424,69 @@ export async function crearComprobante(obraId: string, hoy = new Date()): Promis
     { board: String(BOARD_FACTURACION_OBRA), id, valores: JSON.stringify({ [COL_FACT.obra]: { item_ids: [Number(obraId)] } }) },
   )
   return id
+}
+
+/** Una factura ya emitida de la obra: la que puede anular una nota de crédito. */
+export interface FacturaEmitida {
+  id: string
+  /** "Factura A N° 0007-00000336". */
+  nombre: string
+  /** "2026-10-07". */
+  fecha: string
+  cae: string
+  monto: number
+  /** Lo que ya anulan las notas de crédito emitidas (o en emisión) con su CAE. */
+  acreditado: number
+  /** Lo que todavía se puede anular: monto − acreditado. */
+  disponible: number
+}
+
+/** Columna "Facturación obra" de la obra: sus comprobantes. */
+const COL_OBRA_FACTURAS = 'board_relation_mm3kepvg'
+
+/**
+ * Las facturas emitidas de la obra (Factura, "Comprobante Creado", con CAE), de la más nueva a la más
+ * vieja, con lo que cada una todavía admite anular. Una nota de crédito se cuenta contra la factura cuyo
+ * CAE lleva en ✋CAE de Fact a NC/ND, salvo que su emisión haya fallado.
+ */
+export async function facturasDeObra(obraId: string): Promise<FacturaEmitida[]> {
+  const r = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_OBRA_FACTURAS}"]) { ${CAMPOS} } } }`,
+    { ids: [obraId] },
+  )
+  const compIds = ids(r.items[0]?.column_values?.[0])
+  if (!compIds.length) return []
+  const cols = [COL_FACT.tipo, COL_FACT.estado, COL_FACT.cae, COL_FACT.caeAsociado, COL_FACT.emision]
+  const d = await mondayApi<{ items: { id: string; name: string; column_values: CV[]; subitems: { column_values: CV[] }[] }[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids, limit: 100) {
+        id name column_values(ids: ${JSON.stringify(cols)}) { ${CAMPOS} }
+        subitems { column_values(ids: ["${COL_RENGLON.precioFinal}"]) { id text } }
+      }
+    }`,
+    { ids: compIds.slice(0, 100) },
+  )
+  const comps = d.items.map((i) => {
+    const c = byId(i)
+    return {
+      id: String(i.id),
+      nombre: i.name,
+      tipo: valor(c[COL_FACT.tipo]).trim().toLowerCase(),
+      indice: (c[COL_FACT.estado] as CV | undefined)?.index ?? null,
+      cae: valor(c[COL_FACT.cae]).replace(/\D/g, ''),
+      caeAsociado: valor(c[COL_FACT.caeAsociado]).replace(/\D/g, ''),
+      fecha: valor(c[COL_FACT.emision]).slice(0, 10),
+      monto: aCentavos((i.subitems ?? []).reduce((s, x) => s + (numONull(x.column_values[0]) ?? 0), 0)),
+    }
+  })
+  const notas = comps.filter((c) => c.tipo.startsWith('nota de cr') && c.indice !== INDICE_COMPROBANTE.error)
+  return comps
+    .filter((c) => c.tipo === 'factura' && c.indice === INDICE_COMPROBANTE.creado && c.cae)
+    .map((f) => {
+      const acreditado = aCentavos(notas.filter((n) => n.caeAsociado === f.cae).reduce((s, n) => s + n.monto, 0))
+      return { id: f.id, nombre: f.nombre, fecha: f.fecha, cae: f.cae, monto: f.monto, acreditado, disponible: aCentavos(Math.max(0, f.monto - acreditado)) }
+    })
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || Number(b.id) - Number(a.id))
 }
 
 /** El renglón del comprobante: su id y el precio final que tiene (`null`: todavía vacío). */
@@ -572,38 +649,54 @@ const COL_SUB_OBRA = {
   /** Facturación obra: el comprobante del movimiento. */
   factura: 'board_relation_mm3tv960',
 } as const
-/** Índice de "Factura" en 🤖Tipo De Movimiento. */
+/** Índices de 🤖Tipo De Movimiento: "Factura" y "Nota de Credito". */
 export const INDICE_MOV_OBRA_FACTURA = 2
+export const INDICE_MOV_OBRA_NOTA_CREDITO = 3
 
 /**
- * Registra la factura en la obra: un subelemento "Obra - Factura B N° 0007-00000157" con 🤖Tipo De
- * Movimiento "Factura", lo facturado (🤖 $ Fact Obra) y el comprobante vinculado (Facturación obra).
+ * Registra el comprobante en la obra: un subelemento "Obra - Factura B N° 0007-00000157" con 🤖Tipo De
+ * Movimiento "Factura" (o "Nota de Credito"), el importe en 🤖 $ Fact Obra —en NEGATIVO para la nota de
+ * crédito: anula lo facturado— y el comprobante vinculado (Facturación obra).
  *
  * El escenario del tablero ya crea ese subelemento al pasar el comprobante a "Comprobante Creado" (sin
- * el vínculo). Crear otro duplicaría lo facturado de la obra (el espejo suma los dos), así que primero se
- * busca el suyo —el que ya vincula el comprobante, o el del mismo nombre— y se completa; recién si no
+ * el vínculo; a una nota de crédito a veces la deja como "Obra - fact"). Crear otro duplicaría lo
+ * facturado de la obra (el espejo suma los dos), así que primero se busca el suyo —el que ya vincula el
+ * comprobante, o el del mismo nombre, o el "Obra - fact" sin vincular— y se completa; recién si no
  * aparece en `esperaMs` se crea. Un reintento encuentra el que ya vincula el comprobante y no hace nada.
  */
 export async function registrarFacturaEnObra(
-  { obraId, facturaId, nombre, monto }: { obraId: string; facturaId: string; nombre: string; monto: number },
+  {
+    obraId,
+    facturaId,
+    nombre,
+    monto,
+    notaCredito = false,
+  }: { obraId: string; facturaId: string; nombre: string; monto: number; notaCredito?: boolean },
   esperaMs = 15_000,
 ): Promise<string> {
   const titulo = `Obra - ${nombre}`
+  const importe = aCentavos(Math.abs(monto)) * (notaCredito ? -1 : 1)
   const valores = JSON.stringify({
-    [COL_SUB_OBRA.tipo]: { index: INDICE_MOV_OBRA_FACTURA },
-    [COL_SUB_OBRA.facturado]: String(aCentavos(monto)),
+    [COL_SUB_OBRA.tipo]: { index: notaCredito ? INDICE_MOV_OBRA_NOTA_CREDITO : INDICE_MOV_OBRA_FACTURA },
+    [COL_SUB_OBRA.facturado]: String(importe),
     [COL_SUB_OBRA.factura]: { item_ids: [Number(facturaId)] },
   })
   const hasta = Date.now() + esperaMs
   for (;;) {
     const d = await mondayApi<{ items: { subitems: { id: string; name: string; column_values: CV[] }[] }[] }>(
-      `query ($ids: [ID!]) { items(ids: $ids) { subitems { id name column_values(ids: ["${COL_SUB_OBRA.factura}"]) { ${CAMPOS} } } } }`,
+      `query ($ids: [ID!]) { items(ids: $ids) { subitems { id name column_values(ids: ${JSON.stringify(Object.values(COL_SUB_OBRA))}) { ${CAMPOS} } } } }`,
       { ids: [obraId] },
     )
-    const subs = d.items[0]?.subitems ?? []
-    const vinculado = subs.find((s) => ids(s.column_values[0]).includes(String(facturaId)))
+    const subs = (d.items[0]?.subitems ?? []).map((s) => ({ ...s, c: byId(s) }))
+    const vinculado = subs.find((s) => ids(s.c[COL_SUB_OBRA.factura]).includes(String(facturaId)))
     if (vinculado) return String(vinculado.id)
-    const delTablero = subs.find((s) => s.name.trim() === titulo)
+    /* El del escenario: con el nombre del comprobante, o "Obra - fact" con este mismo importe, sin vincular. */
+    const delTablero = subs.find(
+      (s) =>
+        !ids(s.c[COL_SUB_OBRA.factura]).length &&
+        (s.name.trim() === titulo ||
+          (s.name.trim() === 'Obra - fact' && Math.abs(num(valor(s.c[COL_SUB_OBRA.facturado])) - importe) < 0.01)),
+    )
     if (delTablero) {
       await mondayApi(
         `mutation ($board: ID!, $id: ID!, $valores: JSON!) {

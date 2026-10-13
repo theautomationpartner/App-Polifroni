@@ -277,7 +277,7 @@
 }
 
 
-/* ── Etapa 2: el saldo pendiente de facturar y su monto ── */
+/* ── Etapa 2: el saldo pendiente de facturar (o la nota de crédito) ── */
 .facturar-v2 .fac-saldo {
   display: flex;
   flex-direction: column;
@@ -286,29 +286,199 @@
 .facturar-v2 .fac-saldo .resumen-title {
   margin-bottom: 0;
 }
-.facturar-v2 .fac-monto {
-  display: block;
-  margin: 0;
-}
-.facturar-v2 .fac-monto .med-conic {
-  max-width: 360px;
-}
-.facturar-v2 .fac-monto .med-input {
-  width: 100%;
-}
-.facturar-v2 .fac-monto-msj {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-gray);
-}
-.facturar-v2 .fac-monto-msj.fac-detalle-err {
-  color: #c0273c;
-}
 @media (max-width: 760px) {
   .facturar-v2 .fac-saldo .kpi-grid--3 {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ── La ficha de la obra en Facturar: lo facturado, lo pendiente y la torta del porcentaje facturado ── */
+.obras-v2 .ficha-facturacion {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+@media (max-width: 900px) {
+  .obras-v2 .ficha-facturacion {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── El monto del comprobante: el elemento del importe del anticipo de La Batea (registrar cobro) y,
+   debajo, las métricas de su cabecera. Con el bordó de la marca en lugar del violeta del anticipo. ── */
+.facturar-v2 .fac-monto-bloque {
+  border: 1px solid var(--border-suave);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.facturar-v2 .cobro-anticipo {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 10px 14px;
+  background: var(--marca-suave);
+  border-left: 3px solid var(--marca);
+  padding: 16px 24px;
+}
+.facturar-v2 .cobro-anticipo-ic {
+  width: 44px;
+  height: 44px;
+  background: var(--marca);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.facturar-v2 .cobro-anticipo-campos {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.facturar-v2 .cobro-anticipo-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.facturar-v2 .cobro-anticipo-campo--importe {
+  flex: 0 1 300px;
+}
+.facturar-v2 .cobro-anticipo-lbl {
+  display: block;
+  font-size: 12px;
+  color: var(--text-gray);
+  font-weight: 500;
+}
+.facturar-v2 .cobro-req {
+  color: var(--red);
+  font-weight: 700;
+}
+/* El importe se escribe en grande, sin caja: es la cifra que gobierna el paso. */
+.facturar-v2 .cobro-anticipo-monto {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+}
+.facturar-v2 .cobro-anticipo-pre {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-gray);
+}
+.facturar-v2 .cobro-anticipo-monto input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  border: none;
+  border-bottom: 1.5px solid var(--border);
+  outline: none;
+  background: transparent;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+.facturar-v2 .cobro-anticipo-monto input:focus {
+  border-bottom-color: var(--marca);
+}
+/* Si falta o no vale, la línea queda en rojo (también con el foco: el monto no se puede usar así). */
+.facturar-v2 .cobro-anticipo-monto--falta input,
+.facturar-v2 .cobro-anticipo-monto--falta input:focus {
+  border-bottom-color: var(--red);
+}
+.facturar-v2 .cobro-anticipo-monto input::placeholder {
+  color: var(--text-gray);
+  font-weight: 500;
+}
+.facturar-v2 .cobro-anticipo-hint {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-gray);
+}
+.facturar-v2 .cobro-anticipo-hint--err {
+  color: #c0273c;
+  font-weight: 600;
+}
+
+/* Las tres métricas: lo que se cancela (o anula), el nuevo total facturado y lo que queda pendiente. */
+.facturar-v2 .cobro-cab {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  background: var(--tint-neutral);
+  padding: 16px 24px;
+}
+.facturar-v2 .cobro-cab-mets {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.facturar-v2 .cobro-cab-met {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.facturar-v2 .cobro-cab-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.facturar-v2 .cobro-cab-lbl--met {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-gray);
+}
+.facturar-v2 .cobro-cab-num {
+  font-size: 20px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.facturar-v2 .cobro-cab-num--azul {
+  color: var(--text-dark);
+}
+.facturar-v2 .cobro-cab-num--verde {
+  color: var(--green);
+}
+.facturar-v2 .cobro-cab-num--rojo {
+  color: var(--red);
+}
+.facturar-v2 .cobro-cab-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.facturar-v2 .cobro-cab-ic--azul {
+  background: #e8effc;
+  color: var(--primary-blue);
+}
+.facturar-v2 .cobro-cab-ic--verde {
+  background: #e2f8ee;
+  color: #039855;
+}
+.facturar-v2 .cobro-cab-ic--rojo {
+  background: #fdeaec;
+  color: var(--red);
+}
+/* La factura que anula la nota de crédito. */
+.facturar-v2 .fac-asociada {
+  display: block;
+  max-width: 640px;
+  margin: 0;
 }

@@ -5,7 +5,7 @@ import { EstadoEnvioContacto, type EstadoFila } from '@/features/envio/EnviarOp'
 import { useEnviarWhatsapp } from '@/features/envio/useEnviarWhatsapp'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { ROLES, advertenciasDestino, celularValido, destinoDe, faltantesDestino, formatoMonday, type DatosContacto, type Rol } from '@/lib/destinatario'
-import { importeEscrito, textoFactura } from '@/lib/facturacion'
+import { importeEscrito, nombreComprobante, textoFactura } from '@/lib/facturacion'
 import { actualizarCelularContacto, pdfDelComprobante } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { todosEmitidos, type BorradorFactura } from './borrador'
@@ -26,7 +26,7 @@ const iniciales = (nombre: string) =>
     .toUpperCase() || '?'
 
 const ERROR_RED =
-  'Ocurrió un error interno al intentar enviar la factura en la aplicación. La factura ya está emitida: volvé a intentar el envío en unos minutos. Si el error persiste, no dude en contactarse con el soporte de TAP.'
+  'Ocurrió un error interno al intentar enviar el comprobante en la aplicación. El comprobante ya está emitido: volvé a intentar el envío en unos minutos. Si el error persiste, no dude en contactarse con el soporte de TAP.'
 
 /** El constructor/arquitecto de las obras elegidas (el primero, si son varios). */
 export function constructorDe(f: BorradorFactura) {
@@ -51,9 +51,11 @@ export function datosEnvio(f: BorradorFactura): DatosContacto {
  * de emitir, el elegido en la etapa 2).
  */
 export function textosDe(f: BorradorFactura, nombre: string, cuando: Date): string[] {
+  /* El tipo como lo nombra el tablero ("Factura" / "Nota de Credito"), como en la plantilla de Make. */
+  const tipo = nombreComprobante(f.tipo).tipoTablero
   const lista = f.comprobantes.length
-    ? f.comprobantes.map((c) => ({ tipo: c.leido?.tipo || 'Factura', monto: c.leido?.monto ?? c.monto }))
-    : f.elegidas.map((e) => ({ tipo: 'Factura', monto: importeEscrito(e.monto) ?? 0 }))
+    ? f.comprobantes.map((c) => ({ tipo: c.leido?.tipo || tipo, monto: c.leido?.monto ?? c.monto }))
+    : f.elegidas.map((e) => ({ tipo, monto: importeEscrito(e.monto) ?? 0 }))
   return lista.map((c) => textoFactura({ nombre, tipo: c.tipo, fecha: cuando, monto: c.monto }))
 }
 
@@ -69,6 +71,8 @@ export function textosDe(f: BorradorFactura, nombre: string, cuando: Date): stri
  */
 export function EnviarFactura() {
   const { factura, enviado } = useApp()
+  /* "Factura" o "Nota de Crédito": cómo se nombra lo que sale. */
+  const nom = nombreComprobante(factura.tipo)
   const dispatch = useDispatch()
   const datos = datosEnvio(factura)
   const cons = constructorDe(factura)
@@ -95,7 +99,7 @@ export function EnviarFactura() {
     (a) => !a.includes('enlace'),
   )
   const sinDestinatarios = roles.length === 0
-  const avisoNoListo = 'Primero emití la factura: se envía con el PDF del comprobante'
+  const avisoNoListo = `Primero emití ${nom.articulo}: se envía con el PDF del comprobante`
   const fase = wsp.estado.fase
   const estadoBoton: 'idle' | 'enviando' | 'enviado' | 'error' = enviado
     ? 'enviado'
@@ -110,7 +114,7 @@ export function EnviarFactura() {
     if (enviando || enviado || !listos) return
     const f = roles.length ? roles.flatMap((r) => faltantesDestino(datos, r)) : faltantesDestino(datos, '')
     if (f.length) {
-      setFaltan({ titulo: 'Todavía no se puede enviar', items: f.map((x) => x.replace('la orden', 'la factura')) })
+      setFaltan({ titulo: 'Todavía no se puede enviar', items: f.map((x) => x.replace('la orden', nom.articulo)) })
       return
     }
     /* Los PDF de los comprobantes, tal como los dejó ARCA en el sistema. */
@@ -120,7 +124,7 @@ export function EnviarFactura() {
     try {
       pdfs = await Promise.all(factura.comprobantes.map((c) => pdfDelComprobante(c.leido!.pdf!)))
     } catch {
-      setErrorPdf('No se pudo leer el PDF de la factura en el sistema. Volvé a intentar el envío en unos segundos.')
+      setErrorPdf(`No se pudo leer el PDF de ${nom.articulo} en el sistema. Volvé a intentar el envío en unos segundos.`)
       return
     } finally {
       setBajando(false)
@@ -142,8 +146,8 @@ export function EnviarFactura() {
         tipo: '',
       },
       primero,
-      primero.name || 'Factura.pdf',
-      resto.map((p) => ({ archivo: p, nombre: p.name || 'Factura.pdf' })),
+      primero.name || `${nom.titulo}.pdf`,
+      resto.map((p) => ({ archivo: p, nombre: p.name || `${nom.titulo}.pdf` })),
     )
   }
 
@@ -161,7 +165,7 @@ export function EnviarFactura() {
 
   return (
     <div className={`card card--neutral card--flush card-pad fac-enviar ${listos ? '' : 'fac-enviar--espera'}`}>
-      <h3 className="resumen-title">Enviar Factura</h3>
+      <h3 className="resumen-title">Enviar {nom.titulo}</h3>
 
       <div className="igp">
         <div className="envio-medio-fila">
@@ -178,7 +182,7 @@ export function EnviarFactura() {
           <div className="envio-sin-contactos" role="alert">
             <i className="fas fa-triangle-exclamation" />
             <div>
-              <div className="envio-sin-contactos-t">No hay a quién enviarle la factura</div>
+              <div className="envio-sin-contactos-t">No hay a quién enviarle {nom.articulo}</div>
               <p>La cuenta corriente no tiene un cliente vinculado ni las obras un constructor/arquitecto.</p>
             </div>
           </div>
@@ -244,7 +248,7 @@ export function EnviarFactura() {
                   className="del"
                   aria-label={`Quitar ${d.nombre || r}`}
                   disabled={enviando || enviado}
-                  title={enviado ? 'Ya se envió la factura: no se puede quitar destinatarios' : undefined}
+                  title={enviado ? `Ya se envió ${nom.articulo}: no se puede quitar destinatarios` : undefined}
                   onClick={() => setRoles((prev) => prev.filter((x) => x !== r))}
                 >
                   🗑️
@@ -296,7 +300,7 @@ export function EnviarFactura() {
             </>
           ) : (
             <>
-              <i className="fas fa-paper-plane" /> Enviar Factura
+              <i className="fas fa-paper-plane" /> Enviar {nom.titulo}
             </>
           )}
         </button>
@@ -306,7 +310,7 @@ export function EnviarFactura() {
             <p className="enviar-aviso enviar-aviso--info">
               <i className="fas fa-circle-info" aria-hidden="true" />
               <span>
-                <strong>{avisoNoListo}.</strong> Tocá «Confirmar y emitir factura» en el resumen.
+                <strong>{avisoNoListo}.</strong> Tocá «Confirmar y emitir {nom.titulo.toLowerCase()}» en el resumen.
               </span>
             </p>
           </div>
@@ -336,7 +340,7 @@ export function EnviarFactura() {
           rol={editandoCel}
           nombre={destinoDe(datos, editandoCel).nombre}
           actual={destinoDe(datos, editandoCel).whatsapp}
-          queSeEnvia="la factura"
+          queSeEnvia={nom.articulo}
           onCerrar={() => setEditandoCel(null)}
           guardar={async (celular) => {
             const id = editandoCel === 'Cliente' ? factura.cuenta?.cliente?.id : cons?.id
@@ -368,7 +372,7 @@ export function EnviarFactura() {
 
       {faltan && (
         <AvisoModal titulo={faltan.titulo} faltantes={faltan.items} onClose={() => setFaltan(null)}>
-          {faltan.items.length > 1 ? 'No se envió nada. Corregí lo siguiente y volvé a tocar "Enviar Factura":' : null}
+          {faltan.items.length > 1 ? `No se envió nada. Corregí lo siguiente y volvé a tocar "Enviar ${nom.titulo}":` : null}
         </AvisoModal>
       )}
     </div>

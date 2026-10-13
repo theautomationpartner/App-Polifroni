@@ -1,6 +1,7 @@
 import { FinalizarOperacion, type TextosFinalizar } from '@/features/shared/FinalizarOperacion'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
+import { nombreComprobante } from '@/lib/facturacion'
 import { etiquetaPaso } from '@/lib/pasos'
 import { marcarComprobanteEnviado, registrarFacturaEnObra } from '@/services/monday'
 import { useApp } from '@/state/hooks'
@@ -8,16 +9,16 @@ import { EnviarFactura } from './EnviarFactura'
 import { ResumenFactura } from './ResumenFactura'
 
 const TEXTOS_FINALIZAR: TextosFinalizar = {
-  enviado: 'Factura emitida y enviada',
+  enviado: 'Comprobante emitido y enviado',
   sinEnviar: 'Operación finalizada',
-  preguntaTitulo: 'La factura todavía no se envió',
+  preguntaTitulo: 'El comprobante todavía no se envió',
   pregunta:
-    'Si la factura ya se emitió, queda emitida en el sistema aunque no le haya llegado al cliente: podés enviarla después desde el tablero de Facturación obra. Si todavía no se emitió, no se registra nada.',
-  registrando: 'Registrando la factura en el sistema...',
-  registrandoDetalle: 'Registramos la factura en la obra y dejamos constancia del envío en el comprobante. Esperá unos segundos.',
-  errorTitulo: 'No se pudo registrar la factura',
+    'Si el comprobante ya se emitió, queda emitido en el sistema aunque no le haya llegado al cliente: podés enviarlo después desde el tablero de Facturación obra. Si todavía no se emitió, no se registra nada.',
+  registrando: 'Registrando el comprobante en el sistema...',
+  registrandoDetalle: 'Registramos el comprobante en la obra y dejamos constancia del envío. Esperá unos segundos.',
+  errorTitulo: 'No se pudo registrar el comprobante',
   error:
-    'Monday no respondió al intentar registrar la factura. La factura YA se emitió y se envió: reintentá «Finalizar Operación» en unos segundos para no perder el registro. Si la falla persiste, contactate con el soporte de TAP.',
+    'Monday no respondió al intentar registrar el comprobante. YA se emitió y se envió: reintentá «Finalizar Operación» en unos segundos para no perder el registro. Si la falla persiste, contactate con el soporte de TAP.',
 }
 
 /**
@@ -31,14 +32,13 @@ const TEXTOS_FINALIZAR: TextosFinalizar = {
  */
 export function FacturarEmitirView() {
   const { factura, enviado } = useApp()
-  const n = factura.elegidas.length
 
   return (
     <section className="view paso-layout obras-v2 anticipos-v2 agenda-v2 presupuesto-v2 facturar-v2">
       <PasoHeader />
       <PasoTitulo
         titulo={etiquetaPaso('envio', null, null, 'facturar')}
-        descripcion={`Revisá el resumen, emití ${n > 1 ? 'las facturas' : 'la factura'} en ARCA y enviala por WhatsApp.`}
+        descripcion={`Revisá el resumen, emití ${nombreComprobante(factura.tipo).articulo} en ARCA y enviala por WhatsApp.`}
       />
 
       <div className="emision-grid emision-grid--mitades pres-etapa fac-etapa">
@@ -62,6 +62,8 @@ export function FacturarEmitirView() {
                       facturaId: c.facturaId,
                       nombre: c.leido?.nombre ?? '',
                       monto: c.leido?.monto ?? c.monto,
+                      /* La nota de crédito va en negativo: anula lo facturado. */
+                      notaCredito: factura.tipo === 'notaCredito',
                     })
                     await marcarComprobanteEnviado(c.facturaId)
                   }

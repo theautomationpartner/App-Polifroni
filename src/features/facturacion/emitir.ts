@@ -8,6 +8,7 @@ import {
   leerComprobante,
   pedirEmision,
   renglonesDe,
+  type ComprobanteAEmitir,
   type ComprobanteLeido,
 } from '@/services/monday'
 import type { BorradorFactura, ComprobanteEnCurso } from './borrador'
@@ -50,11 +51,14 @@ export function comprobantesDe(f: BorradorFactura, montos: { obraId: string; mon
  */
 export async function emitirComprobantes({
   comprobantes,
+  comprobante,
   documento,
   avanzar,
   onPaso,
 }: {
   comprobantes: ComprobanteEnCurso[]
+  /** Factura, o nota de crédito con el CAE de la factura que anula. */
+  comprobante: ComprobanteAEmitir
   documento: string
   avanzar: (lista: ComprobanteEnCurso[]) => void
   /** Qué se está haciendo, para la ventana de espera. */
@@ -75,7 +79,7 @@ export async function emitirComprobantes({
     let facturaId = c.facturaId
     if (!facturaId) {
       onPaso('Creando el comprobante', i)
-      facturaId = await crearComprobante(c.obraId)
+      facturaId = await crearComprobante(c.obraId, comprobante)
       guardar(i, { facturaId, error: null })
     }
 

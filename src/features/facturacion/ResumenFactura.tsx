@@ -14,6 +14,7 @@ import {
   fechasComprobante,
   importeEscrito,
   letraEsperada,
+  nombreComprobante,
   pesos,
   problemaDocumento,
   type FaseComprobante,
@@ -64,10 +65,11 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
   const cl = factura.cuenta?.cliente ?? null
   const letra = actual?.comp?.leido?.letra || letraEsperada(cl?.condicionFiscal ?? '')
   const f = fechasComprobante(new Date())
+  const nom = nombreComprobante(factura.tipo)
 
   return (
     <Modal
-      title={pdf ? 'Factura emitida' : 'Vista previa de la factura'}
+      title={pdf ? `${nom.titulo} emitida` : `Vista previa de ${nom.articulo}`}
       icon={<i className="fas fa-file-invoice-dollar" />}
       onClose={onClose}
       className="fac-modal-vista"
@@ -96,10 +98,10 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
 
       {pdf ? (
         <div className="fac-visor">
-          <VisorPdf archivo={pdf} vacio="La factura no tiene PDF." />
+          <VisorPdf archivo={pdf} vacio={`${nom.titulo} no tiene PDF.`} />
         </div>
       ) : actual ? (
-        <div className="fac-borrador" aria-label="Borrador de la factura">
+        <div className="fac-borrador" aria-label={`Borrador de ${nom.articulo}`}>
           <span className="fac-borrador-marca">BORRADOR · SIN VALIDEZ FISCAL</span>
           <div className="fac-borrador-cab">
             <div>
@@ -111,7 +113,7 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
               {letra ?? '?'}
             </div>
             <div className="fac-borrador-num">
-              <strong>FACTURA</strong>
+              <strong>{nom.titulo.toUpperCase()}</strong>
               <span>N° — (lo asigna ARCA)</span>
               <span>Fecha de emisión: {fecha(f.emision)}</span>
               <span>Vto. del pago: {fecha(f.vencimiento)}</span>
@@ -146,6 +148,14 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
                 {actual.obra?.nombre} {actual.obra?.idObra ? `(${actual.obra.idObra})` : ''}
               </dd>
             </div>
+            {factura.asociada && (
+              <div>
+                <dt>Comprobante asociado</dt>
+                <dd>
+                  {factura.asociada.nombre} (CAE {factura.asociada.cae})
+                </dd>
+              </div>
+            )}
           </dl>
           <table className="fac-borrador-tabla">
             <thead>
@@ -175,8 +185,10 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
             <strong>Total: {pesos(actual.total)}</strong>
           </div>
           <p className="modal-nota">
-            {letra === 'A' ? 'A un Responsable Inscripto, el IVA se discrimina en la factura A.' : 'En la factura B el IVA va incluido en el total.'} El
-            número, la letra definitiva y el CAE los asigna ARCA al emitir.
+            {letra === 'A'
+              ? `A un Responsable Inscripto, el IVA se discrimina en ${nom.articulo} A.`
+              : `En ${nom.articulo} B el IVA va incluido en el total.`}{' '}
+            El número, la letra definitiva y el CAE los asigna ARCA al emitir.
           </p>
         </div>
       ) : null}
@@ -207,13 +219,14 @@ export function ResumenFactura() {
   const listos = todosEmitidos(factura)
   const conError = factura.comprobantes.some((c) => c.fase === 'error')
   const pendienteArca = factura.comprobantes.some((c) => c.fase === 'emitiendo')
+  const nom = nombreComprobante(factura.tipo)
 
   const [ver, setVer] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
   const [corriendo, setCorriendo] = useState<{ texto: string; i: number } | null>(null)
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
 
-  useAccionEnCurso('Esperá a que termine la emisión de la factura.', !!corriendo)
+  useAccionEnCurso(`Esperá a que termine la emisión de ${nom.articulo}.`, !!corriendo)
 
   const problemaDoc = problemaDocumento(documento)
   const docDigitos = documentoFiscal(documento)
@@ -226,7 +239,7 @@ export function ResumenFactura() {
     if (letra === 'A' && docDigitos.length !== 11) {
       setAviso({
         titulo: 'Falta el CUIT del cliente',
-        texto: 'El cliente es Responsable Inscripto: para emitirle la factura A hace falta su CUIT, de 11 dígitos.',
+        texto: `El cliente es Responsable Inscripto: para emitirle ${nom.articulo} A hace falta su CUIT, de 11 dígitos.`,
       })
       return
     }
@@ -244,18 +257,27 @@ export function ResumenFactura() {
     try {
       const final = await emitirComprobantes({
         comprobantes: lista,
+        /* La nota de crédito lleva el CAE de la factura que anula. */
+        comprobante:
+          factura.tipo === 'notaCredito' && factura.asociada
+            ? { tipo: 'notaCredito', caeAsociado: factura.asociada.cae }
+            : { tipo: 'factura' },
         documento,
         avanzar: (l) => dispatch({ type: 'setFactura', cambios: { comprobantes: l } }),
         onPaso: (texto, i) => setCorriendo({ texto, i }),
       })
       const err = final.find((c) => c.fase === 'error' || c.fase === 'emitiendo')
-      if (err?.error) setAviso({ titulo: err.fase === 'error' ? 'ARCA no emitió la factura' : 'La factura sigue emitiéndose', texto: err.error })
+      if (err?.error)
+        setAviso({
+          titulo: err.fase === 'error' ? `ARCA no emitió ${nom.articulo}` : `${nom.titulo} sigue emitiéndose`,
+          texto: err.error,
+        })
     } catch (e) {
       console.warn('[facturar] no se pudo emitir', e)
       setAviso({
-        titulo: 'No se pudo emitir la factura',
+        titulo: `No se pudo emitir ${nom.articulo}`,
         texto:
-          'Monday no respondió mientras se emitía la factura. Lo que ya quedó hecho está guardado: tocá «Reintentar emisión» en unos segundos para seguir desde ahí, sin duplicar el comprobante. Si la falla persiste, contactate con el soporte de TAP.',
+          `Monday no respondió mientras se emitía ${nom.articulo}. Lo que ya quedó hecho está guardado: tocá «Reintentar emisión» en unos segundos para seguir desde ahí, sin duplicar el comprobante. Si la falla persiste, contactate con el soporte de TAP.`,
       })
     } finally {
       setCorriendo(null)
@@ -312,9 +334,18 @@ export function ResumenFactura() {
         <div className="fac-dato">
           <dt>Tipo</dt>
           <dd>
-            Factura{letra ? ` ${letra}` : ''} {n > 1 && <span className="fac-x">× {n}</span>}
+            {nom.titulo}
+            {letra ? ` ${letra}` : ''} {n > 1 && <span className="fac-x">× {n}</span>}
           </dd>
         </div>
+        {factura.asociada && (
+          <div className="fac-dato">
+            <dt>Comprobante asociado</dt>
+            <dd>
+              {factura.asociada.nombre} · CAE {factura.asociada.cae}
+            </dd>
+          </div>
+        )}
         <div className="fac-dato">
           <dt>Moneda</dt>
           <dd>Pesos</dd>
@@ -364,7 +395,8 @@ export function ResumenFactura() {
                   </span>
                   {r.comp?.fase === 'emitido' && r.comp.leido?.monto !== null && r.comp.leido?.monto !== undefined && Math.abs(r.comp.leido.monto - r.monto) >= 0.01 && (
                     <span className="fac-detalle-err">
-                      <i className="fas fa-triangle-exclamation" aria-hidden="true" /> Se facturó {pesos(r.comp.leido.monto)}, no {pesos(r.monto)}: revisalo en el sistema.
+                      <i className="fas fa-triangle-exclamation" aria-hidden="true" /> Se emitió por {pesos(r.comp.leido.monto)}, no por{' '}
+                      {pesos(r.monto)}: revisalo en el sistema.
                     </span>
                   )}
                   {r.comp?.error && (
@@ -395,13 +427,13 @@ export function ResumenFactura() {
           IVA {ALICUOTA_IVA} % <strong>{pesos(iva)}</strong>
         </span>
         <span className="fac-totales-total">
-          Total a facturar <strong>{pesos(total)}</strong>
+          {factura.tipo === 'notaCredito' ? 'Total de la nota de crédito' : 'Total a facturar'} <strong>{pesos(total)}</strong>
         </span>
       </div>
 
       <div className="fac-acciones">
         <button type="button" className="btn btn-out" onClick={() => setVer(true)}>
-          <i className="fas fa-eye" /> Ver factura
+          <i className="fas fa-eye" /> Ver {nom.titulo.toLowerCase()}
         </button>
         <button
           type="button"
@@ -412,7 +444,7 @@ export function ResumenFactura() {
         >
           {listos ? (
             <>
-              <i className="fas fa-check" /> {n > 1 ? 'Facturas emitidas' : 'Factura emitida'}
+              <i className="fas fa-check" /> {nom.titulo} emitida
             </>
           ) : corriendo ? (
             <>
@@ -428,7 +460,7 @@ export function ResumenFactura() {
             </>
           ) : (
             <>
-              <i className="fas fa-file-circle-check" /> Confirmar y emitir factura
+              <i className="fas fa-file-circle-check" /> Confirmar y emitir {nom.titulo.toLowerCase()}
             </>
           )}
         </button>
@@ -438,7 +470,7 @@ export function ResumenFactura() {
 
       {confirmar && (
         <Modal
-          title={n > 1 ? `¿Emitir ${n} facturas?` : '¿Emitir la factura?'}
+          title={`¿Emitir ${nom.articulo}?`}
           icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
           onClose={() => setConfirmar(false)}
           actions={
@@ -452,10 +484,10 @@ export function ResumenFactura() {
             </>
           }
         >
-          Se {n > 1 ? `emiten ${n} facturas` : 'emite la factura'} en ARCA a nombre de <strong>{cuenta?.nombre}</strong> por un total de{' '}
-          <strong>{pesos(total)}</strong>
-          {docDigitos ? ` (CUIT/DNI ${docDigitos})` : ' (Consumidor Final, sin documento)'}. Una factura emitida no se puede deshacer desde la
-          app: se anula con una nota de crédito.
+          Se emite {nom.articulo} en ARCA a nombre de <strong>{cuenta?.nombre}</strong> por un total de <strong>{pesos(total)}</strong>
+          {docDigitos ? ` (CUIT/DNI ${docDigitos})` : ' (Consumidor Final, sin documento)'}
+          {factura.asociada ? `, que anula parte de ${factura.asociada.nombre}` : ''}. Un comprobante emitido no se puede deshacer desde la
+          app{factura.tipo === 'notaCredito' ? '.' : ': se anula con una nota de crédito.'}
         </Modal>
       )}
 
