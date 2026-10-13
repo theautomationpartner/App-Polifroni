@@ -322,8 +322,11 @@ export function paginaVistaPrevia(documento: DocumentoConfirmacion | null): stri
 
 function textoVistaPrevia(documento: DocumentoConfirmacion | null): { titulo: string; descripcion: string } {
   return documento === 'presupuesto'
-    ? { titulo: 'Confirmación de Presupuesto', descripcion: 'Revisá el presupuesto y confirmalo desde acá.' }
-    : { titulo: 'Confirmación de la Orden de Producción', descripcion: 'Revisá la orden y confirmala desde acá.' }
+    ? { titulo: 'Confirmación de Presupuesto', descripcion: 'Revisar presupuesto enviado y solicitud de confirmación' }
+    : {
+        titulo: 'Confirmación de la Orden de Producción',
+        descripcion: 'Revisar orden de producción enviada y solicitud de confirmación',
+      }
 }
 
 /** Las etiquetas que arman la vista previa del enlace en WhatsApp: título, texto y logo. */
@@ -341,5 +344,5 @@ function metasVistaPrevia(documento: DocumentoConfirmacion | null): string {
  * presenta como bot y recibe la página completa. Van en el <head>: no cambian nada de lo que se ve, y
  * las plantillas del usuario quedan como están.
  */
-const conVistaPrevia = (html: string, documento: DocumentoConfirmacion) =>
-  html.replace(/<head>/i, `<head>\n    ${metasVistaPrevia(documento)}`)
+export const conVistaPrevia = (html: string, documento: DocumentoConfirmacion) =>
+  html.includes('og:title') ? html : html.replace(/<head>/i, `<head>\n    ${metasVistaPrevia(documento)}`)

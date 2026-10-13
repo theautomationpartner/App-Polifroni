@@ -18,6 +18,7 @@ import {
   formasDeClave,
   leerCodigo,
   leerEnlaceLargo,
+  origenDelPedido,
 } from '../api/_confirmacion'
 import {
   COL_OP,
@@ -353,6 +354,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
 {
   const r = await pedir('GET', ruta, '', 'WhatsApp/2.23.20.0 A')
   assert.ok(r.cuerpo.includes('og:title') && r.cuerpo.includes('logo-polifroni.png'), 'la vista previa, sin Monday')
+  assert.ok(r.cuerpo.includes('content="Revisar orden de producción enviada y solicitud de confirmación"'))
 }
 {
   /* El envío por 360messenger arma la vista previa con un cliente HTTP que no dice ser un bot: tiene
@@ -413,7 +415,23 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.equal(r.status, 200)
   assert.ok(r.cuerpo.includes('Estimado/a<span id="saludoNombre"> Juan Pérez</span>,'))
 }
-assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firmado de una clave que no está en Monday')
+{
+  /* Todavía no está en Monday (se registra al finalizar, después del mensaje): quien arma la vista
+     previa como un navegador igual recibe 200 y la tarjeta, no un error. */
+  const r = await pedir('GET', `/c/${otroCodigo}`)
+  assert.equal(r.status, 200, 'código firmado de una clave que todavía no está en Monday')
+  assert.ok(r.cuerpo.includes('No encontramos la orden'))
+  assert.ok(r.cuerpo.includes('<meta property="og:title" content="Confirmación de la Orden de Producción" />'), 'con la tarjeta')
+}
+{
+  /* Cualquier página del enlace, abierta como navegador, lleva la tarjeta UNA vez. */
+  for (const e of ['Pend de Confirmar', 'Confirmada', 'Cancelada']) {
+    estadoOp = e
+    const r = await pedir('GET', ruta)
+    assert.equal(r.cuerpo.split('og:title').length - 1, 1, `una sola tarjeta con la OP "${e}"`)
+  }
+  estadoOp = 'Generada y Enviada Pend Confirmar'
+}
 
 /* ── Ya la confirmaron desde la app antes de que el cliente abriera el enlace ─────────────────── */
 {
@@ -494,7 +512,7 @@ assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firm
   assert.ok(form.cuerpo.includes('<meta property="og:title" content="Confirmación de Presupuesto" />'), 'su vista previa')
   const previa = await pedir('GET', rutaPres, '', 'WhatsApp/2.23.20.0 A')
   assert.ok(previa.cuerpo.includes('<meta property="og:title" content="Confirmación de Presupuesto" />'), 'título del presupuesto')
-  assert.ok(previa.cuerpo.includes('confirmalo desde acá'))
+  assert.ok(previa.cuerpo.includes('content="Revisar presupuesto enviado y solicitud de confirmación"'))
   assert.ok(form.cuerpo.includes('<select id="coordinador" name="coordinador"'), 'el coordinador se elige de una lista')
   assert.ok(form.cuerpo.includes('<option value="PEREZ JUAN">PEREZ JUAN · Cliente</option>'), 'con el cliente de la bolsa')
 
@@ -533,6 +551,22 @@ assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firm
   /* Aunque al texto del que no confirma le llegara la marca, no se le pone el enlace. */
   const forzado = textoParaDestino('presupuesto', { ...constructor, texto: textoPres(true) }, { reenvio: false, clave: CLAVE })
   assert.ok(!tieneEnlace(forzado) && !forzado.includes(MARCA_ENLACE))
+}
+
+/* ── El enlace apunta al MISMO deploy que manda el mensaje ────────────────────────────────────── */
+{
+  const dev = origenDelPedido({ 'x-forwarded-host': 'app-polifroni-git-dev-tap.vercel.app', host: 'otro.vercel.app' })
+  assert.equal(dev, 'https://app-polifroni-git-dev-tap.vercel.app', 'el deploy de dev arma enlaces a dev')
+  assert.equal(origenDelPedido({ host: 'app-polifroni.vercel.app' }), 'https://app-polifroni.vercel.app', 'producción, a producción')
+  assert.equal(origenDelPedido({ host: 'localhost:5192' }), null, 'en local, la variable')
+  assert.equal(origenDelPedido({ host: '127.0.0.1' }), null)
+  assert.equal(origenDelPedido({ host: 'evil.com/x?y' }), null, 'una cabecera que no es un dominio no se usa')
+  const enDev = enlaceConfirmacion({ documento: 'presupuesto', clave: CLAVE, rol: 'Cliente' }, dev)
+  assert.ok(enDev.startsWith('https://app-polifroni-git-dev-tap.vercel.app/c/'))
+  assert.ok(enlaceConfirmacion({ documento: 'op', clave: CLAVE, rol: 'Cliente' }).startsWith('https://app.test/c/'), 'sin origen, la variable')
+  assert.equal(faltaConfiguracion(dev), null)
+  const op = textoParaDestino('op', { tipo: 'Cliente', nombre: 'X', confirmador: true, texto: '' }, { reenvio: false, clave: CLAVE, origen: dev })
+  assert.ok(op.includes('https://app-polifroni-git-dev-tap.vercel.app/c/'), 'el texto de la OP usa el origen del envío')
 }
 
 console.log('confirmar: ok')

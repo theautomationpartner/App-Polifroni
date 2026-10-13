@@ -38,13 +38,18 @@ const secreto = (): string => process.env.CONFIRMACION_SECRET?.trim() ?? ''
 /** Sin la URL o sin el secreto no sale ningún mensaje con enlace: saldría uno que no funciona. */
 export const confirmacionConfigurada = (): boolean => faltaConfiguracion() === null
 
-/** Lo que falta configurar, para el código de error que ve el soporte. `null`: nada. */
-export function faltaConfiguracion(): string | null {
-  if (!url()) return 'ERROR_CONFIRMACION_URL'
-  try {
-    new URL(url())
-  } catch {
-    return 'ERROR_CONFIRMACION_URL'
+/**
+ * Lo que falta configurar, para el código de error que ve el soporte. `null`: nada. Con el origen del
+ * deploy que envía, la URL no hace falta (ver `enlaceConfirmacion`); el secreto, siempre.
+ */
+export function faltaConfiguracion(origen: string | null = null): string | null {
+  if (!origen) {
+    if (!url()) return 'ERROR_CONFIRMACION_URL'
+    try {
+      new URL(url())
+    } catch {
+      return 'ERROR_CONFIRMACION_URL'
+    }
   }
   if (secreto().length < 32) return 'ERROR_CONFIRMACION_SECRET'
   return null
@@ -115,11 +120,29 @@ export function codigoConfirmacion({ documento, clave, rol }: DatosEnlace): stri
   return prefijo + Buffer.from(h, 'hex').toString('base64url') + firma.toString('base64url')
 }
 
-export function enlaceConfirmacion(d: DatosEnlace): string {
-  const base = url()
+/**
+ * El enlace, en `origen`: el MISMO deploy que manda el mensaje (ver `origenDelPedido`). Así el código
+ * que envía es el que después sirve la tarjeta, el formulario y la respuesta: el deploy de `dev` arma
+ * enlaces a `dev`, y el de producción, a producción. Sin origen (se envía desde local), la variable
+ * `CONFIRMACION_URL`, de la que vale el origen: sirve igual `https://app…/confirmar` que `https://app…`.
+ */
+export function enlaceConfirmacion(d: DatosEnlace, origen: string | null = null): string {
+  const base = origen ?? (url() ? new URL(url()).origin : '')
   if (!base) throw new Error('falta CONFIRMACION_URL')
-  /* De la variable vale el origen: sirve igual `https://app…/confirmar` que `https://app…`. */
-  return `${new URL(base).origin}/c/${codigoConfirmacion(d)}`
+  return `${base}/c/${codigoConfirmacion(d)}`
+}
+
+/**
+ * El origen público del deploy que atiende el pedido (`https://<dominio>`), de las cabeceras que pone
+ * Vercel. `null` en local (`localhost`, una IP) o si la cabecera no es un dominio: ahí se usa
+ * `CONFIRMACION_URL`, porque un enlace a la computadora del que envía no le sirve al cliente.
+ */
+export function origenDelPedido(headers: Record<string, string | string[] | undefined>): string | null {
+  const primero = (v: string | string[] | undefined) => String(Array.isArray(v) ? v[0] : (v ?? '')).split(',')[0].trim().toLowerCase()
+  const host = primero(headers['x-forwarded-host']) || primero(headers.host)
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host)) return null
+  if (host === 'localhost' || /^\d+(\.\d+){3}$/.test(host)) return null
+  return `https://${host}`
 }
 
 /** El código, verificado. `null` si no tiene la forma o la firma no coincide. */

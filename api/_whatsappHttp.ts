@@ -30,7 +30,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ErrorDrive, ErrorTokenDrive, driveConfigurado, subirYCompartir } from './_drive.js'
-import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion } from './_confirmacion.js'
+import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion, origenDelPedido } from './_confirmacion.js'
 import { textoEdicion, textoPrimerEnvio, textoReenvio, textoTaller } from './_mensajeOp.js'
 import { mensajeTelInvalido, validarTelWsp } from './_telWsp.js'
 import { ErrorWsp, enviarMensaje, esperarEntregas, tieneWhatsapp, wspConfigurado } from './_wsp360.js'
@@ -84,13 +84,14 @@ const RE_MARCAS = /\[\[ENLACE_CONFIRMACION(?::([^\]]*))?\]\]/g
 export function textoPresupuestoDestino(
   d: { tipo: string; confirmador: boolean; texto: string },
   claves: readonly string[],
+  origen: string | null = null,
 ): string | null {
   const marcas = [...d.texto.matchAll(RE_MARCAS)].map((m) => (m[1] ?? '').toLowerCase())
   if (!d.confirmador) return marcas.length ? null : d.texto
   if (marcas.some((c) => !claves.includes(c))) return null
   if (claves.some((c) => !marcas.includes(c))) return null
   return d.texto.replace(RE_MARCAS, (_, c: string) =>
-    enlaceConfirmacion({ documento: 'presupuesto', clave: c.toLowerCase(), rol: rolDe(d.tipo) }),
+    enlaceConfirmacion({ documento: 'presupuesto', clave: c.toLowerCase(), rol: rolDe(d.tipo) }, origen),
   )
 }
 
@@ -136,7 +137,10 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
        presupuesto, sólo si se pidió confirmarlo. */
     const claves = presupuesto ? (datos.claves ?? []).map((c) => texto(c).toLowerCase()) : []
     const pideConfirmacion = !taller && (!presupuesto || claves.length > 0)
-    const falta = pideConfirmacion ? faltaConfiguracion() : null
+    /* El enlace apunta al MISMO deploy que manda el mensaje (dev → dev, producción → producción): el
+       código que envía es el que después sirve la tarjeta de WhatsApp, el formulario y la respuesta. */
+    const origen = origenDelPedido(req.headers)
+    const falta = pideConfirmacion ? faltaConfiguracion(origen) : null
     if (falta) {
       return responder(res, 503, {
         mensajeError: `Ocurrio un error al intentar enviar ${doc} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ${falta}`,
@@ -217,7 +221,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
         mensajeError: 'Indicá qué presupuesto tiene que confirmar el responsable (o quitá el responsable): no se envió nada.',
       })
     }
-    const textosPresupuesto = presupuesto ? validados.map((d) => textoPresupuestoDestino(d, claves)) : []
+    const textosPresupuesto = presupuesto ? validados.map((d) => textoPresupuestoDestino(d, claves, origen)) : []
     if (textosPresupuesto.some((t) => t === null)) {
       return responder(res, 400, { mensajeError: ERROR_INTERNO_PRESUPUESTO })
     }
@@ -240,7 +244,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
         ? d.texto
         : presupuesto
           ? (textosPresupuesto[i] ?? '')
-          : textoParaDestino('op', d, { reenvio, clave, edicion })
+          : textoParaDestino('op', d, { reenvio, clave, edicion, origen })
       const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: mensaje })
       /* Después del texto, cada PDF en su mensaje (el presupuesto puede llevar varios). */
       const idsArchivos: string[] = []
@@ -310,9 +314,14 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
 export function textoParaDestino(
   documento: 'op' | 'presupuesto',
   d: { tipo: string; nombre: string; confirmador: boolean; texto: string },
-  { reenvio, clave, edicion = false }: { reenvio: boolean; clave: string; edicion?: boolean },
+  {
+    reenvio,
+    clave,
+    edicion = false,
+    origen = null,
+  }: { reenvio: boolean; clave: string; edicion?: boolean; origen?: string | null },
 ): string {
-  const enlace = d.confirmador ? enlaceConfirmacion({ documento, clave, rol: rolDe(d.tipo) }) : null
+  const enlace = d.confirmador ? enlaceConfirmacion({ documento, clave, rol: rolDe(d.tipo) }, origen) : null
   if (documento === 'presupuesto') return enlace ? d.texto.split(MARCA_ENLACE).join(enlace) : d.texto.split(MARCA_ENLACE).join('')
   if (edicion) return textoEdicion(d.nombre, enlace)
   return reenvio ? textoReenvio(d.nombre, enlace) : textoPrimerEnvio(d.nombre, enlace)
