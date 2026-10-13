@@ -1,8 +1,6 @@
-import { useEffect, useId, useState } from 'react'
+import { useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
-import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
-import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { hoyLocal } from '@/features/op/DatosMedicion'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import {
@@ -26,23 +24,17 @@ import {
   confirmarTurno,
   contactoDeCliente,
   crearTurnoReprogramado,
-  editarTurno,
   escribirEtiquetaTipo,
-  getTiposReparacion,
-  idsOrdenesDeObra,
   leerTurno,
   listarTurnos,
   marcarNotificacion,
-  opsDeTurno,
   registrarAsignacion,
   saldoDeObra,
-  type TipoReparacion,
   type Turno,
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { registrarActividad } from './actividad'
 import { EnvioMensaje } from './EnvioMensaje'
-import { ModalOrdenes, type OpElegida } from './ModalOrdenes'
 import {
   ModalCancelarTurno,
   ModalConfirmarTurno,
@@ -73,162 +65,6 @@ const TITULO_ENVIO: Record<Envio['mensaje'], string> = {
 export const admiteAccion = (t: Turno, accion: AccionCalendario): boolean =>
   accion === 'editar' ? t.estado === 'pendiente' || t.estado === 'asignado' : admiteTurno(t.estado, accion)
 
-/* ────────────────────────────────────────────────────────────────────────────────
- * Editar
- * ──────────────────────────────────────────────────────────────────────────────── */
-
-export interface DatosEdicion {
-  aberturas?: number | null
-  tipoReparacionId?: number | null
-  ops?: OpElegida[]
-}
-
-/**
- * Editar un turno activo SIN moverlo de fecha (eso es reprogramar): la cantidad de aberturas
- * (Colocación), el tipo de reparación (Reparación) y las OP de su obra vinculadas al turno.
- */
-function ModalEditarTurno({ turno, onClose, onGuardar }: { turno: Turno; onClose: () => void; onGuardar: (d: DatosEdicion) => void }) {
-  const uid = useId()
-  const colocacion = turno.tipo === 'colocacion'
-  const reparacion = turno.tipo === 'reparacion'
-  const [aberturas, setAberturas] = useState(turno.cantAberturas)
-  const [tipos, setTipos] = useState<TipoReparacion[] | null>(null)
-  const [tipoRep, setTipoRep] = useState('')
-  /** Las OP de la obra y las ya vinculadas: `null` mientras se leen. */
-  const [ordenesObra, setOrdenesObra] = useState<string[] | null>(turno.obraId ? null : [])
-  const [ops, setOps] = useState<OpElegida[] | null>(null)
-  const [opsTocadas, setOpsTocadas] = useState(false)
-  const [verOps, setVerOps] = useState(false)
-
-  useEffect(() => {
-    let vivo = true
-    if (reparacion) void getTiposReparacion().then((t) => vivo && setTipos(t)).catch(() => vivo && setTipos([]))
-    if (turno.obraId) {
-      void Promise.all([idsOrdenesDeObra(turno.obraId), opsDeTurno(turno.id)])
-        .then(([deObra, vinculadas]) => {
-          if (!vivo) return
-          setOrdenesObra(deObra)
-          setOps(vinculadas.map((id) => ({ id, nombre: id })))
-        })
-        .catch(() => {
-          if (!vivo) return
-          setOrdenesObra([])
-          setOps([])
-        })
-    }
-    return () => {
-      vivo = false
-    }
-  }, [turno.id, turno.obraId, reparacion])
-
-  const nada = !colocacion && !reparacion && !turno.obraId
-
-  const guardar = () => {
-    const d: DatosEdicion = {}
-    if (colocacion) {
-      const n = aberturas.trim() === '' ? null : Number(aberturas)
-      d.aberturas = n != null && Number.isFinite(n) && n >= 0 ? Math.round(n) : null
-    }
-    if (reparacion && tipoRep) d.tipoReparacionId = tipos?.find((t) => t.nombre === tipoRep)?.id ?? null
-    if (opsTocadas && ops) d.ops = ops
-    onGuardar(d)
-  }
-
-  return (
-    <>
-      <Modal
-        title="Editar el turno"
-        icon={<i className="fas fa-pen-to-square modal-icon--info" />}
-        onClose={onClose}
-        className="ag-modal"
-        actions={
-          <>
-            <button type="button" className="btn btn-out" onClick={onClose}>
-              Volver
-            </button>
-            {!nada && (
-              <button type="button" className="btn btn-primary btn-marca" onClick={guardar}>
-                <i className="fas fa-floppy-disk" /> Guardar cambios
-              </button>
-            )}
-          </>
-        }
-      >
-        <p className="modal-clave">
-          {turno.nombre}
-          <span className="ag-clave-fecha">{turno.fecha ? fechaHoraCorta(turno.fecha, turno.hora) : 'Sin fecha'}</span>
-        </p>
-        <p className="modal-nota">
-          {nada
-            ? 'Este turno no tiene datos para editar. Para cambiarle la fecha o la hora, reprogramalo.'
-            : 'Los cambios quedan en el turno, sin moverlo de fecha. Para cambiar la fecha o la hora, reprogramalo.'}
-        </p>
-
-        <div className="carga-grid ag-editar-campos">
-          {colocacion && (
-            <div className="med-campo">
-              <label className="med-l" htmlFor={`${uid}-ab`}>
-                Cantidad de aberturas
-              </label>
-              <div className="med-conic">
-                <i className="fas fa-border-all" aria-hidden="true" />
-                <input
-                  id={`${uid}-ab`}
-                  className="med-input"
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  placeholder="Ej.: 4"
-                  value={aberturas}
-                  onChange={(e) => setAberturas(e.target.value)}
-                />
-              </div>
-            </div>
-          )}
-          {reparacion && (
-            <div className="med-campo">
-              <label className="med-l" htmlFor={`${uid}-rep`}>
-                Tipo de reparación
-              </label>
-              <SelectBuscable
-                id={`${uid}-rep`}
-                valor={tipoRep}
-                opciones={(tipos ?? []).map((t) => ({ valor: t.nombre, texto: t.nombre }))}
-                placeholder="Sin cambios"
-                cargando={tipos === null}
-                textoCargando="Leyendo los tipos de reparación…"
-                onElegir={setTipoRep}
-              />
-            </div>
-          )}
-          {turno.obraId && (
-            <div className="med-campo">
-              <span className="med-l">Órdenes de producción</span>
-              <button type="button" className="btn btn-out ag-ver-op" disabled={ops === null || ordenesObra === null} onClick={() => setVerOps(true)}>
-                <i className="fas fa-industry" /> Ver OP{ops && ops.length ? ` (${ops.length} vinculada${ops.length === 1 ? '' : 's'})` : ''}
-              </button>
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {verOps && ordenesObra && ops && (
-        <ModalOrdenes
-          obraNombre={turno.obra || turno.nombre}
-          ordenesIds={ordenesObra}
-          elegidas={ops.map((o) => o.id)}
-          onClose={() => setVerOps(false)}
-          onListo={(elegidas) => {
-            setOps(elegidas)
-            setOpsTocadas(true)
-            setVerOps(false)
-          }}
-        />
-      )}
-    </>
-  )
-}
 
 /* ────────────────────────────────────────────────────────────────────────────────
  * El hook
@@ -434,22 +270,6 @@ export function useAccionesTurno({
     }
   }
 
-  const editar = async (t: Turno, d: DatosEdicion) => {
-    setAbierta(null)
-    setTrabajando({ titulo: 'Guardando los cambios...', detalle: 'Se está actualizando el turno en la Agenda.' })
-    try {
-      const f = await fresco(t, 'editar')
-      if (!f) return
-      await editarTurno(f.id, { ...d, autor })
-      await releer(f)
-      avisar(`Se guardaron los cambios del turno de ${f.cliente || f.nombre}.`)
-    } catch {
-      dispatch({ type: 'errorMonday', accion: 'editar el turno' })
-    } finally {
-      setTrabajando(null)
-    }
-  }
-
   const terminarEnvio = (e: Envio, enviado: boolean, avisoEnvio?: string) => {
     setEnvio(null)
     /* Enviada la asignación (o la reasignación) el turno queda Asignado; si no, como estaba. */
@@ -498,9 +318,6 @@ export function useAccionesTurno({
           onClose={volver}
           onConfirmar={(d) => void reprogramar(abierta.turno, d)}
         />
-      )}
-      {abierta?.accion === 'editar' && (
-        <ModalEditarTurno turno={abierta.turno} onClose={volver} onGuardar={(d) => void editar(abierta.turno, d)} />
       )}
 
       {envio && (

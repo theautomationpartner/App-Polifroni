@@ -48,11 +48,11 @@ export const ETAPA_A_MEDIR = 'A Medir'
 export const TIPOS_TURNO: readonly DefTipoTurno[] = [
   { id: 'colocacion', titulo: 'Colocación', etiqueta: 'Colocacion', indice: 1, icono: 'fa-hammer', origen: 'obras', etapa: ETAPA_A_COLOCAR },
   { id: 'reparacion', titulo: 'Reparación', etiqueta: 'Reparacion', indice: 2, icono: 'fa-screwdriver-wrench', origen: 'obras', etapa: null },
-  { id: 'entrega', titulo: 'Entrega/Reparto', etiqueta: 'Reparto', indice: 0, icono: 'fa-truck', origen: 'pendientes', etapa: null },
+  { id: 'entrega', titulo: 'Entrega/Reparto', etiqueta: 'Reparto', indice: 0, alias: ['Entrega/Reparto', 'Entrega'], icono: 'fa-truck', origen: 'pendientes', etapa: null },
   { id: 'medicion', titulo: 'Medición', etiqueta: 'Medicion', indice: 4, alias: ['MEDIR'], icono: 'fa-ruler-combined', origen: 'obras', etapa: ETAPA_A_MEDIR },
   /* La etiqueta TERMINACIONES está DESACTIVADA en el tablero: hay que reactivarla en Monday para que
      un turno de Terminación se pueda registrar (la API no escribe etiquetas desactivadas). */
-  { id: 'terminacion', titulo: 'Terminación', etiqueta: 'TERMINACIONES', indice: 3, icono: 'fa-paint-roller', origen: 'obras', etapa: null },
+  { id: 'terminacion', titulo: 'Terminación', etiqueta: 'TERMINACIONES', indice: 3, alias: ['Terminacion'], icono: 'fa-paint-roller', origen: 'obras', etapa: null },
 ]
 
 export const defTipo = (t: TipoTurno): DefTipoTurno => TIPOS_TURNO.find((d) => d.id === t)!
@@ -577,7 +577,8 @@ export const TIPOS_ALTA: readonly TipoTurno[] = ['colocacion', 'medicion', 'repa
  *    pendientes de entrega que se quieran (opcionales), que viajan en el mismo turno.
  */
 export interface SeleccionTurno {
-  tipo: TipoTurno | null
+  /** La clave del tipo de turno elegido (`TipoConfig.clave`): un tipo conocido o uno nuevo del tablero. */
+  tipo: string | null
   /** "Con Obra": tildado, se listan las obras del cliente; destildado, el turno va sin obra. */
   conObra: boolean
   obraId: string | null
@@ -588,14 +589,14 @@ export interface SeleccionTurno {
 
 export const seleccionVacia = (): SeleccionTurno => ({ tipo: null, conObra: true, obraId: null, pendientesIds: [], opIds: [] })
 
-/** El tipo del turno: el que se eligió. */
-export const tipoDeSeleccion = (s: SeleccionTurno): TipoTurno | null => s.tipo
+/** La clave del tipo de turno elegido. */
+export const tipoDeSeleccion = (s: SeleccionTurno): string | null => s.tipo
 
 /** ¿Se listan las obras? Con un tipo elegido que no sea Reparto (Reparto lleva sólo pendientes). */
 export const listaObras = (s: SeleccionTurno): boolean => s.tipo !== null && s.tipo !== 'entrega'
 
 /** Elegir el tipo. Reparto no lleva obra: si había una elegida, se descarta (con sus OP). */
-export function elegirTipo(s: SeleccionTurno, tipo: TipoTurno): SeleccionTurno {
+export function elegirTipo(s: SeleccionTurno, tipo: string): SeleccionTurno {
   return tipo === 'entrega' ? { ...s, tipo, obraId: null, opIds: [] } : { ...s, tipo }
 }
 
@@ -615,18 +616,25 @@ export function alternarPendiente(s: SeleccionTurno, pendienteId: string): Selec
   return { ...s, pendientesIds: ya ? s.pendientesIds.filter((x) => x !== pendienteId) : [...s.pendientesIds, pendienteId] }
 }
 
+/** La cantidad de aberturas a colocar, como se tipea: un entero mayor a 0. */
+export const aberturasValidas = (texto: string | undefined): boolean => /^\d+$/.test((texto ?? '').trim()) && Number(texto) > 0
+
 /**
  * Lo que falta para pasar de la etapa 2:
  *  - el tipo de turno;
  *  - Reparto: al menos un pendiente, SÓLO si el cliente tiene pendientes por entregar (`hayPendientes`);
- *  - los demás, con "Con Obra": la obra. Sin obra, nada más. Los pendientes son opcionales.
+ *  - los demás, con "Con Obra": la obra; y en Colocación, la cantidad de aberturas a colocar
+ *    (`aberturas`, lo tipeado en la fila de la obra). Sin obra, nada más. Los pendientes son opcionales.
  */
-export function faltantesSeleccion(s: SeleccionTurno, c: { hayPendientes: boolean }): string[] {
+export function faltantesSeleccion(s: SeleccionTurno, c: { hayPendientes: boolean; aberturas?: string }): string[] {
   if (!s.tipo) return ['Elegí el tipo de turno.']
   if (s.tipo === 'entrega') {
     return c.hayPendientes && s.pendientesIds.length === 0 ? ['Tildá al menos un pendiente de entrega.'] : []
   }
   if (s.conObra && !s.obraId) return ['Tildá la obra del turno (o destildá «Con Obra» para cargar un turno sin obra).']
+  if (s.tipo === 'colocacion' && s.conObra && s.obraId && !aberturasValidas(c.aberturas)) {
+    return ['Indicá la cantidad de aberturas a colocar de la obra.']
+  }
   return []
 }
 
@@ -701,7 +709,7 @@ export function colorCancelacion(pct: number | null): 'rojo' | 'amarillo' | 'ver
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
- * Calendario: el color de cada tipo de turno y la franja horaria
+ * Calendario: el color de cada tipo de turno
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -733,29 +741,6 @@ export function colorDeTipo(tipo: TipoTurno | null, etiqueta: string, colores: R
   return tipo ? COLOR_TIPO_TURNO[tipo] : COLOR_SIN_TIPO
 }
 
-/** Una franja horaria por horas enteras: de `desde` (incluida) a `hasta` (excluida). null = sin tope. */
-export interface Franja {
-  desde: number | null
-  hasta: number | null
-}
-
-export const franjaVacia = (): Franja => ({ desde: null, hasta: null })
-
-export const hayFranja = (f: Franja) => f.desde != null || f.hasta != null
-
-/**
- * Si un turno entra en la franja. Sin franja, entran todos. Con franja, sólo los que tienen hora y
- * caen adentro: "de 8 a 12" toma 8:00 a 11:59, y un turno de las 12:00 ya no entra.
- */
-export function enFranja(hora: string, f: Franja): boolean {
-  if (!hayFranja(f)) return true
-  const m = /^(\d{1,2}):(\d{2})/.exec(hora ?? '')
-  if (!m) return false
-  const min = Number(m[1]) * 60 + Number(m[2])
-  if (f.desde != null && min < f.desde * 60) return false
-  if (f.hasta != null && min >= f.hasta * 60) return false
-  return true
-}
 
 /** Una semana del calendario, de lunes (`inicio`) a domingo (`fin`), en `YYYY-MM-DD`. */
 export interface SemanaCal {
@@ -792,4 +777,97 @@ export type EntregaPendiente = 'pendiente' | 'parcial' | 'entregado'
 export function entregaDePendiente(vendido: number, porEntregar: number): EntregaPendiente {
   if (porEntregar <= 0) return 'entregado'
   return vendido - porEntregar > 0 ? 'parcial' : 'pendiente'
+}
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Los tipos de turno configurables (tablero ⚙️Configuracion - Sistema)
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Un tipo de turno de la configuración. Si su nombre es el de un tipo que la app conoce (Colocación,
+ * Reparto…, sin importar tildes ni mayúsculas) lo toma, con su comportamiento propio (aberturas,
+ * pendientes, tipo de reparación); si no, es un tipo nuevo, que se agenda como un turno común.
+ */
+export interface TipoConfig {
+  /** La clave del tipo: la id del tipo conocido, o "x-" y el nombre sin tildes para uno nuevo. */
+  clave: string
+  /** Cómo se muestra: el título del tipo conocido, o el nombre tal como está en el tablero. */
+  titulo: string
+  /** El tipo conocido, o `null` si es nuevo. */
+  conocido: TipoTurno | null
+}
+
+/** El tipo de turno de un nombre del tablero de configuración. */
+export function tipoConfigDe(nombre: string): TipoConfig {
+  const conocido = tipoDeEtiqueta(nombre)
+  if (conocido) return { clave: conocido, titulo: defTipo(conocido).titulo, conocido }
+  return { clave: `x-${claveEtiqueta(nombre)}`, titulo: nombre.trim(), conocido: null }
+}
+
+/** Los tipos de siempre, por si no se puede leer la configuración. */
+export const TIPOS_POR_DEFECTO: TipoConfig[] = TIPOS_TURNO.map((d) => ({ clave: d.id, titulo: d.titulo, conocido: d.id }))
+
+/**
+ * La clave del tipo de un turno, para cruzarlo con la configuración: la del tipo conocido o, si es
+ * otro, la de su etiqueta (SELLAR → "x-sellar", la misma que el "Sellar" del tablero). Sin tipo, "".
+ */
+export function claveDeTurno(t: { tipo: TipoTurno | null; etiquetaTipo: string }): string {
+  if (t.tipo) return t.tipo
+  return t.etiquetaTipo.trim() ? `x-${claveEtiqueta(t.etiquetaTipo)}` : ''
+}
+
+/**
+ * Los tipos de la configuración, a partir de los ítems del grupo: los que son "Tipo de Turno", en su
+ * orden y sin repetidos.
+ */
+export function tiposDeConfig(items: readonly { nombre: string; tipoConfig: string }[]): TipoConfig[] {
+  const vistos = new Set<string>()
+  const tipos: TipoConfig[] = []
+  for (const it of items) {
+    if (claveEtiqueta(it.tipoConfig) !== 'tipo de turno' || !it.nombre.trim()) continue
+    const t = tipoConfigDe(it.nombre)
+    if (vistos.has(t.clave)) continue
+    vistos.add(t.clave)
+    tipos.push(t)
+  }
+  return tipos
+}
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Editar un turno: qué cambió respecto del original
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+/** Los datos de un turno que se pueden editar (la fecha y la hora no: eso es reprogramar). */
+export interface DatosEdicionTurno {
+  clienteId: string
+  /** La clave del tipo (`TipoConfig.clave`). */
+  tipo: string | null
+  obraId: string | null
+  pendientesIds: readonly string[]
+  opIds: readonly string[]
+  aberturas: number | null
+  /** Reparación: el nombre del tipo de reparación. */
+  tipoReparacion: string
+}
+
+export type CampoTurno = 'cliente' | 'tipo' | 'obra' | 'pendientes' | 'ops' | 'aberturas' | 'tipoReparacion'
+
+const mismosIds = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && [...a].sort().join('|') === [...b].sort().join('|')
+
+/**
+ * Los datos que cambiaron: sólo ésos se escriben en el turno. Las aberturas cuentan sólo en
+ * Colocación y el tipo de reparación sólo en Reparación (el tipo nuevo); los pendientes y las OP,
+ * sin importar el orden.
+ */
+export function cambiosTurno(antes: DatosEdicionTurno, despues: DatosEdicionTurno): CampoTurno[] {
+  const c: CampoTurno[] = []
+  if (antes.clienteId !== despues.clienteId) c.push('cliente')
+  if (antes.tipo !== despues.tipo) c.push('tipo')
+  if ((antes.obraId ?? '') !== (despues.obraId ?? '')) c.push('obra')
+  if (!mismosIds(antes.pendientesIds, despues.pendientesIds)) c.push('pendientes')
+  if (!mismosIds(antes.opIds, despues.opIds)) c.push('ops')
+  if (despues.tipo === 'colocacion' && antes.aberturas !== despues.aberturas) c.push('aberturas')
+  if (despues.tipo === 'reparacion' && antes.tipoReparacion.trim() !== despues.tipoReparacion.trim()) c.push('tipoReparacion')
+  return c
 }
