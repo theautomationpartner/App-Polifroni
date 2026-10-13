@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 interface ModalProps {
+  /** Vacío: la ventana dibuja su propio encabezado dentro del cuerpo (el asistente del turno). */
   title: string
   icon?: ReactNode
   /**
@@ -35,7 +36,7 @@ export function Modal({ title, icon, children, actions, onClose, cerrable = true
           </button>
         )}
         {icon && <div className="modal-icon">{icon}</div>}
-        <h3 className="modal-title">{title}</h3>
+        {title && <h3 className="modal-title">{title}</h3>}
         <div className="modal-body">{children}</div>
         {actions && <div className="modal-actions">{actions}</div>}
       </div>

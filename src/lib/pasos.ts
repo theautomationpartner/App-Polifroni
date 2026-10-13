@@ -33,15 +33,11 @@ export function etiquetaPaso(
   operacion: Operacion | null = 'enviar',
   modoPresupuesto: ModoPresupuesto | null = null,
 ): string {
-  /* Presupuesto · Crear y Cargar: a quién (un cliente/constructor, o una bolsa abierta) y el
-     presupuesto con su envío. Son DOS etapas. */
+  /* Presupuesto · Crear y Cargar: a quién (un cliente/constructor, o una bolsa abierta), los
+     presupuestos que se van a mandar (uno o varios) y su envío. Son TRES etapas. */
   if (operacion === 'presupuestos') {
     if (paso === 'obra') return modoPresupuesto === 'cargar' ? 'Seleccionar Presupuesto' : 'Seleccionar Cliente'
-    return 'Cargar y Enviar Presupuesto'
-  }
-  /* Agenda · Crear Turno: el cliente, los datos del turno y el registro en la Agenda. */
-  if (operacion === 'crearTurno') {
-    return paso === 'obra' ? 'Seleccionar Cliente' : paso === 'carga' ? 'Datos del Turno' : 'Registrar Turno'
+    return paso === 'carga' ? 'Cargar Presupuestos' : 'Enviar Presupuestos'
   }
   /* Editar Órdenes de Producción: la orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
   if (operacion === 'editar') {
@@ -63,10 +59,7 @@ export const etiquetasPasos = (
   operacion: Operacion | null = 'enviar',
   modoPresupuesto: ModoPresupuesto | null = null,
 ): string[] =>
-  /* Presupuesto tiene dos etapas; el resto, tres. */
-  (operacion === 'presupuestos' ? (['obra', 'carga'] as const) : (['obra', 'carga', 'envio'] as const)).map((p) =>
-    etiquetaPaso(p, destino, tipo, operacion, modoPresupuesto),
-  )
+  (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo, operacion, modoPresupuesto))
 
 /** Cuántas OP de la obra están en un estado. */
 export const cuantasEn = (obra: Obra, estado: EstadoOrden): number =>

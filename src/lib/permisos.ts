@@ -47,7 +47,7 @@ const OPERACIONES_DEL_ROL: Record<Rol, readonly Operacion[] | 'todas'> = {
   admin: 'todas',
   produccion: ['consultar'],
   /* Todas las de Agenda. */
-  administracion: ['crearTurno', 'gestionarTurnos'],
+  administracion: ['calendario'],
   /* Todas las de Presupuesto. */
   ventas: ['presupuestos', 'gestionarPresupuestos'],
 }

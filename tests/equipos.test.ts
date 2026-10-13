@@ -33,8 +33,7 @@ const OPERACIONES = [
   { id: 'enviar', proceso: 'obras' },
   { id: 'consultar', proceso: 'obras' },
   { id: 'vidrios', proceso: 'obras' },
-  { id: 'crearTurno', proceso: 'agenda' },
-  { id: 'gestionarTurnos', proceso: 'agenda' },
+  { id: 'calendario', proceso: 'agenda' },
 ] as const
 
 process.env.MONDAY_API_TOKEN = 'token-de-prueba'
@@ -119,10 +118,10 @@ assert.throws(() => exigirAdmin(sesion), ErrorAuth, 'sin rol resuelto, tampoco')
 
 /* ── La interfaz ───────────────────────────────────────────────────────────────────────────────── */
 assert.ok(puedeOperar(['produccion'], 'consultar'), 'produccion entra a Consultar órdenes')
-for (const op of ['enviar', 'vidrios', 'crearTurno', 'gestionarTurnos'] as const) {
+for (const op of ['enviar', 'vidrios', 'calendario'] as const) {
   assert.ok(!puedeOperar(['produccion'], op), `produccion no ve ${op}`)
 }
-for (const op of ['enviar', 'consultar', 'vidrios', 'crearTurno', 'gestionarTurnos'] as const) {
+for (const op of ['enviar', 'consultar', 'vidrios', 'calendario'] as const) {
   assert.ok(puedeOperar(['admin'], op), `admin ve ${op}`)
   assert.ok(puedeOperar(['produccion', 'admin'], op), `en los dos teams, la suma: ve ${op}`)
 }
@@ -192,8 +191,7 @@ console.log('equipos (rol por team): OK')
     { id: 'consultar', proceso: 'obras' },
     { id: 'editar', proceso: 'obras' },
     { id: 'vidrios', proceso: 'obras' },
-    { id: 'crearTurno', proceso: 'agenda' },
-    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'calendario', proceso: 'agenda' },
     { id: 'presupuestos', proceso: 'presupuesto' },
     { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
   ] as const
@@ -226,8 +224,7 @@ console.log('equipos (rol por team): OK')
     { id: 'consultar', proceso: 'obras' },
     { id: 'editar', proceso: 'obras' },
     { id: 'vidrios', proceso: 'obras' },
-    { id: 'crearTurno', proceso: 'agenda' },
-    { id: 'gestionarTurnos', proceso: 'agenda' },
+    { id: 'calendario', proceso: 'agenda' },
     { id: 'presupuestos', proceso: 'presupuesto' },
     { id: 'gestionarPresupuestos', proceso: 'presupuesto' },
   ] as const
@@ -236,7 +233,7 @@ console.log('equipos (rol por team): OK')
     ops: TODAS.filter((o) => puedeOperar(roles, o.id)).map((o) => o.id),
   })
   assert.deepEqual(ve(['admin']).ops.length, TODAS.length, 'Admin: todas las operaciones')
-  assert.deepEqual(ve(['administracion']), { areas: ['agenda'], ops: ['crearTurno', 'gestionarTurnos'] }, 'Administracion: Agenda entera')
+  assert.deepEqual(ve(['administracion']), { areas: ['agenda'], ops: ['calendario'] }, 'Administracion: Agenda entera')
   assert.deepEqual(ve(['ventas']), { areas: ['presupuesto'], ops: ['presupuestos', 'gestionarPresupuestos'] }, 'Ventas: Presupuesto entero')
   assert.deepEqual(ve(['produccion']), { areas: ['obras'], ops: ['consultar'] }, 'Produccion: sólo Consultar')
   assert.deepEqual(ve(['administracion', 'ventas']).areas, ['agenda', 'presupuesto'], 'en dos teams, las dos áreas')

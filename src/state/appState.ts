@@ -9,7 +9,6 @@ import type { Medicion } from '@/features/op/DatosMedicion'
 import { medicionInicial } from '@/features/op/DatosMedicion'
 import type { Abertura } from '@/features/op/observaciones'
 import type { VidrioLeido } from '@/services/monday/ordenes'
-import { turnoInicial, type BorradorTurno } from '@/features/agenda/borrador'
 import { presupuestoInicial, type BorradorPresupuesto } from '@/features/presupuesto/borrador'
 import { edicionInicial, type BorradorEdicion } from '@/features/editar/borrador'
 import type { OrdenEditable } from '@/services/monday/edicionOp'
@@ -27,8 +26,8 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
   { id: 'consultar', titulo: 'CONSULTAR ORDENES DE PRODUCCION', proceso: 'obras' },
   { id: 'editar', titulo: 'EDITAR ORDENES DE PRODUCCION', proceso: 'obras' },
   { id: 'vidrios', titulo: 'SOLICITUD DE CORTES DE VIDRIO', proceso: 'obras' },
-  { id: 'crearTurno', titulo: 'CREAR TURNOS', proceso: 'agenda' },
-  { id: 'gestionarTurnos', titulo: 'CONSULTAR Y GESTIONAR TURNOS', proceso: 'agenda' },
+  /* Agenda: una sola operación, el calendario, donde se crean y se gestionan los turnos. */
+  { id: 'calendario', titulo: 'AGENDA DE TURNOS', proceso: 'agenda' },
   { id: 'presupuestos', titulo: 'CREAR Y CARGAR PRESUPUESTOS', proceso: 'presupuesto' },
   { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
 ]
@@ -56,7 +55,6 @@ export const conEtapas = (operacion: Operacion | null): boolean =>
   operacion === 'enviar' ||
   operacion === 'editar' ||
   operacion === 'vidrios' ||
-  operacion === 'crearTurno' ||
   operacion === 'presupuestos'
 
 /** A quién se envía, tal como lo lista la pregunta de la primera etapa. */
@@ -176,8 +174,6 @@ export interface AppState {
   enviado: boolean
   /** Solicitud de cortes de vidrio: las OP (enviadas al taller) cuyos vidrios se piden. */
   vidriosOps: string[]
-  /** Agenda · Crear Turno: lo que se va cargando del turno. */
-  turno: BorradorTurno
   /** Presupuesto · Crear y Cargar: lo elegido y cargado del presupuesto. */
   presupuesto: BorradorPresupuesto
   /** Editar Órdenes de Producción: la orden elegida y sus subelementos. */
@@ -203,7 +199,6 @@ export const initialState: AppState = {
   borrador: borradorInicial(),
   enviado: false,
   vidriosOps: [],
-  turno: turnoInicial(),
   presupuesto: presupuestoInicial(),
   edicion: edicionInicial(),
   exito: null,
@@ -220,8 +215,6 @@ export type Action =
   | { type: 'setOperacion'; operacion: Operacion }
   /** Solicitud de cortes de vidrio: qué OP se incluyen. */
   | { type: 'setVidriosOps'; ids: string[] }
-  /** Agenda · Crear Turno: lo elegido en cada etapa. */
-  | { type: 'setTurno'; cambios: Partial<BorradorTurno> }
   /** Presupuesto · Crear y Cargar: lo elegido en cada etapa. */
   | { type: 'setPresupuesto'; cambios: Partial<BorradorPresupuesto> }
   /** Editar OP: elegir la orden es terminar la etapa 1. Otra orden descarta lo leído de la anterior. */
@@ -232,11 +225,6 @@ export type Action =
    * el otro camino).
    */
   | { type: 'setModoPresupuesto'; modo: BorradorPresupuesto['modo'] }
-  /**
-   * Agenda · Reprogramar: el turno original ya se canceló; se abre "Crear Turno" con sus datos y
-   * en la etapa de los datos, para elegir la fecha nueva.
-   */
-  | { type: 'reprogramarTurno'; turno: Partial<BorradorTurno> }
   /** Contestar "¿A quién vas a enviarle la orden?". Cambiarla empieza la carga de nuevo. */
   | { type: 'setDestino'; destino: Destino }
   | { type: 'goto'; paso: Paso }
@@ -265,7 +253,6 @@ const sinTrabajo = {
   borrador: borradorInicial(),
   enviado: false,
   vidriosOps: [] as string[],
-  turno: turnoInicial(),
   presupuesto: presupuestoInicial(),
   edicion: edicionInicial(),
   paso: 'obra' as Paso,
@@ -277,7 +264,13 @@ export function reducer(state: AppState, action: Action): AppState {
     /* Un área u operación que el team no habilita no se abre, la pida quien la pida. */
     case 'setProceso':
       if (action.proceso && !areaPermitida(action.proceso, state.usuario?.roles)) return state
-      return { ...initialState, ...sesionDe(state), proceso: action.proceso }
+      /* La Agenda va directo a su calendario: es su única operación. */
+      return {
+        ...initialState,
+        ...sesionDe(state),
+        proceso: action.proceso,
+        operacion: action.proceso === 'agenda' ? 'calendario' : null,
+      }
 
     case 'setOperacion':
       if (state.accionEnCurso || !puedeOperar(state.usuario?.roles, action.operacion)) return state
@@ -285,9 +278,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'setVidriosOps':
       return { ...state, vidriosOps: action.ids }
-
-    case 'setTurno':
-      return { ...state, turno: { ...state.turno, ...action.cambios } }
 
     case 'setPresupuesto':
       return { ...state, presupuesto: { ...state.presupuesto, ...action.cambios } }
@@ -308,24 +298,6 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'setModoPresupuesto':
       if (state.accionEnCurso || state.presupuesto.modo === action.modo) return state
       return { ...state, ...sinTrabajo, presupuesto: { ...presupuestoInicial(), modo: action.modo } }
-
-    /* Lo despacha la gestión al terminar de cancelar, todavía con su espera publicada: la espera
-       termina acá, porque la pantalla que la publicó se va. */
-    case 'reprogramarTurno': {
-      const turno = { ...turnoInicial(), ...action.turno }
-      const conCliente = Boolean(turno.cliente)
-      return {
-        ...state,
-        ...sinTrabajo,
-        proceso: 'agenda',
-        operacion: 'crearTurno',
-        destino: null,
-        turno,
-        paso: conCliente ? 'carga' : 'obra',
-        pasoMax: conCliente ? 1 : 0,
-        accionEnCurso: null,
-      }
-    }
 
     case 'setDestino':
       if (state.accionEnCurso || state.destino === action.destino) return state

@@ -123,8 +123,7 @@ export type Operacion =
   | 'consultar'
   | 'editar'
   | 'vidrios'
-  | 'crearTurno'
-  | 'gestionarTurnos'
+  | 'calendario'
   | 'presupuestos'
   | 'gestionarPresupuestos'
 
