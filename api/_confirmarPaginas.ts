@@ -16,6 +16,7 @@
  * Todo lo que viene de afuera (lo que escribió el cliente, los datos de Monday) pasa por `esc`.
  */
 import type { DocumentoConfirmacion } from './_confirmacion.js'
+import type { Coordinador } from './_confirmarMonday.js'
 import {
   OP_AGRADECIMIENTO,
   OP_CONFIRMACION,
@@ -71,21 +72,43 @@ export interface DatosFormulario {
   nombre: string
   /** A dónde se manda: el mismo enlace, con su firma. */
   accion: string
+  /** Presupuesto: entre quiénes se elige el coordinador de la obra. */
+  coordinadores?: Coordinador[]
 }
 
 /** El formulario de confirmación del documento: el de la OP o el del presupuesto. */
-export function paginaFormulario({ documento, nombre, accion }: DatosFormulario): string {
+export function paginaFormulario({ documento, nombre, accion, coordinadores = [] }: DatosFormulario): string {
   const plantilla = documento === 'op' ? OP_CONFIRMACION : PRESUPUESTO_CONFIRMACION
-  return rellenar(
+  const html = rellenar(
     plantilla,
     {
       '{{formatDate(now; "DD/MM/YYYY")}}': fechaHoy(),
       '{{decodeURL(1.nombre)}}': esc(nombre),
       /* El ítem lo dice el enlace, no el formulario: el campo queda vacío y el servidor lo ignora. */
       '{{1.itemId}}': '',
+      '{{CAMPO_COORDINADOR}}': campoCoordinador(coordinadores),
     },
     esc(accion),
   )
+  return conVistaPrevia(html, documento)
+}
+
+/**
+ * El coordinador de la obra del presupuesto: un select con el cliente y el arquitecto de la bolsa.
+ * Arranca sin elegir, así quien confirma tiene que indicarlo (el script de la página lo vuelve
+ * obligatorio en el paso 2). Si la bolsa no tiene a nadie, queda el campo de texto de antes.
+ */
+function campoCoordinador(opciones: Coordinador[]): string {
+  if (!opciones.length) {
+    return `<input type="text" id="coordinador" name="coordinador" class="input-text" placeholder="Ej.: Arquitecto Juan Pérez" />`
+  }
+  const items = opciones
+    .map((o) => `<option value="${esc(o.nombre)}">${esc(o.nombre)} · ${o.rol === 'Cliente' ? 'Cliente' : 'Arquitecto'}</option>`)
+    .join('\n              ')
+  return `<select id="coordinador" name="coordinador" class="input-text">
+              <option value="" disabled selected>Seleccione quién coordina la obra</option>
+              ${items}
+            </select>`
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -103,12 +126,13 @@ export function paginaRespuesta(
   motivo: string,
 ): string {
   const plantilla = documento === 'op' ? OP_AGRADECIMIENTO : PRESUPUESTO_AGRADECIMIENTO
-  return rellenar(plantilla, {
+  const html = rellenar(plantilla, {
     '{{1.estado_obra}}': respuesta === 'confirmada' ? 'Confirmar' : 'No confirmar',
     '{{1.nombre}}': esc(nombre),
     '{{1.motivo}}': esc(motivo),
     '{{formatDate(now; "DD/MM/YYYY")}}': fechaHoy(),
   })
+  return conVistaPrevia(html, documento)
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -284,19 +308,38 @@ export function paginaAviso(titulo: string, detalle: string, sello = '⚠️'): 
  * logo de Polifroni, sin tocar Monday.
  */
 export function paginaVistaPrevia(documento: DocumentoConfirmacion | null): string {
-  const titulo = documento === 'presupuesto' ? 'Confirmación del presupuesto' : 'Confirmación de la Orden de Producción'
-  const descripcion = `Revisá ${documento === 'presupuesto' ? 'el presupuesto' : 'la orden'} y confirmala desde acá.`
+  const { titulo, descripcion } = textoVistaPrevia(documento)
   return `<!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <title>${esc(titulo)} · Polifroni</title>
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Polifroni Aberturas" />
-    <meta property="og:title" content="${esc(titulo)}" />
-    <meta property="og:description" content="${esc(descripcion)}" />
-    <meta property="og:image" content="${LOGO}" />
+    ${metasVistaPrevia(documento)}
   </head>
   <body><h1>${esc(titulo)}</h1><p>${esc(descripcion)}</p></body>
 </html>`
 }
+
+function textoVistaPrevia(documento: DocumentoConfirmacion | null): { titulo: string; descripcion: string } {
+  return documento === 'presupuesto'
+    ? { titulo: 'Confirmación de Presupuesto', descripcion: 'Revisá el presupuesto y confirmalo desde acá.' }
+    : { titulo: 'Confirmación de la Orden de Producción', descripcion: 'Revisá la orden y confirmala desde acá.' }
+}
+
+/** Las etiquetas que arman la vista previa del enlace en WhatsApp: título, texto y logo. */
+function metasVistaPrevia(documento: DocumentoConfirmacion | null): string {
+  const { titulo, descripcion } = textoVistaPrevia(documento)
+  return `<meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Polifroni Aberturas" />
+    <meta property="og:title" content="${esc(titulo)}" />
+    <meta property="og:description" content="${esc(descripcion)}" />
+    <meta property="og:image" content="${LOGO}" />`
+}
+
+/**
+ * Las páginas de verdad llevan también las etiquetas de la vista previa, por si quien la arma no se
+ * presenta como bot y recibe la página completa. Van en el <head>: no cambian nada de lo que se ve, y
+ * las plantillas del usuario quedan como están.
+ */
+const conVistaPrevia = (html: string, documento: DocumentoConfirmacion) =>
+  html.replace(/<head>/i, `<head>\n    ${metasVistaPrevia(documento)}`)

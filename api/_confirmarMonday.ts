@@ -132,12 +132,14 @@ const limpio = (v: unknown, multilinea = false): string =>
  * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar",
  * `motivo` y, en el presupuesto, `ubicacion` y `coordinador`), validado.
  *  - "No confirmar" exige el motivo.
- *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario).
+ *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario). Si
+ *    el formulario ofreció opciones de coordinador (`coordinadores`), tiene que ser una de ellas.
  *  - Confirmar una OP no pide nada más.
  */
 export function leerRespuesta(
   documento: DocumentoConfirmacion,
   campos: Record<string, unknown>,
+  coordinadores: Coordinador[] = [],
 ): { ok: true; respuesta: Respuesta } | { ok: false; error: string } {
   const r = limpio(campos.estado_obra).toLowerCase()
   if (r === 'no confirmar') {
@@ -153,6 +155,9 @@ export function leerRespuesta(
   if (!ubicacion || !coordinador) return { ok: false, error: 'Falta la ubicación o el coordinador de la obra.' }
   if (ubicacion.length > LIMITES.ubicacion || coordinador.length > LIMITES.coordinador) {
     return { ok: false, error: 'La ubicación o el coordinador son demasiado largos.' }
+  }
+  if (coordinadores.length && !coordinadores.some((o) => o.nombre === coordinador)) {
+    return { ok: false, error: 'El coordinador tiene que ser uno de los de la lista.' }
   }
   return { ok: true, respuesta: { tipo: 'confirmar', ubicacion, coordinador } }
 }
@@ -178,6 +183,16 @@ export interface Documento {
   nombre: string
   /** Presupuesto rechazado: el motivo que quedó escrito, para mostrarlo de nuevo. */
   motivo: string
+  /**
+   * Presupuesto: entre quiénes se elige el coordinador de la obra (el paso 2 del formulario). Son el
+   * cliente y el constructor/arquitecto de la bolsa; el comodín "SIN ARQUITECTO" no va. OP: vacío.
+   */
+  coordinadores: Coordinador[]
+}
+
+export interface Coordinador {
+  nombre: string
+  rol: 'Cliente' | 'Arquitecto'
 }
 
 interface CV {
@@ -220,6 +235,23 @@ const indiceDe = (c?: CV): number | null => {
 const COL_OBRA_CONTACTO = { Cliente: 'board_relation_mkthtd70', Constructor: 'board_relation_mksz3v0h' } as const
 /** Las columnas de la bolsa del presupuesto con el cliente y el constructor/arquitecto. */
 const COL_BOLSA_CONTACTO = { Cliente: 'board_relation_mkvgt8r', Constructor: 'board_relation_mkvgk8yb' } as const
+
+/** El ítem comodín "SIN ARQUITECTO" de 👤 Constructor/Arquitecto: el tablero lo usa cuando no hay nadie. */
+const SIN_ARQUITECTO_ID = '10910009068'
+const esComodin = (c: CV | undefined, nombre: string) =>
+  (c?.linked_item_ids ?? []).map(String).includes(SIN_ARQUITECTO_ID) || /^sin\s+(arquitecto|constructor)\b/i.test(nombre)
+
+/** Las opciones de coordinador de la obra: el cliente y, si hay uno de verdad, el arquitecto. */
+function coordinadoresDe(bolsa: Record<string, CV | undefined>): Coordinador[] {
+  const cliente = vinculado(bolsa[COL_BOLSA_CONTACTO.Cliente])
+  const arquitecto = vinculado(bolsa[COL_BOLSA_CONTACTO.Constructor])
+  const lista: Coordinador[] = []
+  if (cliente) lista.push({ nombre: cliente, rol: 'Cliente' })
+  if (arquitecto && !esComodin(bolsa[COL_BOLSA_CONTACTO.Constructor], arquitecto) && arquitecto !== cliente) {
+    lista.push({ nombre: arquitecto, rol: 'Arquitecto' })
+  }
+  return lista
+}
 
 async function porClave(consulta: Consulta, board: number, columna: string, clave: string, columnas: string[], padre: string[] | null) {
   /* La clave puede estar guardada con guiones (UUID) o sin ellos (navegadores viejos). */
@@ -275,6 +307,7 @@ export async function buscarDocumento(
       situacion: situacion === 'cancelada' && motivo ? 'rechazada' : situacion,
       nombre: nombreDelEnlace ?? (await nombreEnObra(consulta, obraId, rol)),
       motivo,
+      coordinadores: [],
     }
   }
   const i = await porClave(
@@ -300,6 +333,7 @@ export async function buscarDocumento(
     situacion: situacionPresupuesto(etiqueta),
     nombre: nombreDelEnlace ?? vinculado(bolsa[COL_BOLSA_CONTACTO[rol]]),
     motivo: txt(c[COL_SUB_PRES.motivo]),
+    coordinadores: coordinadoresDe(bolsa),
   }
 }
 

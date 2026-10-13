@@ -109,6 +109,16 @@ assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicac
   ok: true,
   respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', coordinador: 'Ana' },
 })
+{
+  /* Con opciones de coordinador, sólo vale una de ellas: no se acepta un nombre escrito a mano. */
+  const opciones = [
+    { nombre: 'PEREZ JUAN', rol: 'Cliente' as const },
+    { nombre: 'ARQ. GOMEZ', rol: 'Arquitecto' as const },
+  ]
+  const campos = (coordinador: string) => ({ estado_obra: 'Confirmar', ubicacion: 'Av. 1', coordinador })
+  assert.equal(leerRespuesta('presupuesto', campos('ARQ. GOMEZ'), opciones).ok, true)
+  assert.equal(leerRespuesta('presupuesto', campos('Otro'), opciones).ok, false, 'fuera de la lista')
+}
 assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'No confirmar', motivo: 'línea 1\nlínea 2' }), {
   ok: true,
   respuesta: { tipo: 'rechazar', motivo: 'línea 1\nlínea 2' },
@@ -210,12 +220,51 @@ const op = (estado: string, clave = CLAVE, motivo = '') => ({
   assert.equal(doc.titulo, 'Presupuesto IDPDF-1221')
   assert.equal(doc.padreId, '700')
   assert.equal(doc.nombre, 'PEREZ JUAN', 'el cliente de la bolsa')
+  assert.deepEqual(doc.coordinadores, [{ nombre: 'PEREZ JUAN', rol: 'Cliente' }], 'sin arquitecto, sólo el cliente')
   assert.ok(m.llamadas[0].query.includes('9984270591') && m.llamadas[0].query.includes('parent_item'))
   await registrarRespuesta(doc, doc.nombre, { tipo: 'rechazar', motivo: 'El color\nno es' }, m.consulta)
   assert.deepEqual(JSON.parse(String(m.llamadas[1].variables.valores)), {
     [COL_SUB_PRES.confirmacion]: { label: 'Rechazado' },
     [COL_SUB_PRES.motivo]: 'El color no es',
   })
+}
+
+/* Los coordinadores de la obra: el cliente y el arquitecto de la bolsa, nunca el comodín "SIN ARQUITECTO". */
+{
+  const conArquitecto = (arquitecto: { display_value: string; linked_item_ids: string[] }) => ({
+    id: '701',
+    name: 'IDPDF-1221',
+    state: 'active',
+    parent_item: {
+      id: '700',
+      name: 'PEREZ JUAN',
+      column_values: [
+        { id: 'board_relation_mkvgt8r', text: '1111 - PEREZ JUAN', display_value: '1111 - PEREZ JUAN', linked_item_ids: ['1'] },
+        { id: 'board_relation_mkvgk8yb', text: arquitecto.display_value, ...arquitecto },
+      ],
+    },
+    column_values: [
+      { id: COL_SUB_PRES.clave, text: CLAVE },
+      { id: COL_SUB_PRES.confirmacion, text: '' },
+    ],
+  })
+  const coordinadores = async (arquitecto: { display_value: string; linked_item_ids: string[] }) =>
+    (await buscarDocumento('presupuesto', CLAVE, 'Cliente', simulado([conArquitecto(arquitecto)]).consulta))?.coordinadores
+
+  assert.deepEqual(await coordinadores({ display_value: 'ARQ. GOMEZ', linked_item_ids: ['55'] }), [
+    { nombre: 'PEREZ JUAN', rol: 'Cliente' },
+    { nombre: 'ARQ. GOMEZ', rol: 'Arquitecto' },
+  ])
+  assert.deepEqual(
+    await coordinadores({ display_value: 'SIN ARQUITECTO', linked_item_ids: ['10910009068'] }),
+    [{ nombre: 'PEREZ JUAN', rol: 'Cliente' }],
+    'el comodín no se lista',
+  )
+  assert.deepEqual(
+    await coordinadores({ display_value: 'Sin Arquitecto', linked_item_ids: ['999'] }),
+    [{ nombre: 'PEREZ JUAN', rol: 'Cliente' }],
+    'tampoco por el nombre, aunque sea otro ítem',
+  )
 }
 
 /* El texto del cliente no entra crudo al HTML (ni del update ni de la página). */
@@ -230,6 +279,7 @@ const op = (estado: string, clave = CLAVE, motivo = '') => ({
     situacion: 'pendiente',
     nombre: '',
     motivo: '',
+    coordinadores: [],
   }
   const u = textoUpdate(doc, '<b>Juan</b>', { tipo: 'rechazar', motivo: '<script>alert(1)</script>' })
   assert.ok(!u.includes('<script>') && u.includes('&lt;script&gt;') && !u.includes('<b>Juan</b>'))
@@ -303,6 +353,28 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
 {
   const r = await pedir('GET', ruta, '', 'WhatsApp/2.23.20.0 A')
   assert.ok(r.cuerpo.includes('og:title') && r.cuerpo.includes('logo-polifroni.png'), 'la vista previa, sin Monday')
+}
+{
+  /* El envío por 360messenger arma la vista previa con un cliente HTTP que no dice ser un bot: tiene
+     que recibir al instante la vista previa, sin consultar Monday. */
+  const fetchReal = globalThis.fetch
+  let consultas = 0
+  globalThis.fetch = (async (...a: Parameters<typeof fetch>) => {
+    consultas++
+    return fetchReal(...a)
+  }) as typeof fetch
+  for (const ua of ['axios/1.7.2', 'node-fetch', 'okhttp/4.9.2', '']) {
+    const r = await pedir('GET', ruta, '', ua)
+    assert.ok(r.cuerpo.includes('<meta property="og:title" content="Confirmación de la Orden de Producción" />'), `vista previa: "${ua}"`)
+    assert.ok(!r.cuerpo.includes('<form'), `sin el formulario: "${ua}"`)
+  }
+  assert.equal(consultas, 0, 'ninguna consulta a Monday')
+  globalThis.fetch = fetchReal
+}
+{
+  /* La página de verdad también trae la vista previa, por las dudas. */
+  const r = await pedir('GET', ruta)
+  assert.ok(r.cuerpo.includes('<form') && r.cuerpo.includes('og:image'), 'el formulario, con las etiquetas de la vista previa')
 }
 {
   const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=')
@@ -418,10 +490,22 @@ assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firm
     'los dos pasos vuelven al enlace',
   )
   assert.ok(!/hook\.|make\.com|\{\{/.test(form.cuerpo), 'sin URLs de Make ni variables')
+  assert.ok(form.cuerpo.includes('Dirección de la obra (ingresa nombre de calle y número)'), 'el rótulo de la dirección')
+  assert.ok(form.cuerpo.includes('<meta property="og:title" content="Confirmación de Presupuesto" />'), 'su vista previa')
+  const previa = await pedir('GET', rutaPres, '', 'WhatsApp/2.23.20.0 A')
+  assert.ok(previa.cuerpo.includes('<meta property="og:title" content="Confirmación de Presupuesto" />'), 'título del presupuesto')
+  assert.ok(previa.cuerpo.includes('confirmalo desde acá'))
+  assert.ok(form.cuerpo.includes('<select id="coordinador" name="coordinador"'), 'el coordinador se elige de una lista')
+  assert.ok(form.cuerpo.includes('<option value="PEREZ JUAN">PEREZ JUAN · Cliente</option>'), 'con el cliente de la bolsa')
 
   assert.equal((await pedir('POST', rutaPres, 'estado_obra=Confirmar')).status, 422, 'falta el paso 2')
+  assert.equal(
+    (await pedir('POST', rutaPres, 'estado_obra=Confirmar&ubicacion=Av.+1&coordinador=Arq.+P%C3%A9rez')).status,
+    422,
+    'un coordinador que no está en la lista',
+  )
   assert.equal(escritas.length, 0)
-  const ok = await pedir('POST', rutaPres, 'estado_obra=Confirmar&ubicacion=Av.+San+Mart%C3%ADn+1500&coordinador=Arq.+P%C3%A9rez')
+  const ok = await pedir('POST', rutaPres, 'estado_obra=Confirmar&ubicacion=Av.+San+Mart%C3%ADn+1500&coordinador=PEREZ+JUAN')
   assert.equal(ok.status, 200)
   assert.ok(ok.cuerpo.includes('¡Confirmación recibida<span id="nombreOk">, PEREZ JUAN</span>!'), 'el agradecimiento del presupuesto')
   assert.ok(!ok.cuerpo.includes('<h1>¡Confirmamos tu pedido'), 'no el de la OP')

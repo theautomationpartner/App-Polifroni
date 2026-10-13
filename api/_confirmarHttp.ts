@@ -25,7 +25,18 @@ import { paginaAviso, paginaFormulario, paginaRespuesta, paginaVistaPrevia } fro
 type Pedido = IncomingMessage & { body?: unknown }
 
 /** Los bots que abren el enlace para armar la vista previa: no llegan a Monday. */
-const BOT = /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|skypeuripreview|googlebot|bingbot/i
+const BOT =
+  /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|skypeuripreview|googlebot|bingbot|bot\b|crawler|spider|preview|embed|iframely/i
+
+/**
+ * Quién abre el enlace sólo para armar la vista previa. No son únicamente los bots que se presentan
+ * como tales: el envío por 360messenger es una sesión de WhatsApp Web, y la vista previa la arma el
+ * que manda, bajando la página con un cliente HTTP cualquiera (sin "Mozilla/") y esperando apenas unos
+ * segundos. Si recibe el formulario —que primero consulta Monday— no llega a tiempo y el mensaje
+ * queda con el dominio pelado. Todos los navegadores de verdad (también el de WhatsApp) mandan
+ * "Mozilla/": lo que no lo manda recibe al instante la vista previa, sin tocar Monday.
+ */
+const esVistaPrevia = (ua: string) => BOT.test(ua) || !/\bMozilla\//.test(ua)
 
 /** Un cuerpo de formulario no necesita más: el motivo (1000 caracteres), codificado. */
 const TOPE_CUERPO = 16 * 1024
@@ -52,7 +63,8 @@ function enlaceDe(url: URL): { enlace: EnlaceLeido; accion: string } | null {
 }
 
 /** El formulario de confirmación del documento (el de la OP o el del presupuesto). */
-const formulario = (doc: Documento, accion: string) => paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion })
+const formulario = (doc: Documento, accion: string) =>
+  paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion, coordinadores: doc.coordinadores })
 
 /**
  * Lo que se muestra de un documento que ya no espera respuesta: si ya se respondió, el agradecimiento
@@ -88,7 +100,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
   const url = new URL(req.url ?? '/', 'http://local')
   const leido = enlaceDe(url)
 
-  if (req.method !== 'POST' && BOT.test(String(req.headers['user-agent'] ?? ''))) {
+  if (req.method !== 'POST' && esVistaPrevia(String(req.headers['user-agent'] ?? ''))) {
     return html(res, 200, paginaVistaPrevia(leido?.enlace.documento ?? null))
   }
   if (!leido) return html(res, 400, enlaceInvalido())
@@ -122,7 +134,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
       return html(res, 400, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
     }
     if (doc.situacion !== 'pendiente') return html(res, 409, paginaSinRespuesta(doc))
-    const leida = leerRespuesta(enlace.documento, campos)
+    const leida = leerRespuesta(enlace.documento, campos, doc.coordinadores)
     /* Los formularios ya exigen cada campo antes de enviar: si igual falta algo, se vuelve a mostrar. */
     if (!leida.ok) return html(res, 422, formulario(doc, accion))
 
