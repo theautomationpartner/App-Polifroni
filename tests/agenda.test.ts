@@ -39,6 +39,11 @@ import {
   alternarPendiente,
   cambiarConObra,
   elegirTipo,
+  cambiosTurno,
+  tipoConfigDe,
+  claveDeTurno,
+  tiposDeConfig,
+  aberturasValidas,
   listaObras,
   TIPOS_ALTA,
   colorCancelacion,
@@ -48,11 +53,9 @@ import {
   faltantesSeleccion,
   horarioOcupado,
   colorDeTipo,
-  enFranja,
   materialDe,
   semanasDelMes,
   entregaDePendiente,
-  franjaVacia,
   seleccionVacia,
   tipoDeSeleccion,
 } from '../src/lib/agenda'
@@ -245,7 +248,7 @@ assert.equal(
   assert.match(faltantesSeleccion(s, conPend)[0], /Tildá la obra/, 'con obra, la obra es obligatoria')
   s = elegirObra(s, 'o1')
   s = { ...s, opIds: ['op1'] }
-  assert.deepEqual(faltantesSeleccion(s, conPend), [], 'los pendientes son opcionales fuera de Reparto')
+  assert.deepEqual(faltantesSeleccion(s, { ...conPend, aberturas: '3' }), [], 'los pendientes son opcionales fuera de Reparto')
   s = alternarPendiente(s, 'p1')
   assert.equal(tipoDeSeleccion(s), 'colocacion', 'obra y pendientes: un solo turno, del tipo elegido')
   s = elegirObra(s, 'o2')
@@ -310,20 +313,12 @@ assert.equal(
 
 console.log('agenda: todas las reglas pasan')
 
-/* ── Calendario: color del tipo y franja horaria ── */
+/* ── Calendario: color del tipo ── */
 assert.equal(colorDeTipo('colocacion', 'Colocacion', null), '#00c875', 'sin leer el tablero, el color conocido')
 assert.equal(colorDeTipo('medicion', 'MEDICIÓN', { medicion: '#123456' }), '#123456', 'el del tablero, por etiqueta sin tildes')
 assert.equal(colorDeTipo(null, 'SELLAR', { sellar: '#037f4c' }), '#037f4c', 'un tipo viejo, con su color del tablero')
 assert.equal(colorDeTipo(null, '', null), '#c4c4c4', 'sin tipo, gris')
-assert.equal(enFranja('', franjaVacia()), true, 'sin franja entran todos, también los sin hora')
-assert.equal(enFranja('', { desde: 8, hasta: 12 }), false, 'con franja, un turno sin hora no entra')
-assert.equal(enFranja('08:00', { desde: 8, hasta: 12 }), true)
-assert.equal(enFranja('11:59', { desde: 8, hasta: 12 }), true)
-assert.equal(enFranja('12:00', { desde: 8, hasta: 12 }), false, 'el tope es excluido')
-assert.equal(enFranja('07:30', { desde: 8, hasta: 12 }), false)
-assert.equal(enFranja('19:00', { desde: 14, hasta: null }), true, 'sólo desde')
-assert.equal(enFranja('09:00', { desde: null, hasta: 10 }), true, 'sólo hasta')
-console.log('agenda: color y franja OK')
+console.log('agenda: color del tipo OK')
 
 /* ── Calendario: el material de un turno ── */
 assert.equal(materialDe('PVC'), 'pvc')
@@ -358,3 +353,54 @@ assert.equal(entregaDePendiente(2, 2), 'pendiente', 'nada entregado: rojo')
 assert.equal(entregaDePendiente(5, 3), 'parcial', 'algo entregado: naranja')
 assert.equal(entregaDePendiente(5, 0), 'entregado', 'todo entregado: verde')
 console.log('agenda: entrega de pendientes OK')
+
+/* ── Colocación con obra: la cantidad de aberturas es obligatoria ── */
+{
+  const s = elegirObra(elegirTipo(seleccionVacia(), 'colocacion'), 'o1')
+  assert.deepEqual(faltantesSeleccion(s, { hayPendientes: false }), ['Indicá la cantidad de aberturas a colocar de la obra.'], 'sin aberturas no se avanza')
+  assert.deepEqual(faltantesSeleccion(s, { hayPendientes: false, aberturas: '0' }), ['Indicá la cantidad de aberturas a colocar de la obra.'], 'cero no vale')
+  assert.deepEqual(faltantesSeleccion(s, { hayPendientes: false, aberturas: '4' }), [], 'con aberturas, sí')
+  assert.deepEqual(faltantesSeleccion(elegirTipo(s, 'medicion'), { hayPendientes: false }), [], 'otros tipos no piden aberturas')
+  assert.deepEqual(faltantesSeleccion(cambiarConObra(s, false), { hayPendientes: false }), [], 'sin obra tampoco')
+  assert.equal(aberturasValidas(' 12 '), true)
+  assert.equal(aberturasValidas('1.5'), false, 'entero')
+  assert.equal(aberturasValidas(''), false)
+}
+console.log('agenda: aberturas obligatorias OK')
+
+/* ── Los tipos de turno del tablero de configuración ── */
+{
+  assert.deepEqual(tipoConfigDe('Colocacion'), { clave: 'colocacion', titulo: 'Colocación', conocido: 'colocacion' })
+  assert.equal(tipoConfigDe('Entrega/Reparto').conocido, 'entrega', 'el nombre del tablero, con su alias')
+  assert.equal(tipoConfigDe('Terminacion').conocido, 'terminacion')
+  assert.equal(tipoConfigDe('Medicion').conocido, 'medicion')
+  assert.deepEqual(tipoConfigDe(' Sellar '), { clave: 'x-sellar', titulo: 'Sellar', conocido: null }, 'un tipo nuevo')
+  assert.equal(claveDeTurno({ tipo: null, etiquetaTipo: 'SELLAR' }), 'x-sellar', 'el turno SELLAR cae en el tipo nuevo «Sellar»')
+  assert.equal(claveDeTurno({ tipo: 'reparacion', etiquetaTipo: 'Reparacion' }), 'reparacion')
+  assert.equal(claveDeTurno({ tipo: null, etiquetaTipo: '' }), '', 'sin tipo')
+  const tipos = tiposDeConfig([
+    { nombre: 'Colocacion', tipoConfig: 'Tipo de Turno' },
+    { nombre: 'Sellar', tipoConfig: 'Tipo de Turno' },
+    { nombre: 'Otra cosa', tipoConfig: 'Otro config' },
+    { nombre: 'colocación', tipoConfig: 'Tipo de Turno' },
+  ])
+  assert.deepEqual(tipos.map((t) => t.clave), ['colocacion', 'x-sellar'], 'sólo los "Tipo de Turno", en orden y sin repetidos')
+  /* La selección acepta un tipo nuevo, que lista obras como cualquier otro. */
+  const s = elegirTipo(seleccionVacia(), 'x-sellar')
+  assert.equal(listaObras(s), true)
+  assert.match(faltantesSeleccion(s, { hayPendientes: false })[0], /Tildá la obra/)
+}
+console.log('agenda: tipos configurables OK')
+
+/* ── Editar un turno: sólo lo que cambió ── */
+{
+  const base = { clienteId: 'c1', tipo: 'colocacion', obraId: 'o1', pendientesIds: ['p1', 'p2'], opIds: ['op1'], aberturas: 4, tipoReparacion: '' }
+  assert.deepEqual(cambiosTurno(base, { ...base }), [], 'sin cambios')
+  assert.deepEqual(cambiosTurno(base, { ...base, pendientesIds: ['p2', 'p1'] }), [], 'el orden de los pendientes no importa')
+  assert.deepEqual(cambiosTurno(base, { ...base, obraId: 'o2', aberturas: 6 }), ['obra', 'aberturas'])
+  assert.deepEqual(cambiosTurno(base, { ...base, opIds: [] }), ['ops'], 'destildar una OP es un cambio')
+  assert.deepEqual(cambiosTurno(base, { ...base, clienteId: 'c2', obraId: null, pendientesIds: [], opIds: [] }), ['cliente', 'obra', 'pendientes', 'ops'])
+  assert.deepEqual(cambiosTurno(base, { ...base, tipo: 'medicion', aberturas: null }), ['tipo'], 'fuera de Colocación las aberturas no cuentan')
+  assert.deepEqual(cambiosTurno({ ...base, tipo: 'reparacion' }, { ...base, tipo: 'reparacion', tipoReparacion: 'Vidrio' }), ['tipoReparacion'])
+}
+console.log('agenda: edición de turnos OK')

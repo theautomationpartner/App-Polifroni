@@ -982,7 +982,7 @@
   border-color: var(--marca-apagada);
 }
 
-/* ── Calendario: el color de cada tipo de turno (el de su etiqueta en Monday), la franja horaria y
+/* ── Calendario: el color de cada tipo de turno (el de su etiqueta en Monday) y
    las referencias al pie ── */
 .agenda-v2 .ag-tab--tipo > i {
   color: var(--tc);
@@ -1004,23 +1004,9 @@
   font-weight: 800;
   white-space: nowrap;
 }
-.agenda-v2 .ag-franja {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-}
-.agenda-v2 .ag-franja-campo {
-  width: 128px;
-}
-.agenda-v2 .ag-franja-a {
-  font-size: 12.5px;
-  color: #64748b;
-}
 
 /* ── La barra del calendario: los grupos de filtros separados por una división, el menú "⋯" de las
-   opciones que no entran, la franja horaria y las vistas a la derecha ── */
+   opciones que no entran y las vistas a la derecha ── */
 .agenda-v2 .ag-barra {
   display: flex;
   align-items: center;
@@ -1037,7 +1023,7 @@
   flex-wrap: wrap;
   gap: 5px;
 }
-/* Compacta, para que material, tipos, franja y vistas entren en un renglón. */
+/* Compacta, para que material, tipos y vistas entren en un renglón. */
 .agenda-v2 .ag-barra .ag-tab {
   gap: 6px;
   height: 30px;
@@ -1127,18 +1113,6 @@
 }
 .agenda-v2 .ag-mas-it-tit {
   flex: 1;
-}
-.agenda-v2 .ag-franja-icono {
-  color: var(--marca);
-}
-.agenda-v2 .ag-barra .ag-franja-campo {
-  width: 98px;
-}
-.agenda-v2 .ag-barra .med-sel-btn {
-  height: 32px;
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 12.5px;
 }
 .agenda-v2 .ag-vistas {
   display: inline-flex;
@@ -1630,4 +1604,132 @@
 }
 .ag-asistente .ag-sel-cabeza > .ag-sel-sub {
   margin: 0;
+}
+
+/* ── La obra tildada en Colocación: su fila se despliega con las aberturas a colocar (obligatorias,
+   en rojo hasta que tengan un número) y, si debe, el estado NO Aprobado ── */
+.ag-asistente .ag-row--abierta > td {
+  border-bottom: 0;
+}
+.ag-asistente .ag-fila-detalle > td {
+  padding: 4px 16px 16px 56px;
+  background: #eef4ff;
+  border-left: 3px solid #0073ea;
+}
+.ag-asistente .ag-detalle-obra {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 0;
+}
+.ag-asistente .ag-detalle-obra .ag-campo-ab {
+  width: 200px;
+}
+.ag-asistente .ag-detalle-obra .ag-aviso-saldo {
+  flex: 1 1 320px;
+  align-items: center;
+  padding: 0 0 10px;
+}
+.obras-v2 .carga-grid .ag-ab--falta .med-input,
+.obras-v2 .carga-grid .ag-ab--falta .med-input:hover:not(:disabled) {
+  border-color: #d83a52;
+  box-shadow: 0 0 0 1px #d83a52;
+}
+.obras-v2 .carga-grid .ag-ab--falta .med-input:focus {
+  border-color: #d83a52;
+  box-shadow: 0 0 0 3px rgba(216, 58, 82, 0.18);
+}
+.obras-v2 .carga-grid .ag-ab--falta > i {
+  color: #d83a52;
+}
+
+/* El grupo de tipos de turno ocupa el espacio libre de la barra y muestra los que entran (el resto,
+   en el "⋯"). La copia invisible sirve para medir el ancho de cada botón. */
+.agenda-v2 .ag-barra-grupo--ajustable {
+  position: relative;
+  /* Con menos de 260 px libres, el grupo baja a su propio renglón en lugar de quedar sin tipos a la vista. */
+  flex: 1 1 260px;
+  min-width: 260px;
+  flex-wrap: nowrap;
+}
+.agenda-v2 .ag-medidor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Sin tamaño propio: mide sus botones sin agrandar la barra. */
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  display: flex;
+  gap: 5px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.agenda-v2 .ag-barra-grupo--ajustable > .ag-tab {
+  flex: 0 0 auto;
+}
+.agenda-v2 .ag-medidor > .ag-tab {
+  flex: 0 0 auto;
+}
+
+/* ── La ficha del turno: la cantidad de aberturas, con su lápiz para editarla ahí mismo ── */
+.agenda-v2 .ag-ab-ver,
+.agenda-v2 .ag-ab-editar {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agenda-v2 .ag-ab-lapiz,
+.agenda-v2 .ag-ab-ok,
+.agenda-v2 .ag-ab-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--marca);
+  cursor: pointer;
+  font-size: 12px;
+}
+.agenda-v2 .ag-ab-lapiz:hover {
+  border-color: var(--marca);
+  background: var(--marca-suave);
+}
+.agenda-v2 .ag-ab-ok {
+  border-color: #00a35f;
+  background: #00a35f;
+  color: #fff;
+}
+.agenda-v2 .ag-ab-no:hover {
+  border-color: #d83a52;
+  color: #d83a52;
+}
+.agenda-v2 .ag-ab-input {
+  width: 90px;
+  height: 32px;
+}
+.agenda-v2 .ag-ab-error {
+  flex-basis: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d83a52;
+}
+/* Editar un turno: la nota de la fecha y el rango horario, a lo ancho de los campos. */
+.ag-asistente .ag-nota--fila {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+/* Un campo bloqueado (la fecha y el rango horario al editar un turno) se ve bloqueado. */
+.obras-v2 .carga-grid .med-input:disabled,
+.ag-asistente .ag-registro-campos .med-input:disabled {
+  background: #f1f3f6;
+  border-color: #dfe3ea;
+  color: #64748b;
+  cursor: not-allowed;
 }

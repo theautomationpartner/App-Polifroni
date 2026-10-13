@@ -26,8 +26,12 @@ import {
   type EstadoTurno,
   type ObraDeCliente,
   type PendienteDeCliente,
+  type CampoTurno,
+  type TipoConfig,
+  aprobacionPorSaldo,
   type TipoTurno,
   claveEtiqueta,
+  tiposDeConfig,
 } from '@/lib/agenda'
 import { estadoDeOrden } from '@/lib/estadosOp'
 import { memoGlobal } from './cache'
@@ -42,6 +46,10 @@ export const BOARD_AGENDA = 18396064987
 export const BOARD_CLIENTES = 9617181550
 export const BOARD_CUENTAS = 9617990272
 export const BOARD_PENDIENTES = 9900503036
+/** ⚙️Configuracion - Sistema: de su primer grupo salen los tipos de turno (ítems "Tipo de Turno"). */
+export const BOARD_CONFIG = 18435227863
+/** `Tipo de Config` del tablero de configuración. */
+const COL_CONFIG_TIPO = 'status'
 
 /** Columnas de 📅 Agenda que usa la app. */
 export const COL_TURNO = {
@@ -762,7 +770,10 @@ const fechaCol = (iso: string) => ({ date: iso })
 
 export interface AltaTurno {
   cliente: ClienteTurno
-  tipo: TipoTurno
+  /** El tipo conocido; `null` para un tipo nuevo de la configuración (ver `tipoTitulo`). */
+  tipo: TipoTurno | null
+  /** El título del tipo, para el nombre del ítem (el de la configuración en un tipo nuevo). */
+  tipoTitulo?: string
   /** `YYYY-MM-DD`. */
   fecha: string
   /** `HH:MM`, hora local. */
@@ -793,7 +804,8 @@ export function nombreTurno(a: AltaTurno): string {
     a.obra?.nombre ??
     (pendientes.length > 1 ? `${pendientes[0].producto} y ${pendientes.length - 1} más` : (pendientes[0]?.producto ?? ''))
   const quien = a.cliente.clienteNombre || a.cliente.nombre
-  return [defTipo(a.tipo).titulo.toUpperCase(), quien, que && que !== quien ? que : '']
+  const tipo = a.tipo ? defTipo(a.tipo).titulo : (a.tipoTitulo ?? '')
+  return [tipo.toUpperCase(), quien, que && que !== quien ? que : '']
     .filter(Boolean)
     .join(' - ')
     .slice(0, 255)
@@ -1105,26 +1117,6 @@ export const columnaOrdenesAgenda = memoGlobal(async (): Promise<string | null> 
   return null
 })
 
-/** Las OP vinculadas a un turno (vacío si la columna todavía no existe). */
-export async function opsDeTurno(turnoId: string): Promise<string[]> {
-  const col = await columnaOrdenesAgenda()
-  if (!col) return []
-  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${col}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
-    { ids: [turnoId] },
-  )
-  return ids(d.items[0]?.column_values[0])
-}
-
-/** Los ids de los pendientes de entrega vinculados a un turno (pueden ser varios). */
-export async function pendientesDeTurno(turnoId: string): Promise<string[]> {
-  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_TURNO.pendiente}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
-    { ids: [turnoId] },
-  )
-  return ids(d.items[0]?.column_values[0])
-}
-
 /**
  * Edita los datos de un turno activo que no cambian su fecha (eso es reprogramar): la cantidad de
  * aberturas (Colocación), el tipo de reparación (Reparación) y las OP vinculadas.
@@ -1143,16 +1135,6 @@ export async function editarTurno(
   if (c.aberturas !== undefined) lineas.push(`Cantidad de aberturas: ${c.aberturas ?? 'sin dato'}`)
   if (c.ops && !colOps) lineas.push('Órdenes de producción del turno:', ...c.ops.map((o) => `• ${o.nombre}`))
   await dejarConstancia(id, lineas.join('\n')).catch(() => {})
-}
-
-/** Los ids de las órdenes de producción de una obra (para "Ver OP" al editar un turno). */
-export async function idsOrdenesDeObra(obraId: string): Promise<string[]> {
-  if (!obraId) return []
-  const d = await mondayApi<{ items: { column_values: CV[] }[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL.ordenes}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
-    { ids: [obraId] },
-  )
-  return ids(d.items[0]?.column_values[0])
 }
 
 /**
@@ -1174,3 +1156,134 @@ export const coloresTipoTurno = memoGlobal(async (): Promise<Record<string, stri
   }
   return colores
 })
+
+/**
+ * Los tipos de turno configurados: los ítems "Tipo de Turno" del grupo 0 —el primero— del tablero
+ * ⚙️Configuracion - Sistema. Se lee cada vez que se entra a la Agenda, así un tipo agregado en el
+ * tablero aparece sin tocar la app.
+ */
+export async function getTiposConfig(): Promise<TipoConfig[]> {
+  const d = await mondayApi<{ boards: { groups: { id: string; position: string }[] }[] }>(
+    `query { boards(ids: [${BOARD_CONFIG}]) { groups { id position } } }`,
+  )
+  const grupos = d.boards[0]?.groups ?? []
+  /* El grupo "0": el de id "0" si existe; si no, el primero (posición más baja). */
+  const grupo = grupos.find((g) => g.id === '0') ?? [...grupos].sort((a, b) => Number(a.position) - Number(b.position))[0]
+  if (!grupo) return []
+  const it = await mondayApi<{ boards: { groups: { items_page: { items: { name: string; column_values: CV[] }[] } }[] }[] }>(
+    `query ($grupo: [String]) { boards(ids: [${BOARD_CONFIG}]) { groups(ids: $grupo) {
+      items_page(limit: 200) { items { name column_values(ids: ["${COL_CONFIG_TIPO}"]) { id text } } }
+    } } }`,
+    { grupo: [grupo.id] },
+  )
+  const items = it.boards[0]?.groups[0]?.items_page.items ?? []
+  return tiposDeConfig(items.map((i) => ({ nombre: i.name, tipoConfig: i.column_values[0]?.text ?? '' })))
+}
+
+/**
+ * Escribe el tipo de turno de la configuración en el turno ya creado (el cambio que dispara la
+ * automatización del tablero). Un tipo conocido va por su índice; uno nuevo, por la etiqueta de
+ * `✋ Tipo de Turno` que tenga su nombre (SELLAR para "Sellar") y, si no existe, se crea con ese nombre.
+ */
+export async function escribirTipoConfig(id: string, tipo: TipoConfig): Promise<void> {
+  if (tipo.conocido) return asignarTipoTurno(id, tipo.conocido)
+  const d = await mondayApi<{ boards: { columns: { settings_str: string }[] }[] }>(
+    `query { boards(ids: [${BOARD_AGENDA}]) { columns(ids: ["${COL_TURNO.tipo}"]) { settings_str } } }`,
+  )
+  const etiquetas = (JSON.parse(d.boards[0]?.columns[0]?.settings_str ?? '{}') as { labels?: Record<string, string> }).labels ?? {}
+  const indice = Object.entries(etiquetas).find(([, nombre]) => nombre && claveEtiqueta(nombre) === claveEtiqueta(tipo.titulo))?.[0]
+  if (indice !== undefined) return cambiarTurno(id, { [COL_TURNO.tipo]: { index: Number(indice) } })
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_AGENDA}, item_id: $id, column_values: $valores, create_labels_if_missing: true) { id }
+    }`,
+    { id, valores: JSON.stringify({ [COL_TURNO.tipo]: { label: tipo.titulo } }) },
+  )
+}
+
+/**
+ * Lo que la ficha del turno no trae y la edición necesita: la cuenta corriente (para la etapa 1), los
+ * pendientes y las OP vinculadas, y el tipo de reparación.
+ */
+export async function datosParaEditar(
+  t: Turno,
+): Promise<{ cuentaId: string | null; pendientesIds: string[]; opIds: string[]; tipoReparacion: string }> {
+  const colOps = await columnaOrdenesAgenda().catch(() => null)
+  const cols = [COL_TURNO.pendiente, COL_TURNO.tipoReparacion, ...(colOps ? [colOps] : [])]
+  const [d, cuentaId] = await Promise.all([
+    mondayApi<{ items: { column_values: CV[] }[] }>(
+      `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ${JSON.stringify(cols)}) {
+        id text ... on BoardRelationValue { linked_item_ids }
+      } } }`,
+      { ids: [t.id] },
+    ),
+    cuentaDeTurno(t).catch(() => null),
+  ])
+  const c = byId(d.items[0] ?? {})
+  return {
+    cuentaId,
+    pendientesIds: ids(c[COL_TURNO.pendiente]),
+    opIds: colOps ? ids(c[colOps]) : [],
+    tipoReparacion: limpio(c[COL_TURNO.tipoReparacion]?.text),
+  }
+}
+
+/** Lo editado de un turno, para guardarlo. */
+export interface EdicionTurno {
+  cliente: ClienteTurno
+  tipo: TipoConfig
+  obra: ObraDeCliente | null
+  pendientes: PendienteDeCliente[]
+  ops: { id: string; nombre: string }[]
+  aberturas: number | null
+  tipoReparacion: TipoReparacion | null
+}
+
+/**
+ * Guarda los cambios de un turno: escribe SÓLO las columnas de lo que cambió (`cambios`), y el nombre
+ * del ítem si cambió algo de lo que lo forma. El tipo va aparte, como al crearlo, porque ese cambio
+ * dispara la automatización del tablero. Queda la constancia con el detalle (`detalle`).
+ */
+export async function guardarEdicionTurno(
+  id: string,
+  e: EdicionTurno,
+  cambios: CampoTurno[],
+  c: { autor: string; detalle: string[] },
+): Promise<void> {
+  if (!cambios.length) return
+  const hay = (x: CampoTurno) => cambios.includes(x)
+  const relacion = (lista: string[]) => ({ item_ids: lista.map(Number) })
+  const valores: Record<string, unknown> = {}
+  const colocacion = e.tipo.conocido === 'colocacion'
+  if (hay('cliente')) valores[COL_TURNO.cliente] = relacion(e.cliente.clienteId ? [e.cliente.clienteId] : [])
+  if (hay('obra')) {
+    valores[COL_TURNO.obra] = relacion(e.obra ? [e.obra.id] : [])
+    valores[COL_TURNO.conObra] = { index: e.obra ? 5 : 0 }
+    if (e.obra?.material === 'PVC' || e.obra?.material === 'Aluminio') valores[COL_TURNO.material] = { label: e.obra.material }
+  }
+  if (hay('pendientes')) valores[COL_TURNO.pendiente] = relacion(e.pendientes.map((p) => p.id))
+  const colOps = hay('ops') ? await columnaOrdenesAgenda() : null
+  if (colOps) valores[colOps] = relacion(e.ops.map((o) => o.id))
+  if (hay('aberturas')) valores[COL_TURNO.cantAberturas] = e.aberturas == null ? '' : String(e.aberturas)
+  /* Colocación con otra obra (o recién pasada a Colocación): la aprobación, por el saldo de la obra. */
+  if (colocacion && e.obra && (hay('obra') || hay('tipo'))) {
+    const ap = aprobacionPorSaldo(e.obra.saldo)
+    if (ap) valores[COL_TURNO.aprobacion] = { label: ETIQUETA_APROBACION[ap] }
+  }
+  if (hay('tipoReparacion') && e.tipoReparacion) valores[COL_TURNO.tipoReparacion] = { ids: [e.tipoReparacion.id] }
+  if (['cliente', 'tipo', 'obra', 'pendientes'].some((x) => hay(x as CampoTurno))) {
+    valores.name = nombreTurno({
+      cliente: e.cliente,
+      tipo: e.tipo.conocido,
+      tipoTitulo: e.tipo.titulo,
+      fecha: '',
+      obra: e.obra,
+      pendientes: e.pendientes,
+    })
+  }
+  if (Object.keys(valores).length) await cambiarTurno(id, valores)
+  if (hay('tipo')) await escribirTipoConfig(id, e.tipo)
+  const lineas = [`Turno editado por ${c.autor || 'la app'} desde la app.`, ...c.detalle]
+  if (hay('ops') && !colOps) lineas.push('Órdenes de producción del turno:', ...e.ops.map((o) => `• ${o.nombre}`))
+  await dejarConstancia(id, lineas.join('\n')).catch(() => {})
+}

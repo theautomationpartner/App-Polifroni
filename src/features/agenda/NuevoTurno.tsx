@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useState, type ReactNode } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
@@ -8,9 +8,12 @@ import { hoyLocal } from '@/features/op/DatosMedicion'
 import { BuscadorObras, ayudaDe, useBuscadorObras } from '@/features/shared/BuscadorObras'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import {
-  TIPOS_ALTA,
+  TIPOS_POR_DEFECTO,
+  aberturasValidas,
   alternarPendiente,
   cambiarConObra,
+  cambiosTurno,
+  claveDeTurno,
   aprobacionPorSaldo,
   colorCancelacion,
   defTipo,
@@ -25,17 +28,23 @@ import {
   mensajeAsignacion,
   seleccionVacia,
   tipoDeSeleccion,
+  type CampoTurno,
+  type DatosEdicionTurno,
   type SeleccionTurno,
+  type TipoConfig,
   type TipoTurno,
 } from '@/lib/agenda'
 import { indexar, type EntradaIndice } from '@/lib/busquedaObras'
 import { formatoCelular } from '@/lib/destinatario'
 import { importe } from '@/lib/format'
 import {
-  asignarTipoTurno,
+  escribirTipoConfig,
   buscarClientes,
   cargarIndiceClientes,
   crearTurno,
+  datosParaEditar,
+  guardarEdicionTurno,
+  ordenesDeObra,
   getCliente,
   getElementosCliente,
   getTiposReparacion,
@@ -51,7 +60,7 @@ import { useApp } from '@/state/hooks'
 import { AprobacionChip, EstadoTurnoChip, EtapaChip, MaterialChip, TipoTurnoChip } from './chips'
 import { EnvioMensaje } from './EnvioMensaje'
 import { ModalErrorConsulta, conTope } from './ModalErrorConsulta'
-import { ModalOrdenes, type OpElegida } from './ModalOrdenes'
+import { ModalOrdenes, nombreOp, type OpElegida } from './ModalOrdenes'
 
 const ETAPAS = ['Seleccionar Cliente', 'Obras y Pendientes', 'Registrar Turno'] as const
 
@@ -123,7 +132,17 @@ export function NuevoTurno({
   hora: horaInicial,
   onCerrar,
   onCreado,
+  tipos = TIPOS_POR_DEFECTO,
+  editar = null,
 }: {
+  /**
+   * Editar: el turno ya registrado. El asistente arranca con sus datos (cliente, tipo, obra,
+   * pendientes, OP), la fecha y el rango horario no se tocan (eso es reprogramar), y "Guardar Turno"
+   * escribe en Monday sólo lo que cambió.
+   */
+  editar?: Turno | null
+  /** Los tipos de turno que se ofrecen: los del tablero de configuración (los de siempre, si no se leyó). */
+  tipos?: TipoConfig[]
   /** `YYYY-MM-DD` del día elegido en el calendario. */
   fecha: string
   /** `HH:MM` del horario elegido; vacío si se eligió un día entero (vista de mes). */
@@ -165,6 +184,10 @@ export function NuevoTurno({
   const [creado, setCreado] = useState<Turno | null>(null)
 
   const [faltan, setFaltan] = useState<{ titulo: string; items: string[] } | null>(null)
+  /** Editar: los datos del turno tal como están en Monday, para saber qué cambió. */
+  const [original, setOriginal] = useState<DatosEdicionTurno | null>(null)
+  /** Editar: se están leyendo los datos del turno (cuenta, pendientes, OP, tipo de reparación). */
+  const [preparando, setPreparando] = useState(!!editar)
   const [marcar, setMarcar] = useState(false)
   const [bloqueo, setBloqueo] = useState<string | null>(null)
 
@@ -172,10 +195,66 @@ export function NuevoTurno({
 
   useEffect(() => cargarIndiceClientes((lista) => setIndice(indexar(lista))), [])
 
+  useEffect(() => {
+    if (!editar) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const d = await conTope(datosParaEditar(editar))
+        const c = d.cuentaId ? await conTope(getCliente(d.cuentaId)).catch(() => null) : null
+        const e = c ? await conTope(getElementosCliente(c)).catch(() => null) : null
+        const opsLeidas = d.opIds.length
+          ? await ordenesDeObra(d.opIds)
+              .then((l) => l.map((o) => ({ id: o.id, nombre: nombreOp(o) })))
+              .catch(() => d.opIds.map((id) => ({ id, nombre: id })))
+          : []
+        if (!vivo) return
+        const clave = claveDeTurno(editar)
+        const tipoClave = tipos.some((x) => x.clave === clave) ? clave : null
+        if (c) setCuenta(c)
+        if (e) setElementos(e)
+        setSel({
+          tipo: tipoClave,
+          conObra: !!editar.obraId || tipoClave === 'entrega',
+          obraId: editar.obraId || null,
+          pendientesIds: d.pendientesIds,
+          opIds: d.opIds,
+        })
+        setOps(opsLeidas)
+        setCantAberturas(editar.cantAberturas.trim())
+        setTipoRep(d.tipoReparacion)
+        setOriginal({
+          clienteId: editar.clienteId,
+          tipo: tipoClave,
+          obraId: editar.obraId || null,
+          pendientesIds: d.pendientesIds,
+          opIds: d.opIds,
+          aberturas: aberturasValidas(editar.cantAberturas) ? Number(editar.cantAberturas) : null,
+          tipoReparacion: d.tipoReparacion,
+        })
+        /* Con cuenta, se puede ir directo a cualquier etapa. */
+        if (c) setPasoMax(2)
+      } catch {
+        if (vivo) setErrorMonday('leer los datos del turno')
+      } finally {
+        if (vivo) setPreparando(false)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const obra =
     listaObras(sel) && sel.conObra && sel.obraId ? (elementos?.obras.find((o) => o.id === sel.obraId) ?? null) : null
   const pendientes = (elementos?.pendientes ?? []).filter((p) => sel.pendientesIds.includes(p.id))
-  const tipo: TipoTurno | null = tipoDeSeleccion(sel)
+  /** El tipo elegido, como está en la configuración. */
+  const tipoCfg: TipoConfig | null = tipos.find((x) => x.clave === tipoDeSeleccion(sel)) ?? null
+  /** El tipo conocido (Colocación, Reparto…), con su comportamiento; `null` en un tipo nuevo. */
+  const tipo: TipoTurno | null = tipoCfg?.conocido ?? null
+  /** La etiqueta de `✋ Tipo de Turno` que lleva el turno: la del tipo conocido o el nombre del nuevo. */
+  const etiquetaTipo = tipo ? defTipo(tipo).etiqueta : (tipoCfg?.titulo ?? '')
   const aprobacion = tipo === 'colocacion' && obra ? aprobacionPorSaldo(obra.saldo) : null
   /* Las aberturas las carga el usuario: por ahora no se cuentan las de la obra. */
   const nAberturas = cantAberturas.trim() !== '' ? Number(cantAberturas) : null
@@ -288,7 +367,10 @@ export function NuevoTurno({
       return ir(1)
     }
     if (paso === 1) {
-      const f = faltantesSeleccion(sel, { hayPendientes: (elementos?.pendientes ?? []).some((p) => p.pendiente > 0) })
+      const f = faltantesSeleccion(sel, {
+        hayPendientes: (elementos?.pendientes ?? []).some((p) => p.pendiente > 0),
+        aberturas: cantAberturas,
+      })
       if (f.length) {
         setMarcar(true)
         return setFaltan({ titulo: 'Todavía no se puede continuar', items: f })
@@ -296,12 +378,68 @@ export function NuevoTurno({
       setMarcar(false)
       return ir(2)
     }
-    void confirmar()
+    void (editar ? guardar() : confirmar())
+  }
+
+  /* ── Editar: guardar sólo lo que cambió ── */
+  const guardar = async () => {
+    if (!editar || !original || !cuenta || !tipoCfg || fase) return
+    if (tipo === 'reparacion' && !tipoRep.trim()) {
+      setMarcar(true)
+      return setFaltan({ titulo: 'Todavía no se puede guardar el turno', items: ['Elegí el tipo de reparación.'] })
+    }
+    const opsTurno = obra ? ops : []
+    const nuevo: DatosEdicionTurno = {
+      clienteId: cuenta.clienteId,
+      tipo: tipoCfg.clave,
+      obraId: obra?.id ?? null,
+      pendientesIds: pendientes.map((p) => p.id),
+      opIds: opsTurno.map((o) => o.id),
+      aberturas: tipo === 'colocacion' && obra ? nAberturas : null,
+      tipoReparacion: tipo === 'reparacion' ? tipoRep : '',
+    }
+    const cambios = cambiosTurno(original, nuevo)
+    if (!cambios.length) return onCerrar('El turno no tenía cambios para guardar.')
+    /* La constancia: qué cambió, de qué a qué. */
+    const lista = (l: string[], vacio: string) => (l.length ? l.join(', ') : vacio)
+    const detalle: Record<CampoTurno, string> = {
+      cliente: `Cliente: ${editar.cliente || '—'} → ${nombreCliente || '—'}`,
+      tipo: `Tipo de turno: ${editar.etiquetaTipo || 'Sin tipo'} → ${tipoCfg.titulo}`,
+      obra: `Obra: ${editar.obra || 'Sin obra'} → ${obra?.nombre ?? 'Sin obra'}`,
+      pendientes: `Pendientes de entrega: ${lista(pendientes.map((p) => p.producto), 'Ninguno')}`,
+      ops: `Órdenes de producción: ${lista(opsTurno.map((o) => o.nombre), 'Ninguna')}`,
+      aberturas: `Cantidad de aberturas: ${original.aberturas ?? '—'} → ${nAberturas ?? '—'}`,
+      tipoReparacion: `Tipo de reparación: ${original.tipoReparacion || '—'} → ${tipoRep || '—'}`,
+    }
+    setFase('registrando')
+    try {
+      await guardarEdicionTurno(
+        editar.id,
+        {
+          cliente: cuenta,
+          tipo: tipoCfg,
+          obra,
+          pendientes,
+          ops: opsTurno,
+          aberturas: nuevo.aberturas,
+          tipoReparacion: tiposRep?.find((t) => t.nombre === tipoRep) ?? null,
+        },
+        cambios,
+        { autor: usuario?.name ?? '', detalle: cambios.map((c) => detalle[c]) },
+      )
+      setFase(null)
+      onCerrar(
+        `Turno actualizado: ${nombreCliente} · ${cambios.length === 1 ? '1 cambio' : `${cambios.length} cambios`}.`,
+      )
+    } catch {
+      setFase(null)
+      setErrorMonday('guardar los cambios del turno')
+    }
   }
 
   /* ── Etapa 3: confirmar ── */
   const confirmar = async () => {
-    if (!cuenta || !tipo || fase) return
+    if (!cuenta || !tipoCfg || fase) return
     const f = faltantesRegistro({ tipo, fecha, hora, tipoReparacion: tipoRep }, hoy)
     if (f.length) {
       setMarcar(true)
@@ -318,6 +456,7 @@ export function NuevoTurno({
       const id = await crearTurno({
         cliente: cuenta,
         tipo,
+        tipoTitulo: tipoCfg.titulo,
         fecha,
         hora,
         obra,
@@ -329,14 +468,14 @@ export function NuevoTurno({
         responsableId: usuario?.id ?? null,
       })
       /* El tipo, con el ítem ya creado: es el cambio que dispara la automatización de Monday. */
-      await asignarTipoTurno(id, tipo)
+      await escribirTipoConfig(id, tipoCfg)
       const t = await leerTurno(id).catch(() => null)
       const turno: Turno =
         t ??
         ({
           id,
           nombre: nombreCliente,
-          etiquetaTipo: defTipo(tipo).etiqueta,
+          etiquetaTipo,
           tipo,
           etiquetaEstado: 'Pendiente de Enviar',
           estado: 'pendiente',
@@ -368,11 +507,11 @@ export function NuevoTurno({
     }
   }
 
-  const texto = tipo
+  const texto = tipoCfg
     ? mensajeAsignacion({
         cliente: nombreCliente,
         tipo,
-        etiquetaTipo: defTipo(tipo).etiqueta,
+        etiquetaTipo,
         fecha,
         hora,
         ubicacion: obra?.ubicacion || cuenta?.ubicacion || '',
@@ -394,21 +533,23 @@ export function NuevoTurno({
     )
   }
 
-  /* Colocación: las aberturas a colocar, junto al tipo de turno. Arranca vacío. */
+  /* Colocación: las aberturas a colocar, en la fila desplegada de la obra. Arranca vacío y, hasta que
+     tenga un número, con borde rojo: es obligatorio. */
   const campoAberturas = (
-    <div className="med-campo">
+    <div className="med-campo ag-campo-ab">
       <label className="med-l" htmlFor={`${uid}-ab`}>
-        Cant Aberturas a colocar
+        Cant Aberturas a colocar *
       </label>
-      <div className="med-conic">
+      <div className={`med-conic ${aberturasValidas(cantAberturas) ? '' : 'ag-ab--falta'}`}>
         <i className="fas fa-border-all" aria-hidden="true" />
         <input
           id={`${uid}-ab`}
           className="med-input"
           type="number"
-          min={0}
+          min={1}
           step={1}
           inputMode="numeric"
+          placeholder="Ej: 4"
           value={cantAberturas}
           onChange={(e) => setCantAberturas(e.target.value)}
         />
@@ -509,7 +650,7 @@ export function NuevoTurno({
                 : 'Tildá la obra del turno. Los pendientes de entrega son opcionales y van en el mismo turno.'}
           </p>
 
-          {/* Primero el tipo de turno (y, en Colocación, las aberturas a colocar). */}
+          {/* Primero el tipo de turno. */}
           <div className="carga-grid ag-asistente-campos ag-asistente-campos--2">
             <div className="med-campo">
               <label className="med-l" htmlFor={`${uid}-tipo`}>
@@ -518,23 +659,15 @@ export function NuevoTurno({
               <SelectBuscable
                 id={`${uid}-tipo`}
                 valor={sel.tipo ?? ''}
-                opciones={TIPOS_ALTA.map((t) => ({ valor: t, texto: defTipo(t).titulo }))}
+                opciones={tipos.map((t) => ({ valor: t.clave, texto: t.titulo }))}
                 placeholder="Seleccionar..."
                 falta={marcar && !sel.tipo}
                 onElegir={(v) => {
-                  setSel((x) => elegirTipo(x, v as TipoTurno))
+                  setSel((x) => elegirTipo(x, v))
                   if (v === 'entrega') setOps([])
                 }}
               />
             </div>
-            {sel.tipo === 'colocacion' && obra && campoAberturas}
-            {sel.tipo === 'colocacion' && obra && (obra.saldo ?? 0) > 0 && (
-              <p className="ag-aviso-saldo" role="note">
-                <i className="fas fa-triangle-exclamation" aria-hidden="true" />
-                La obra tiene saldo pendiente de cancelar, por lo que se adjuntará el mensaje de recordatorio al usuario
-                en el mensaje final del turno.
-              </p>
-            )}
           </div>
 
           {sel.tipo !== 'entrega' && (
@@ -587,59 +720,83 @@ export function NuevoTurno({
                           : pagina(tablaObras, pagObras).map((o) => {
                               const on = sel.obraId === o.id
                               const color = colorCancelacion(o.pctCancelado)
+                              const despliega = on && sel.tipo === 'colocacion'
                               return (
-                                <tr key={o.id} className={`ant-row ${on ? 'ant-row--on' : ''}`}>
-                                  <td className="ant-col-check">
-                                    <input
-                                      type="checkbox"
-                                      className="ant-check"
-                                      checked={on}
-                                      onChange={() => {
-                                        setSel((s) => elegirObra(s, o.id))
-                                        setOps([])
-                                      }}
-                                      aria-label={`Elegir ${o.nombre}`}
-                                    />
-                                  </td>
-                                  <td>
-                                    <span className="ant-nro">{o.nombre}</span>
-                                    <span className="ant-detalle">{o.ubicacion || 'Sin ubicación'}</span>
-                                  </td>
-                                  <td className="ant-col-cen">
-                                    {o.material ? (
-                                      <MaterialChip material={o.material} />
-                                    ) : (
-                                      <span className="ant-sd">—</span>
-                                    )}
-                                  </td>
-                                  <td className="ant-col-cen">
-                                    <EtapaChip texto={o.etapa} color={o.etapaColor} />
-                                  </td>
-                                  <td className="ant-col-cen">
-                                    {o.saldo === null ? (
-                                      <span className="ant-sd">Sin dato</span>
-                                    ) : (
-                                      <span className={`ant-num ${o.saldo > 0 ? 'ag-saldo-debe' : ''}`}>
-                                        {dinero(o.saldo)}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="ant-col-cen">
-                                    {o.pctCancelado === null ? (
-                                      <span className="ant-sd">Sin dato</span>
-                                    ) : (
-                                      <span className={`ag-pct ag-pct--${color}`}>
-                                        {Math.round(o.pctCancelado)} % cancelada
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="ant-col-cen">
-                                    <button type="button" className="ant-ver" onClick={() => setVerOpsDe(o.id)}>
-                                      <i className="fas fa-industry" /> Ver OP
-                                      {on && ops.length ? ` (${ops.length})` : ''}
-                                    </button>
-                                  </td>
-                                </tr>
+                                <Fragment key={o.id}>
+                                  <tr
+                                    className={`ant-row ${on ? 'ant-row--on' : ''} ${despliega ? 'ag-row--abierta' : ''}`}
+                                  >
+                                    <td className="ant-col-check">
+                                      <input
+                                        type="checkbox"
+                                        className="ant-check"
+                                        checked={on}
+                                        onChange={() => {
+                                          setSel((s) => elegirObra(s, o.id))
+                                          setOps([])
+                                        }}
+                                        aria-label={`Elegir ${o.nombre}`}
+                                      />
+                                    </td>
+                                    <td>
+                                      <span className="ant-nro">{o.nombre}</span>
+                                      <span className="ant-detalle">{o.ubicacion || 'Sin ubicación'}</span>
+                                    </td>
+                                    <td className="ant-col-cen">
+                                      {o.material ? (
+                                        <MaterialChip material={o.material} />
+                                      ) : (
+                                        <span className="ant-sd">—</span>
+                                      )}
+                                    </td>
+                                    <td className="ant-col-cen">
+                                      <EtapaChip texto={o.etapa} color={o.etapaColor} />
+                                    </td>
+                                    <td className="ant-col-cen">
+                                      {o.saldo === null ? (
+                                        <span className="ant-sd">Sin dato</span>
+                                      ) : (
+                                        <span className={`ant-num ${o.saldo > 0 ? 'ag-saldo-debe' : ''}`}>
+                                          {dinero(o.saldo)}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="ant-col-cen">
+                                      {o.pctCancelado === null ? (
+                                        <span className="ant-sd">Sin dato</span>
+                                      ) : (
+                                        <span className={`ag-pct ag-pct--${color}`}>
+                                          {Math.round(o.pctCancelado)} % cancelada
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="ant-col-cen">
+                                      <button type="button" className="ant-ver" onClick={() => setVerOpsDe(o.id)}>
+                                        <i className="fas fa-industry" /> Ver OP
+                                        {on && ops.length ? ` (${ops.length})` : ''}
+                                      </button>
+                                    </td>
+                                  </tr>
+                                  {despliega && (
+                                    <tr className="ag-fila-detalle">
+                                      <td colSpan={7}>
+                                        <div className="carga-grid ag-detalle-obra">
+                                          {campoAberturas}
+                                          {aprobacionPorSaldo(o.saldo) === 'noAprobada' && (
+                                            <div className="ag-aviso-saldo" role="note">
+                                              <AprobacionChip aprobacion="noAprobada" chico />
+                                              <span>
+                                                La obra tiene saldo pendiente de cancelar ({dinero(o.saldo)}), por lo
+                                                que se adjuntará el mensaje de recordatorio al usuario en el mensaje
+                                                final del turno.
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
                               )
                             })}
                       </tbody>
@@ -723,11 +880,15 @@ export function NuevoTurno({
                                 <span className="ant-num ant-pend">{p.pendiente}</span>
                               </td>
                               <td className="ant-col-cen">
-                                <span className={`ag-estado-pend ag-estado-pend--${entregaDePendiente(p.vendido, p.pendiente)}`}>
+                                <span
+                                  className={`ag-estado-pend ag-estado-pend--${entregaDePendiente(p.vendido, p.pendiente)}`}
+                                >
                                   {p.estado ||
-                                    { entregado: 'Entregado', parcial: 'Parcialmente Entregado', pendiente: 'Pend de Entregar' }[
-                                      entregaDePendiente(p.vendido, p.pendiente)
-                                    ]}
+                                    {
+                                      entregado: 'Entregado',
+                                      parcial: 'Parcialmente Entregado',
+                                      pendiente: 'Pend de Entregar',
+                                    }[entregaDePendiente(p.vendido, p.pendiente)]}
                                 </span>
                               </td>
                             </tr>
@@ -745,7 +906,7 @@ export function NuevoTurno({
               {sel.pendientesIds.length > 0 && obra && (
                 <p className="ag-nota">
                   <i className="fas fa-circle-info" /> Los pendientes van en el mismo turno de la obra: se crea un solo
-                  turno, de tipo <strong>{sel.tipo ? defTipo(sel.tipo).titulo : ''}</strong>.
+                  turno, de tipo <strong>{tipoCfg?.titulo ?? ''}</strong>.
                 </p>
               )}
             </>
@@ -766,7 +927,7 @@ export function NuevoTurno({
           <dt>Cuenta corriente</dt>
           <dd>{cuenta?.nombre}</dd>
           <dt>Tipo de turno</dt>
-          <dd>{tipo && <TipoTurnoChip tipo={tipo} etiqueta={defTipo(tipo).etiqueta} />}</dd>
+          <dd>{tipoCfg && <TipoTurnoChip tipo={tipo} etiqueta={tipoCfg.titulo} />}</dd>
           <dt>Obra</dt>
           <dd>
             {obra ? (
@@ -812,11 +973,22 @@ export function NuevoTurno({
               </dd>
             </>
           )}
-          <dt>Estado al registrarlo</dt>
-          <dd className="ag-estado-registro">
-            <EstadoTurnoChip estado="pendiente" />
-            <span className="ag-estado-nota">(Si se envía el mensaje de asignación, el turno resulta Enviado)</span>
-          </dd>
+          {editar ? (
+            <>
+              <dt>Estado</dt>
+              <dd>
+                <EstadoTurnoChip estado={editar.estado} />
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt>Estado al registrarlo</dt>
+              <dd className="ag-estado-registro">
+                <EstadoTurnoChip estado="pendiente" />
+                <span className="ag-estado-nota">(Si se envía el mensaje de asignación, el turno resulta Enviado)</span>
+              </dd>
+            </>
+          )}
         </dl>
 
         <div className="ag-registro-campos">
@@ -832,7 +1004,7 @@ export function NuevoTurno({
                 type="date"
                 min={hoy}
                 value={fecha}
-                disabled={fase !== null}
+                disabled={fase !== null || !!editar}
                 onClick={(e) => e.currentTarget.showPicker?.()}
                 onChange={(e) => setFecha(e.target.value)}
               />
@@ -850,12 +1022,17 @@ export function NuevoTurno({
                 type="time"
                 step={300}
                 value={hora}
-                disabled={fase !== null}
+                disabled={fase !== null || !!editar}
                 onClick={(e) => e.currentTarget.showPicker?.()}
                 onChange={(e) => setHora(e.target.value)}
               />
             </div>
           </div>
+          {editar && (
+            <p className="ag-nota ag-nota--fila">
+              <i className="fas fa-lock" /> La fecha y el rango horario no se editan: se cambian al reprogramar el turno.
+            </p>
+          )}
           {tipo === 'reparacion' && (
             <div className="med-campo">
               <label className="med-l" htmlFor={`${uid}-rep`}>
@@ -891,9 +1068,9 @@ export function NuevoTurno({
         >
           <div className="ag-asistente-cabeza">
             <div className="ag-asistente-tit">
-              <i className="fas fa-calendar-plus" aria-hidden="true" />
+              <i className={`fas ${editar ? 'fa-pen-to-square' : 'fa-calendar-plus'}`} aria-hidden="true" />
               <div>
-                <h3 className="modal-title">Nuevo turno</h3>
+                <h3 className="modal-title">{editar ? 'Editar turno' : 'Nuevo turno'}</h3>
                 <p className="ag-asistente-cuando">
                   {fechaInicial ? fechaHoraCorta(fechaInicial, horaInicial) : 'Elegí la fecha al registrar'}
                 </p>
@@ -917,14 +1094,27 @@ export function NuevoTurno({
             >
               <i className="fas fa-arrow-left" /> Volver
             </button>
-            <button type="button" className="btn btn-primary" disabled={fase !== null || cargando} onClick={continuar}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={fase !== null || cargando || preparando}
+              onClick={continuar}
+            >
               {paso < 2 ? (
                 <>
                   Continuar a {ETAPAS[paso + 1]} <i className="fas fa-arrow-right" />
                 </>
               ) : (
                 <>
-                  <i className="fas fa-calendar-check" /> Confirmar turno
+                  {editar ? (
+                    <>
+                      <i className="fas fa-floppy-disk" /> Guardar Turno
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-calendar-check" /> Confirmar turno
+                    </>
+                  )}
                 </>
               )}
             </button>
@@ -952,12 +1142,22 @@ export function NuevoTurno({
         />
       )}
 
-      {fase === 'registrando' && (
-        <ModalCargando
-          titulo="Registrando el turno en la Agenda..."
-          detalle="Se verifica que el horario esté libre y se crea el turno con todos los datos."
-        />
+      {preparando && (
+        <ModalCargando titulo="Leyendo los datos del turno..." detalle="Se cargan su cliente, su obra, sus pendientes y sus OP." />
       )}
+
+      {fase === 'registrando' &&
+        (editar ? (
+          <ModalCargando
+            titulo="Registrando los cambios del turno..."
+            detalle="Se actualizan en la Agenda sólo los datos que cambiaste."
+          />
+        ) : (
+          <ModalCargando
+            titulo="Registrando el turno en la Agenda..."
+            detalle="Se verifica que el horario esté libre y se crea el turno con todos los datos."
+          />
+        ))}
 
       {fase === 'preguntando' && creado && cuenta && (
         <EnvioMensaje

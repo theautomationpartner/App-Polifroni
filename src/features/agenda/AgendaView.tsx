@@ -8,29 +8,34 @@ import type { EventClickArg, EventContentArg, EventInput } from '@fullcalendar/c
 import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
-import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { hoyLocal } from '@/features/op/DatosMedicion'
 import { useClickOutside } from '@/hooks/useClickOutside'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import {
   COLOR_SIN_TIPO,
   MATERIALES,
-  TIPOS_TURNO,
+  TIPOS_POR_DEFECTO,
+  aberturasValidas,
+  claveDeTurno,
+  type TipoConfig,
   activo,
   colorDeTipo,
   defTipo,
-  enFranja,
-  franjaVacia,
-  hayFranja,
   materialDe,
   semanasDelMes,
-  type Franja,
   type MaterialTurno,
   fechaHoraCorta,
   horarioOcupado,
-  type TipoTurno,
 } from '@/lib/agenda'
-import { coloresTipoTurno, leerTurno, listarTurnos, mondayHabilitado, type Turno } from '@/services/monday'
+import {
+  coloresTipoTurno,
+  editarTurno,
+  getTiposConfig,
+  leerTurno,
+  listarTurnos,
+  mondayHabilitado,
+  type Turno,
+} from '@/services/monday'
 import { useApp } from '@/state/hooks'
 import { EstadoTurnoChip, TipoTurnoChip } from './chips'
 import { NuevoTurno } from './NuevoTurno'
@@ -40,15 +45,6 @@ const dos = (n: number) => String(n).padStart(2, '0')
 const fechaLocal = (d: Date) => `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`
 const horaLocal = (d: Date) => `${dos(d.getHours())}:${dos(d.getMinutes())}`
 
-/** Las horas de la franja horaria: de 7 a 21. */
-const HORA_MIN = 7
-const HORA_MAX = 21
-const HORAS = Array.from({ length: HORA_MAX - HORA_MIN + 1 }, (_, i) => HORA_MIN + i)
-const opcionHora = (h: number) => ({
-  valor: String(h),
-  texto: `${dos(h)}:00 hs`,
-})
-
 /** Una opción de un grupo de filtros: su color (sólo los tipos de turno) y cuántos turnos tiene. */
 interface OpcionFiltro<T extends string> {
   id: T
@@ -57,32 +53,93 @@ interface OpcionFiltro<T extends string> {
   n: number | null
 }
 
-/** Cuántas opciones de un grupo entran en la barra; las demás van al menú "⋯". */
+/** Cuántas opciones de un grupo fijo entran en la barra; las demás van al menú "⋯". */
 const OPCIONES_A_LA_VISTA = 3
+/** El ancho del botón "⋯" y el espacio entre botones de la barra (los de agenda.css). */
+const ANCHO_MAS = 30
+const HUECO = 5
+
+/**
+ * Cuántas opciones entran a la vista en `disponible` px, con sus anchos: todas si entran; si no, las
+ * que entran dejando lugar para el "⋯".
+ */
+function cuantasEntran(anchos: number[], disponible: number): number {
+  const total = anchos.reduce((t, a, i) => t + a + (i ? HUECO : 0), 0)
+  if (total <= disponible) return anchos.length
+  let usado = ANCHO_MAS
+  let n = 0
+  for (const a of anchos) {
+    if (usado + HUECO + a > disponible) break
+    usado += HUECO + a
+    n++
+  }
+  return n
+}
 
 /**
  * Un grupo de filtros de la barra (material, tipo de turno). Muestra las primeras opciones; si hay
  * más, el botón "⋯" abre la lista de las que no entraron, y avisa cuántas de ellas están tildadas.
+ * `unico`: excluyente (se elige una sola opción, como un radio); si no, acumulativo.
+ * `ajustable`: muestra tantas opciones como entren en el espacio libre de la barra (y el resto, en
+ * el "⋯"); si no, las primeras `OPCIONES_A_LA_VISTA`.
  */
 function GrupoFiltro<T extends string>({
   nombre,
   opciones,
   elegidos,
   onAlternar,
+  unico = false,
+  ajustable = false,
 }: {
   nombre: string
   opciones: OpcionFiltro<T>[]
   elegidos: Set<T>
   onAlternar: (id: T) => void
+  unico?: boolean
+  ajustable?: boolean
 }) {
+  const icono = (on: boolean) => (unico ? (on ? 'fa-circle-dot' : 'fa-circle') : on ? 'fa-square-check' : 'fa-square')
   const [abierto, setAbierto] = useState(false)
   const caja = useRef<HTMLDivElement>(null)
   useClickOutside(caja, () => setAbierto(false), abierto)
-  const vistas = opciones.slice(0, OPCIONES_A_LA_VISTA)
-  const resto = opciones.slice(OPCIONES_A_LA_VISTA)
+  /* Ajustable: se miden los botones (en una copia invisible) y el espacio del grupo, y se muestran
+     los que entran. Se vuelve a medir si cambia el ancho o cambian las opciones (los números). */
+  const grupo = useRef<HTMLDivElement>(null)
+  const medidor = useRef<HTMLDivElement>(null)
+  const [aLaVista, setALaVista] = useState(ajustable ? opciones.length : OPCIONES_A_LA_VISTA)
+  const firma = opciones.map((o) => `${o.id}:${o.titulo}:${o.n}`).join('|')
+  useLayoutEffect(() => {
+    if (!ajustable || !grupo.current || !medidor.current) return
+    const medir = () => {
+      if (!grupo.current || !medidor.current) return
+      const anchos = [...medidor.current.children].map((c) => (c as HTMLElement).offsetWidth)
+      setALaVista(cuantasEntran(anchos, grupo.current.clientWidth))
+    }
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(grupo.current)
+    return () => ro.disconnect()
+  }, [ajustable, firma])
+  const vistas = opciones.slice(0, aLaVista)
+  const resto = opciones.slice(aLaVista)
   const tildadosResto = resto.filter((o) => elegidos.has(o.id)).length
   return (
-    <div className="ag-barra-grupo" role="group" aria-label={`Filtrar por ${nombre} (se pueden tildar varios)`}>
+    <div
+      ref={grupo}
+      className={`ag-barra-grupo ${ajustable ? 'ag-barra-grupo--ajustable' : ''}`}
+      role="group"
+      aria-label={`Filtrar por ${nombre} (${unico ? 'se elige uno' : 'se pueden tildar varios'})`}
+    >
+      {ajustable && (
+        <div ref={medidor} className="ag-medidor" aria-hidden="true">
+          {opciones.map((o) => (
+            <span key={o.id} className="ag-tab">
+              <i className={`${unico ? 'far' : 'fas'} ${icono(false)}`} /> {o.titulo}
+              {o.n !== null && <span className="ag-tab-n">{o.n}</span>}
+            </span>
+          ))}
+        </div>
+      )}
       {vistas.map((o) => (
         <button
           key={o.id}
@@ -92,7 +149,7 @@ function GrupoFiltro<T extends string>({
           style={o.color ? { ['--tc' as string]: o.color } : undefined}
           onClick={() => onAlternar(o.id)}
         >
-          <i className={`fas ${elegidos.has(o.id) ? 'fa-square-check' : 'fa-square'}`} /> {o.titulo}
+          <i className={`${unico ? 'far' : 'fas'} ${icono(elegidos.has(o.id))}`} /> {o.titulo}
           {o.n !== null && <span className="ag-tab-n">{o.n}</span>}
         </button>
       ))}
@@ -122,7 +179,7 @@ function GrupoFiltro<T extends string>({
                   onClick={() => onAlternar(o.id)}
                 >
                   <i
-                    className={`fas ${elegidos.has(o.id) ? 'fa-square-check' : 'fa-square'}`}
+                    className={`${unico ? 'far' : 'fas'} ${icono(elegidos.has(o.id))}`}
                     style={o.color ? { color: o.color } : undefined}
                   />
                   <span className="ag-mas-it-tit">{o.titulo}</span>
@@ -147,14 +204,6 @@ const VISTAS = [
   { id: 'semanaMes', titulo: 'Semana' },
 ] as const
 type Vista = (typeof VISTAS)[number]['id']
-
-/** "08:00 a 12:00 hs", "Desde las 14:00 hs", "Hasta las 10:00 hs". */
-function textoFranja(f: Franja): string {
-  const h = (n: number) => `${dos(n)}:00`
-  if (f.desde != null && f.hasta != null) return `${h(f.desde)} a ${h(f.hasta)} hs`
-  if (f.desde != null) return `Desde las ${h(f.desde)} hs`
-  return `Hasta las ${h(f.hasta ?? HORA_MAX)} hs`
-}
 
 /**
  * El día de hoy, que se actualiza solo: a la medianoche (y al volver a la pestaña, por si la
@@ -199,8 +248,11 @@ function alternar<T>(s: Set<T>, x: T): Set<T> {
   return n
 }
 
-/** "Otros": los turnos de tipos viejos que la app no carga (SELLAR...). */
-type FiltroTipo = TipoTurno | 'otros'
+/**
+ * El filtro por tipo: la clave de un tipo de la configuración (`TipoConfig.clave`), u "otros" para
+ * los turnos de un tipo que no está configurado (o sin tipo).
+ */
+type FiltroTipo = string
 
 /** El nombre del tipo, también para los viejos: el que va siempre en el bloque del turno. */
 const tituloTipo = (t: Turno) => (t.tipo ? defTipo(t.tipo).titulo : t.etiquetaTipo || 'Sin tipo')
@@ -295,6 +347,7 @@ function FichaTurno({
   leido = false,
   onClose,
   onAccion,
+  onCambio,
 }: {
   turno: Turno
   /** El turno ya viene leído de Monday (se vuelve de una acción): se muestra tal cual, sin releerlo. */
@@ -302,8 +355,35 @@ function FichaTurno({
   onClose: () => void
   /** La acción elegida, con el turno tal como se leyó de Monday. */
   onAccion: (a: AccionCalendario, t: Turno) => void
+  /** El turno cambió desde la ficha (las aberturas): el calendario lo actualiza. */
+  onCambio: (t: Turno) => void
 }) {
+  const { usuario } = useApp()
   const [fresco, setFresco] = useState<Turno>(turno)
+  /** Colocación: editando la cantidad de aberturas (el valor tipeado), o `null`. */
+  const [abEditando, setAbEditando] = useState<string | null>(null)
+  const [abGuardando, setAbGuardando] = useState(false)
+  const [abError, setAbError] = useState('')
+  /* Guarda la cantidad de aberturas en el turno de Monday (y deja la constancia). */
+  const guardarAberturas = async () => {
+    if (abEditando === null || abGuardando) return
+    if (!aberturasValidas(abEditando)) return setAbError('Ingresá un número entero mayor a 0.')
+    const n = Number(abEditando)
+    if (String(n) === fresco.cantAberturas.trim()) return setAbEditando(null)
+    setAbGuardando(true)
+    setAbError('')
+    try {
+      await editarTurno(fresco.id, { aberturas: n, autor: usuario?.name ?? '' })
+      const nuevo = { ...fresco, cantAberturas: String(n) }
+      setFresco(nuevo)
+      onCambio(nuevo)
+      setAbEditando(null)
+    } catch {
+      setAbError('No se pudo guardar en Monday. Probá de nuevo.')
+    } finally {
+      setAbGuardando(false)
+    }
+  }
   const [leyendo, setLeyendo] = useState(!leido)
   useEffect(() => {
     if (leido) return
@@ -361,7 +441,67 @@ function FichaTurno({
             {t.tipo === 'colocacion' && (
               <>
                 <dt>Aberturas</dt>
-                <dd>{t.cantAberturas || <span className="ant-sd">Sin dato</span>}</dd>
+                <dd>
+                  {abEditando === null ? (
+                    <span className="ag-ab-ver">
+                      {t.cantAberturas || <span className="ant-sd">Sin dato</span>}
+                      {admiteAccion(t, 'editar') && (
+                        <button
+                          type="button"
+                          className="ag-ab-lapiz"
+                          title="Editar la cantidad de aberturas a colocar"
+                          aria-label="Editar la cantidad de aberturas a colocar"
+                          onClick={() => {
+                            setAbError('')
+                            setAbEditando(t.cantAberturas.trim())
+                          }}
+                        >
+                          <i className="fas fa-pen" />
+                        </button>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="ag-ab-editar">
+                      <input
+                        className={`ag-input ag-ab-input ${aberturasValidas(abEditando) ? '' : 'ag-input--falta'}`}
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        autoFocus
+                        value={abEditando}
+                        disabled={abGuardando}
+                        aria-label="Cantidad de aberturas a colocar"
+                        onChange={(e) => setAbEditando(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void guardarAberturas()
+                          if (e.key === 'Escape') setAbEditando(null)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ag-ab-ok"
+                        title="Guardar"
+                        aria-label="Guardar la cantidad de aberturas"
+                        disabled={abGuardando}
+                        onClick={() => void guardarAberturas()}
+                      >
+                        <i className={`fas ${abGuardando ? 'fa-circle-notch spin' : 'fa-check'}`} />
+                      </button>
+                      <button
+                        type="button"
+                        className="ag-ab-no"
+                        title="Cancelar"
+                        aria-label="Cancelar la edición"
+                        disabled={abGuardando}
+                        onClick={() => setAbEditando(null)}
+                      >
+                        <i className="fas fa-xmark" />
+                      </button>
+                      {abError && <span className="ag-ab-error">{abError}</span>}
+                    </span>
+                  )}
+                </dd>
               </>
             )}
             <dt>Responsable</dt>
@@ -395,9 +535,8 @@ function FichaTurno({
  * Muestra los turnos ACTIVOS —Enviados y Pendientes de Enviar, todos con el mismo bloque—, cada
  * uno con su tipo de turno —en el color de su etiqueta en el tablero—, sobre verde si la obra es de
  * PVC y amarillo si es de Aluminio. Los filtros por tipo son acumulativos: se ven los turnos de
- * todos los tipos tildados (sin ninguno tildado, se ven todos). Igual el material (PVC, Aluminio,
- * sin material). Los grupos se suman entre sí, y con la franja horaria: "Colocación y Reparación,
- * de PVC, de 8 a 12".
+ * todos los tipos tildados (sin ninguno tildado, se ven todos). El material es excluyente: PVC,
+ * Aluminio o sin material (o todos). Los dos grupos se cruzan: "Colocación y Reparación, de PVC".
  *
  *  - Click en un día o en un horario libre: el turno nuevo (`NuevoTurno`), con esa fecha y hora. Un
  *    horario con un turno activo no se puede tomar; se libera cuando ese turno se cumple o se cancela.
@@ -409,8 +548,9 @@ export function AgendaView() {
   const [error, setError] = useState(false)
   const [intento, setIntento] = useState(0)
   const [filtros, setFiltros] = useState<Set<FiltroTipo>>(new Set())
+  /** Los tipos de turno del tablero de configuración; los de siempre, mientras tanto o si no se pudo leer. */
+  const [tiposCfg, setTiposCfg] = useState<TipoConfig[]>(TIPOS_POR_DEFECTO)
   const [materiales, setMateriales] = useState<Set<MaterialTurno>>(new Set())
-  const [franja, setFranja] = useState<Franja>(franjaVacia())
   const [vista, setVista] = useState<Vista>('dayGridMonth')
   /** El título de lo que se ve ("Octubre de 2026", "5 – 11 oct 2026"), para el encabezado propio. */
   const [tituloVista, setTituloVista] = useState('')
@@ -432,6 +572,8 @@ export function AgendaView() {
   const calendario = useRef<FullCalendar>(null)
   const [colores, setColores] = useState<Record<string, string> | null>(null)
   const [nuevo, setNuevo] = useState<{ fecha: string; hora: string } | null>(null)
+  /** El turno que se está editando (con el asistente del turno nuevo). */
+  const [editando, setEditando] = useState<Turno | null>(null)
   const [ficha, setFicha] = useState<{ turno: Turno; leido: boolean } | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [bloqueo, setBloqueo] = useState<{
@@ -469,6 +611,18 @@ export function AgendaView() {
       .catch(() => setColores(null))
   }, [])
 
+  /* Los tipos de turno, del tablero de configuración: se leen cada vez que se entra a la Agenda, así un
+     tipo nuevo aparece en los filtros y en el turno nuevo sin tocar la app. */
+  useEffect(() => {
+    let vivo = true
+    getTiposConfig()
+      .then((t) => vivo && t.length > 0 && setTiposCfg(t))
+      .catch(() => {})
+    return () => {
+      vivo = false
+    }
+  }, [])
+
   /* Un turno cambiado: si sigue activo se actualiza; si se cumplió o se canceló, sale del calendario. */
   const cambiar = (t: Turno) =>
     setTurnos((l) => {
@@ -483,18 +637,22 @@ export function AgendaView() {
     onVolver: (t) => setFicha({ turno: t, leido: true }),
   })
 
-  const filtroDe = (t: Turno): FiltroTipo => t.tipo ?? 'otros'
+  const clavesCfg = new Set(tiposCfg.map((x) => x.clave))
+  const filtroDe = (t: Turno): FiltroTipo => {
+    const clave = claveDeTurno(t)
+    return clavesCfg.has(clave) ? clave : 'otros'
+  }
   /*
-   * Dentro de un grupo, lo tildado se suma (PVC o Aluminio); entre grupos, se cruza (tipo Y material
-   * Y franja). Cada filtro cuenta los turnos que se verían con los demás grupos como están.
+   * Los tipos tildados se suman; el material es uno solo. Los dos grupos se cruzan (tipo Y material).
+   * Cada filtro cuenta los turnos que se verían con el otro grupo como está.
    */
-  const enLaFranja = useMemo(() => (turnos ?? []).filter((t) => t.fecha && enFranja(t.hora, franja)), [turnos, franja])
+  const conFecha = useMemo(() => (turnos ?? []).filter((t) => t.fecha), [turnos])
   const pasaTipo = (t: Turno) => filtros.size === 0 || filtros.has(filtroDe(t))
   const pasaMaterial = (t: Turno) => materiales.size === 0 || materiales.has(materialDe(t.material))
   const visibles = useMemo(
-    () => enLaFranja.filter((t) => pasaTipo(t) && pasaMaterial(t)),
+    () => conFecha.filter((t) => pasaTipo(t) && pasaMaterial(t)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [enLaFranja, filtros, materiales],
+    [conFecha, filtros, materiales],
   )
   const semanas = useMemo(
     () => (vista === 'semanaMes' && inicioVista ? semanasDelMes(inicioVista) : []),
@@ -545,19 +703,23 @@ export function AgendaView() {
       ro.disconnect()
     }
   }, [vista, eventos, semanaSel])
-  const cuenta = (f: FiltroTipo) => enLaFranja.filter((t) => pasaMaterial(t) && filtroDe(t) === f).length
+  const cuenta = (f: FiltroTipo) => conFecha.filter((t) => pasaMaterial(t) && filtroDe(t) === f).length
   const cuentaMaterial = (m: MaterialTurno) =>
-    enLaFranja.filter((t) => pasaTipo(t) && materialDe(t.material) === m).length
-  const hayFiltros = filtros.size > 0 || materiales.size > 0 || hayFranja(franja)
+    conFecha.filter((t) => pasaTipo(t) && materialDe(t.material) === m).length
+  const hayFiltros = filtros.size > 0 || materiales.size > 0
   const limpiarFiltros = () => {
     setFiltros(new Set())
     setMateriales(new Set())
-    setFranja(franjaVacia())
   }
-  const colorFiltro = (f: FiltroTipo) => (f === 'otros' ? COLOR_SIN_TIPO : colorDeTipo(f, defTipo(f).etiqueta, colores))
+  const colorFiltro = (f: FiltroTipo) => {
+    const cfg = tiposCfg.find((x) => x.clave === f)
+    if (!cfg) return COLOR_SIN_TIPO
+    return colorDeTipo(cfg.conocido, cfg.conocido ? defTipo(cfg.conocido).etiqueta : cfg.titulo, colores)
+  }
 
   const alternarFiltro = (f: FiltroTipo) => setFiltros((s) => alternar(s, f))
-  const alternarMaterial = (m: MaterialTurno) => setMateriales((s) => alternar(s, m))
+  /* El material es excluyente: elegir uno reemplaza al anterior; elegirlo de nuevo vuelve a todos. */
+  const alternarMaterial = (m: MaterialTurno) => setMateriales((s) => (s.has(m) ? new Set() : new Set([m])))
 
   const conDatos = turnos !== null
   const opcionesMaterial: OpcionFiltro<MaterialTurno>[] = MATERIALES.map((m) => ({
@@ -566,8 +728,8 @@ export function AgendaView() {
     n: conDatos ? cuentaMaterial(m.id) : null,
   }))
   const opcionesTipo: OpcionFiltro<FiltroTipo>[] = [
-    ...TIPOS_TURNO.map((t) => ({ id: t.id as FiltroTipo, titulo: t.titulo })),
-    { id: 'otros' as FiltroTipo, titulo: 'Otros' },
+    ...tiposCfg.map((t) => ({ id: t.clave, titulo: t.titulo })),
+    { id: 'otros', titulo: 'Otros' },
   ].map((o) => ({ ...o, color: colorFiltro(o.id), n: conDatos ? cuenta(o.id) : null }))
 
   /* "Filtros aplicados": lo tildado, en el orden de la barra, cada uno con su forma de quitarlo. */
@@ -578,9 +740,6 @@ export function AgendaView() {
     ...opcionesTipo
       .filter((o) => filtros.has(o.id))
       .map((o) => ({ clave: `t-${o.id}`, texto: o.titulo, color: o.color, quitar: () => alternarFiltro(o.id) })),
-    ...(hayFranja(franja)
-      ? [{ clave: 'franja', texto: textoFranja(franja), quitar: () => setFranja(franjaVacia()) }]
-      : []),
   ]
 
   /**
@@ -636,7 +795,7 @@ export function AgendaView() {
       <PasoHeader />
       <PasoTitulo
         titulo="Agenda de Turnos"
-        descripcion="Tocá un día o un horario libre para agendar un turno, o un turno para gestionarlo."
+        descripcion="Tocá un día para agendar un turno, o un turno para gestionarlo."
         sinNumero
       />
 
@@ -649,48 +808,23 @@ export function AgendaView() {
 
       <div className="cobro-static">
         <div className="cobro-card">
-          {/* La barra del calendario: material, tipo de turno y franja horaria, con las vistas a la derecha. */}
+          {/* La barra del calendario: material y tipo de turno, con las vistas a la derecha. */}
           <div className="ag-barra">
             <GrupoFiltro
               nombre="material"
               opciones={opcionesMaterial}
               elegidos={materiales}
               onAlternar={alternarMaterial}
+              unico
             />
             <span className="ag-barra-div" aria-hidden="true" />
             <GrupoFiltro
               nombre="tipo de turno"
+              ajustable
               opciones={opcionesTipo}
               elegidos={filtros}
               onAlternar={alternarFiltro}
             />
-            <span className="ag-barra-div" aria-hidden="true" />
-            <div className="ag-barra-grupo ag-franja carga-grid" role="group" aria-label="Filtrar por franja horaria">
-              <i className="fas fa-clock ag-franja-icono" title="Franja horaria" aria-hidden="true" />
-              <div className="ag-franja-campo">
-                <SelectBuscable
-                  id="ag-franja-desde"
-                  valor={franja.desde == null ? '' : String(franja.desde)}
-                  opciones={HORAS.filter((h) => h < HORA_MAX && (franja.hasta == null || h < franja.hasta)).map(
-                    opcionHora,
-                  )}
-                  placeholder="Desde"
-                  onElegir={(x) => setFranja((f) => ({ ...f, desde: Number(x) }))}
-                />
-              </div>
-              <span className="ag-franja-a">a</span>
-              <div className="ag-franja-campo">
-                <SelectBuscable
-                  id="ag-franja-hasta"
-                  valor={franja.hasta == null ? '' : String(franja.hasta)}
-                  opciones={HORAS.filter((h) => h > HORA_MIN && (franja.desde == null || h > franja.desde)).map(
-                    opcionHora,
-                  )}
-                  placeholder="Hasta"
-                  onElegir={(x) => setFranja((f) => ({ ...f, hasta: Number(x) }))}
-                />
-              </div>
-            </div>
             <div className="ag-vistas" role="group" aria-label="Vista del calendario">
               {VISTAS.map((x) => (
                 <button
@@ -866,8 +1000,29 @@ export function AgendaView() {
         </div>
       </div>
 
+      {editando && (
+        <NuevoTurno
+          tipos={tiposCfg}
+          editar={editando}
+          fecha={editando.fecha}
+          hora={editando.hora}
+          onCerrar={(texto) => {
+            const t = editando
+            setEditando(null)
+            /* Sin guardar (Volver o la ×): de vuelta a la ficha del turno, sin releerlo. */
+            if (!texto) return setFicha({ turno: t, leido: true })
+            /* Guardados los cambios, se vuelven a leer los turnos: el calendario lo muestra como quedó. */
+            setAviso(texto)
+            setTurnos(null)
+            setIntento((n) => n + 1)
+          }}
+          onCreado={cambiar}
+        />
+      )}
+
       {nuevo && (
         <NuevoTurno
+          tipos={tiposCfg}
           fecha={nuevo.fecha}
           hora={nuevo.hora}
           onCerrar={(texto) => {
@@ -891,8 +1046,11 @@ export function AgendaView() {
           onClose={() => setFicha(null)}
           onAccion={(accion, t) => {
             setFicha(null)
+            /* Editar abre el mismo asistente del turno nuevo, con los datos del turno. */
+            if (accion === 'editar') return setEditando(t)
             acciones.abrir(accion, t)
           }}
+          onCambio={cambiar}
         />
       )}
 
