@@ -165,34 +165,41 @@ export function ObraFichaCliente({
 
       <section className="credito-grupo">
         {/* Primero lo pactado, después lo que falta cobrar y al final lo cobrado, con la torta del
-            porcentaje cancelado a la derecha. */}
-        <div className="kpi-grid kpi-grid--3 kpi-grid--torta">
-          <div className="kpi-card">
-            <span className="kpi-label">Total obra pactado</span>
-            {val(dinero(total))}
+            porcentaje cancelado a la derecha. En Facturar lo cobrado no importa: va su propia fila. */}
+        {!enFacturacion && (
+          <div className="kpi-grid kpi-grid--3 kpi-grid--torta">
+            <div className="kpi-card">
+              <span className="kpi-label">Total obra pactado</span>
+              {val(dinero(total))}
+            </div>
+            <div className="kpi-card">
+              <span className="kpi-label">Pendiente de cobro</span>
+              {val(dinero(saldo), saldo && saldo > 0 ? 'v-red' : '')}
+            </div>
+            <div className="kpi-card">
+              <span className="kpi-label">Cancelado</span>
+              {val(dinero(cancelado), 'v-green')}
+            </div>
+            <div className="kpi-torta" aria-label="Porcentaje cancelado">
+              <span className="kpi-torta-t">Equivale a:</span>
+              {vacio || pct === null ? (
+                <span className="skeleton kpi-torta-sk" />
+              ) : (
+                <Donut porcentaje={pct} color={colorCancelado(pct)} etiqueta="" size="md" />
+              )}
+              <span className="kpi-torta-l">cancelado</span>
+            </div>
           </div>
-          <div className="kpi-card">
-            <span className="kpi-label">Pendiente de cobro</span>
-            {val(dinero(saldo), saldo && saldo > 0 ? 'v-red' : '')}
-          </div>
-          <div className="kpi-card">
-            <span className="kpi-label">Cancelado</span>
-            {val(dinero(cancelado), 'v-green')}
-          </div>
-          <div className="kpi-torta" aria-label="Porcentaje cancelado">
-            <span className="kpi-torta-t">Equivale a:</span>
-            {vacio || pct === null ? (
-              <span className="skeleton kpi-torta-sk" />
-            ) : (
-              <Donut porcentaje={pct} color={colorCancelado(pct)} etiqueta="" size="md" />
-            )}
-            <span className="kpi-torta-l">cancelado</span>
-          </div>
-        </div>
+        )}
 
         {enFacturacion ? (
-          /* Lo facturado y lo que falta facturar, con la torta del porcentaje facturado a la derecha. */
-          <div className="kpi-grid kpi-grid--torta ficha-facturacion">
+          /* Lo pactado, lo facturado y lo que falta facturar, con la torta del porcentaje facturado a la
+             derecha (sin lo cobrado: no importa para facturar, regla del usuario 13/10/2026). */
+          <div className="kpi-grid kpi-grid--3 kpi-grid--torta">
+            <div className="kpi-card">
+              <span className="kpi-label">Total obra pactado</span>
+              {val(dinero(total))}
+            </div>
             <div className="kpi-card">
               <span className="kpi-label">Total facturado</span>
               {facturacion ? val(dinero(facturacion.facturado)) : <span className="skeleton skeleton--valor" />}

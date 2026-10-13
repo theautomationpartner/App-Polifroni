@@ -292,16 +292,6 @@
   }
 }
 
-/* ── La ficha de la obra en Facturar: lo facturado, lo pendiente y la torta del porcentaje facturado ── */
-.obras-v2 .ficha-facturacion {
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
-}
-@media (max-width: 900px) {
-  .obras-v2 .ficha-facturacion {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 /* ── El monto del comprobante: el elemento del importe del anticipo de La Batea (registrar cobro) y,
    debajo, las métricas de su cabecera. Con el bordó de la marca en lugar del violeta del anticipo. ── */
 .facturar-v2 .fac-monto-bloque {

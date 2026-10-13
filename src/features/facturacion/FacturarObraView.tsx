@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
-import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ModalErrorConsulta, conTope } from '@/features/agenda/ModalErrorConsulta'
 import { ObraFichaCliente } from '@/features/obras/ObraFichaCliente'
 import { BuscadorObras, ayudaDe, useBuscadorObras } from '@/features/shared/BuscadorObras'
@@ -17,6 +16,7 @@ import {
   getObra,
   mondayHabilitado,
   obrasDeCuenta,
+  type CuentaCorriente,
   type ObraFacturable,
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
@@ -32,8 +32,10 @@ const AYUDA_SIN_OBRA = 'Buscá y cargá una obra para continuar'
  * (`BuscadorObras` + `ObraFichaCliente`): el índice rápido por nombre, el botón Buscar y la ficha con su
  * cliente, constructor e importes.
  *
- * Al continuar se leen la cuenta corriente de la obra (a quién se factura) y sus importes (total
- * pactado, diferencia, cancelado y facturado). Sin cuenta corriente vinculada no se puede facturar.
+ * TODO se lee al elegir la obra, mientras la ficha está en esqueleto: la obra, sus importes (total
+ * pactado, diferencia y facturado) y su cuenta corriente con los movimientos (a quién se factura). Así
+ * "Continuar" pasa a la etapa 2 en el acto, sin otra ventana de espera (regla del usuario, 13/10/2026).
+ * Sin cuenta corriente vinculada no se puede facturar.
  */
 export function FacturarObraView() {
   const dispatch = useDispatch()
@@ -44,8 +46,9 @@ export function FacturarObraView() {
   const [vista, setVista] = useState<Obra | null>(factura.obra)
   /** Lo facturado de la obra a la vista (total, diferencia y facturado), para su ficha. */
   const [importes, setImportes] = useState<ObraFacturable | null>(factura.obras[0] ?? null)
+  /** La cuenta corriente de la obra a la vista, con sus movimientos. `null`: la obra no tiene. */
+  const [cuenta, setCuenta] = useState<CuentaCorriente | null>(factura.cuenta)
   const [cargandoObra, setCargandoObra] = useState(false)
-  const [leyendo, setLeyendo] = useState(false)
   const [indice, setIndice] = useState<EntradaIndice[]>([])
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
   const [errorMonday, setErrorMonday] = useState<string | null>(null)
@@ -66,10 +69,10 @@ export function FacturarObraView() {
   const abrir = async (id: string) => {
     setCargandoObra(true)
     setImportes(null)
+    setCuenta(null)
     try {
-      /* La obra y, a la par, lo que ya se le facturó: la ficha lo muestra en lugar del coordinador. */
-      const [obra, facturadas] = await Promise.all([getObra(id), obrasDeCuenta([id]).catch(() => [])])
-      setImportes(facturadas[0] ?? null)
+      /* La obra y, a la par, lo que ya se le facturó (la ficha lo muestra en lugar del coordinador). */
+      const [obra, facturadas] = await Promise.all([conTope(getObra(id)), conTope(obrasDeCuenta([id]))])
       if (!obra) {
         setVista(null)
         setAviso({
@@ -78,6 +81,11 @@ export function FacturarObraView() {
         })
         return
       }
+      /* Y su cuenta corriente, con los movimientos: es a quién se factura. */
+      const cuentaId = obra.ctaCteClienteIds[0]
+      const cc = cuentaId ? await conTope(getCuentaCorriente(cuentaId)) : null
+      setImportes(facturadas[0] ?? null)
+      setCuenta(cc)
       setVista(obra)
     } catch {
       setErrorMonday('buscar la obra')
@@ -98,40 +106,31 @@ export function FacturarObraView() {
     pedidoVacio: 'Escribí el nombre de la obra o su id para buscar.',
   })
 
-  /** Lee la cuenta corriente y los importes de la obra, y pasa a la etapa 2. */
-  const entrar = async (obra: Obra) => {
-    const cuentaId = obra.ctaCteClienteIds[0]
-    if (!cuentaId) {
+  /** Pasa a la etapa 2 con lo que ya se leyó al elegir la obra: no vuelve a Monday. */
+  const entrar = (obra: Obra) => {
+    if (!cuenta) {
       setAviso({
         titulo: 'La obra no tiene cuenta corriente',
         texto: `${obra.nombre} no tiene una cuenta corriente de cliente vinculada (✋Cta Cte Cliente). Sin ella no se puede facturar.`,
       })
       return
     }
-    setLeyendo(true)
-    try {
-      const [cuenta, obras] = await Promise.all([conTope(getCuentaCorriente(cuentaId)), conTope(obrasDeCuenta([obra.id]))])
-      if (!cuenta || !obras.length) {
-        setErrorMonday('leer la cuenta corriente de la obra')
-        return
-      }
-      const misma = factura.obra?.id === obra.id
-      dispatch({
-        type: 'setFactura',
-        cambios: misma
-          ? { obra, cuenta, obras }
-          : { ...facturaInicial(), obra, cuenta, obras, documento: cuenta.cliente?.documento ?? '' },
-      })
-      dispatch({ type: 'goto', paso: 'carga' })
-    } catch {
-      setErrorMonday('leer la cuenta corriente de la obra')
-    } finally {
-      setLeyendo(false)
+    if (!importes || importes.id !== obra.id) {
+      setErrorMonday('leer los importes de la obra')
+      return
     }
+    const misma = factura.obra?.id === obra.id
+    dispatch({
+      type: 'setFactura',
+      cambios: misma
+        ? { obra, cuenta, obras: [importes] }
+        : { ...facturaInicial(), obra, cuenta, obras: [importes], documento: cuenta.cliente?.documento ?? '' },
+    })
+    dispatch({ type: 'goto', paso: 'carga' })
   }
 
   const continuar = () => {
-    if (cargandoObra || leyendo) return
+    if (cargandoObra) return
     if (!vista) {
       setAviso({
         titulo: 'Falta cargar una obra',
@@ -148,7 +147,7 @@ export function FacturarObraView() {
       setReemplazo(vista)
       return
     }
-    void entrar(vista)
+    entrar(vista)
   }
 
   const ayuda = ayudaDe(b, indice.length > 0, !!vista || cargandoObra, AYUDA_SIN_OBRA)
@@ -199,7 +198,7 @@ export function FacturarObraView() {
             </>
           )}
         </span>
-        <button type="button" className="btn btn-primary" disabled={cargandoObra || leyendo} onClick={continuar}>
+        <button type="button" className="btn btn-primary" disabled={cargandoObra} onClick={continuar}>
           Continuar a {siguiente} <i className="fas fa-arrow-right" />
         </button>
       </div>
@@ -217,7 +216,6 @@ export function FacturarObraView() {
         </button>
       )}
 
-      {leyendo && <ModalCargando titulo="Leyendo la cuenta corriente de la obra..." detalle="Se leen el cliente y los importes de la obra. Esperá unos segundos." />}
       {reemplazo && (
         <Modal
           title="¿Cambiar la obra?"
@@ -234,7 +232,7 @@ export function FacturarObraView() {
                 onClick={() => {
                   const o = reemplazo
                   setReemplazo(null)
-                  void entrar(o)
+                  entrar(o)
                 }}
               >
                 Aceptar
