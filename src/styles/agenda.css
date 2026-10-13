@@ -73,12 +73,18 @@
   font-weight: 700;
   color: #0f172a;
 }
+/* El estado de entrega del pendiente: sin entregar en rojo, parcial en naranja, entregado en verde. */
 .agenda-v2 .ag-estado-pend {
   font-size: 11.5px;
   font-weight: 700;
-  color: #b56b00;
 }
-.agenda-v2 .ag-estado-pend--ok {
+.agenda-v2 .ag-estado-pend--pendiente {
+  color: #d83a52;
+}
+.agenda-v2 .ag-estado-pend--parcial {
+  color: #e07b00;
+}
+.agenda-v2 .ag-estado-pend--entregado {
   color: #0b7a4b;
 }
 
@@ -729,4 +735,899 @@
   border-color: var(--red);
   background: #fff5f6;
   box-shadow: 0 0 0 3px rgba(226, 68, 92, 0.16);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════════════════════
+   Agenda · el calendario (FullCalendar) y el asistente del turno nuevo
+   ════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+/* El calendario con los colores de la app: los botones y "hoy" en el bordó de la marca. */
+.agenda-v2 .ag-calendario {
+  position: relative;
+  --fc-border-color: #e4e7ec;
+  --fc-button-bg-color: #fff;
+  --fc-button-border-color: var(--marca);
+  --fc-button-text-color: var(--marca);
+  --fc-button-hover-bg-color: var(--marca-suave);
+  --fc-button-hover-border-color: var(--marca);
+  --fc-button-active-bg-color: var(--marca);
+  --fc-button-active-border-color: var(--marca);
+  /* Hoy lleva el verde de los días vigentes y un borde azul (abajo), no un fondo propio. */
+  --fc-today-bg-color: transparent;
+  --fc-now-indicator-color: var(--marca);
+  --fc-event-border-color: transparent;
+  font-size: 13px;
+}
+.agenda-v2 .ag-calendario .fc .fc-button {
+  font-weight: 600;
+  text-transform: none;
+  box-shadow: none;
+}
+.agenda-v2 .ag-calendario .fc .fc-button-primary:not(:disabled).fc-button-active,
+.agenda-v2 .ag-calendario .fc .fc-button-primary:not(:disabled):active {
+  color: #fff;
+}
+.agenda-v2 .ag-calendario .fc .fc-col-header-cell-cushion,
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day-number {
+  color: #334155;
+  text-decoration: none;
+  text-transform: capitalize;
+}
+/* Los días se tocan para agendar. */
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day {
+  cursor: pointer;
+}
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day:hover {
+  background: #faf6f7;
+}
+/* El bloque del turno: el tipo en negrita y el cliente; el color, por el material. */
+.agenda-v2 .ag-calendario .fc .ag-ev {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 1px 2px;
+}
+.agenda-v2 .ag-ev-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 5px;
+  overflow: hidden;
+  line-height: 1.3;
+  font-size: 12px;
+}
+.agenda-v2 .ag-ev-hora {
+  font-weight: 600;
+  opacity: 0.85;
+}
+.agenda-v2 .ag-ev-cli {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agenda-v2 .ag-calendario-cargando {
+  position: absolute;
+  inset: 52px 0 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+  color: #64748b;
+}
+.agenda-v2 .ag-calendario-cargando i {
+  margin-right: 8px;
+}
+.agenda-v2 .ag-calendario-error {
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* ── La ficha del turno y sus acciones ── */
+.agenda-v2 .ag-ficha-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.agenda-v2 .ag-acc--editar {
+  background: #fff;
+  border-color: var(--marca);
+  color: var(--marca);
+}
+.agenda-v2 .ag-acc--editar:hover:not(:disabled) {
+  background: var(--marca-suave);
+}
+.modal-box.ag-ficha-turno .ag-resumen {
+  text-align: left;
+}
+
+/* ── El asistente del turno nuevo: una ventana ancha con su stepper ── */
+.modal-box.ag-asistente {
+  width: min(1320px, 94vw);
+  min-height: min(780px, calc(100vh - 48px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 40px 48px 0;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.ag-asistente > .modal-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.ag-asistente .ag-asistente-cuerpo {
+  flex: 1;
+}
+@media (max-width: 640px) {
+  .modal-box.ag-asistente {
+    padding: 28px 16px 0;
+  }
+}
+.ag-asistente .modal-title,
+.ag-asistente .modal-icon {
+  text-align: center;
+}
+.ag-asistente .ag-asistente-cuando {
+  margin: -6px 0 10px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--marca);
+}
+.ag-asistente .ag-asistente-stepper {
+  justify-content: center;
+  margin: 4px 0 18px;
+}
+.ag-asistente .ag-asistente-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ag-asistente .ag-asistente-cuerpo > .card,
+.ag-asistente .ag-asistente-tabla {
+  margin: 0;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02), 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+/* El pie queda pegado abajo al desplazar, con su margen: los botones nunca tocan el borde. */
+.ag-asistente .ag-asistente-pie {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 20px 0 32px;
+  background: #fff;
+  border-top: 1px solid #eef0f3;
+}
+.ag-asistente .ag-asistente-campos {
+  display: grid;
+  grid-template-columns: minmax(0, 360px);
+  margin-top: 14px;
+}
+.ag-asistente .kpi-grid--2,
+.agenda-v2 .kpi-grid--2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.ag-asistente .ag-ficha-basica {
+  padding: 20px 24px;
+}
+.ag-asistente .ag-resumen-item {
+  display: block;
+}
+/* El porcentaje de cancelación de la obra: rojo < 70 %, amarillo 70–90 %, verde 90–100 %. */
+.agenda-v2 .ag-pct {
+  display: inline-block;
+  min-width: 56px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+.agenda-v2 .ag-pct--rojo {
+  background: #fdecee;
+  color: #c0273c;
+}
+.agenda-v2 .ag-pct--amarillo {
+  background: #fff6d6;
+  color: #8a6a00;
+}
+.agenda-v2 .ag-pct--verde {
+  background: #e3f8ee;
+  color: #00874d;
+}
+
+/* ── "Ver OP" y "Editar" ── */
+.modal-box.ag-modal-ops {
+  width: 640px;
+}
+.ag-editar-campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+  text-align: left;
+}
+.ag-editar-campos .ag-ver-op {
+  height: 40px;
+  border-color: var(--marca);
+  color: var(--marca);
+}
+
+/* El botón que avanza el asistente, en el bordó de la marca como en el pie de cada etapa. */
+.ag-asistente .ag-asistente-pie .btn-primary {
+  background: var(--marca);
+  border-color: var(--marca);
+  color: #fff;
+}
+.ag-asistente .ag-asistente-pie .btn-primary:hover:not(:disabled) {
+  background: var(--marca-hover);
+  border-color: var(--marca-hover);
+}
+.ag-asistente .ag-asistente-pie .btn-primary:disabled {
+  background: var(--marca-apagada);
+  border-color: var(--marca-apagada);
+}
+
+/* ── Calendario: el color de cada tipo de turno (el de su etiqueta en Monday), la franja horaria y
+   las referencias al pie ── */
+.agenda-v2 .ag-tab--tipo > i {
+  color: var(--tc);
+}
+.agenda-v2 .ag-tab--tipo:hover {
+  border-color: var(--tc);
+}
+.agenda-v2 .ag-tab--tipo.ag-tab--on {
+  border-color: var(--tc);
+  background: color-mix(in srgb, var(--tc) 14%, #fff);
+  color: #1f2937;
+}
+.agenda-v2 .ag-tab--tipo.ag-tab--on .ag-tab-n {
+  background: var(--tc);
+  color: #fff;
+}
+/* El tipo sobre el turno: el bloque ya lleva el color del tipo; el nombre va en negrita. */
+.agenda-v2 .ag-ev-tipo {
+  font-weight: 800;
+  white-space: nowrap;
+}
+.agenda-v2 .ag-franja {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+.agenda-v2 .ag-franja-campo {
+  width: 128px;
+}
+.agenda-v2 .ag-franja-a {
+  font-size: 12.5px;
+  color: #64748b;
+}
+
+/* ── La barra del calendario: los grupos de filtros separados por una división, el menú "⋯" de las
+   opciones que no entran, la franja horaria y las vistas a la derecha ── */
+.agenda-v2 .ag-barra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+.agenda-v2 .ag-barra-grupo {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+/* Compacta, para que material, tipos, franja y vistas entren en un renglón. */
+.agenda-v2 .ag-barra .ag-tab {
+  gap: 6px;
+  height: 30px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+.agenda-v2 .ag-barra .ag-tab-n {
+  min-width: 18px;
+  padding: 1px 5px;
+}
+.agenda-v2 .ag-barra-div {
+  align-self: stretch;
+  width: 1px;
+  min-height: 26px;
+  background: #dfe3ea;
+}
+.agenda-v2 .ag-mas {
+  position: relative;
+}
+.agenda-v2 .ag-mas-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--c-border, #e4e7ec);
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+.agenda-v2 .ag-mas-btn:hover,
+.agenda-v2 .ag-mas-btn[aria-expanded='true'] {
+  border-color: var(--marca);
+  color: var(--marca);
+}
+.agenda-v2 .ag-mas-btn--on {
+  border-color: var(--marca);
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+.agenda-v2 .ag-mas-n {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--marca);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.agenda-v2 .ag-mas-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+.agenda-v2 .ag-mas-it {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: #334155;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.agenda-v2 .ag-mas-it:hover {
+  background: #f4f6f9;
+}
+.agenda-v2 .ag-mas-it-tit {
+  flex: 1;
+}
+.agenda-v2 .ag-franja-icono {
+  color: var(--marca);
+}
+.agenda-v2 .ag-barra .ag-franja-campo {
+  width: 98px;
+}
+.agenda-v2 .ag-barra .med-sel-btn {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.agenda-v2 .ag-vistas {
+  display: inline-flex;
+  margin-left: auto;
+}
+.agenda-v2 .ag-vista {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--marca);
+  background: #fff;
+  color: var(--marca);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agenda-v2 .ag-vista + .ag-vista {
+  border-left: 0;
+}
+.agenda-v2 .ag-vista:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.agenda-v2 .ag-vista:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.agenda-v2 .ag-vista:hover {
+  background: var(--marca-suave);
+}
+.agenda-v2 .ag-vista--on,
+.agenda-v2 .ag-vista--on:hover {
+  background: var(--marca);
+  color: #fff;
+}
+/* Los filtros aplicados: debajo de la barra, separados por una línea. */
+.agenda-v2 .ag-aplicados {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 12px 0 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e4e7ec;
+  font-size: 12.5px;
+}
+.agenda-v2 .ag-aplicados-tit {
+  font-weight: 700;
+  color: #334155;
+}
+.agenda-v2 .ag-aplicados-nada {
+  color: #94a3b8;
+}
+.agenda-v2 .ag-aplicado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 600;
+}
+.agenda-v2 .ag-aplicado-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.agenda-v2 .ag-aplicado-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #eef1f5;
+  color: #475569;
+  font-size: 10px;
+  cursor: pointer;
+}
+.agenda-v2 .ag-aplicado-x:hover {
+  background: var(--marca);
+  color: #fff;
+}
+.agenda-v2 .ag-limpiar {
+  margin-left: auto;
+}
+.agenda-v2 .ag-limpiar i {
+  margin-right: 4px;
+}
+@media (max-width: 640px) {
+  .agenda-v2 .ag-barra-div {
+    display: none;
+  }
+  .agenda-v2 .ag-vistas,
+  .agenda-v2 .ag-limpiar {
+    margin-left: 0;
+  }
+}
+
+/* ── Los días del calendario: los que ya pasaron en rojo; hoy y los que vienen, en verde; hoy,
+   además, con un borde azul. ── */
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day.fc-day-past {
+  background: rgba(223, 47, 74, 0.11);
+}
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day.fc-day-today,
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day.fc-day-future {
+  background: rgba(0, 200, 117, 0.08);
+}
+.agenda-v2 .ag-calendario .fc .fc-daygrid-day.fc-day-today {
+  box-shadow: inset 0 0 0 2px #0073ea;
+}
+/* El número de hoy, también en azul. */
+.agenda-v2 .ag-calendario .fc .fc-day-today .fc-daygrid-day-number {
+  color: #0073ea;
+  font-weight: 800;
+}
+
+/* ── La ficha del turno: el ícono y "Turno" en un renglón; la fecha, separada del detalle; y,
+   mientras se lee, sólo la espera (el gris y el giro del Drag & Drop cuando la IA procesa) ── */
+.modal-box.ag-ficha-turno > .modal-icon,
+.modal-box.ag-ficha-turno > .modal-title {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0;
+}
+.modal-box.ag-ficha-turno > .modal-icon {
+  margin-right: 10px;
+  font-size: 26px;
+}
+.modal-box.ag-ficha-turno > .modal-body {
+  margin-top: 16px;
+}
+.modal-box.ag-ficha-turno .ag-ficha-clave {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eef0f3;
+}
+.modal-box.ag-ficha-turno .ag-ficha-clave .ag-clave-fecha {
+  margin-top: 6px;
+}
+.agenda-v2 .ag-ficha-cargando {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 240px;
+  border: 1.5px solid #e4e7ec;
+  border-radius: 14px;
+  background: #f4f6f9;
+}
+.agenda-v2 .ag-ficha-spin {
+  width: 42px;
+  height: 42px;
+  border: 3px solid #d5dceb;
+  border-top-color: var(--c-primary, #0073ea);
+  border-radius: 50%;
+  animation: cobro-lector-giro 0.7s linear infinite;
+}
+.agenda-v2 .ag-ficha-cargando-tit {
+  font-size: 15px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* ── El asistente del turno nuevo: el encabezado (ícono, título y fecha) con el stepper en el mismo
+   renglón, y la etapa 2 en una sola tarjeta (obras, una línea, pendientes) ── */
+.ag-asistente .ag-asistente-cabeza {
+  display: flex;
+  align-items: center;
+  /* El stepper, pegado a la derecha del título (no contra el borde de la ventana). */
+  justify-content: flex-start;
+  gap: 0;
+  margin-bottom: 20px;
+  padding: 0 4px 18px;
+  border-bottom: 1px solid #eef0f3;
+}
+.ag-asistente .ag-asistente-tit {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+.ag-asistente .ag-asistente-tit > i {
+  font-size: 34px;
+  color: var(--primary-blue, #0073ea);
+}
+.ag-asistente .ag-asistente-tit .modal-title {
+  margin: 0;
+  color: var(--text-dark, #0f172a);
+  text-align: left;
+}
+.ag-asistente .ag-asistente-tit .ag-asistente-cuando {
+  margin: 2px 0 0;
+  text-align: left;
+}
+.ag-asistente .ag-asistente-cabeza .ag-asistente-stepper {
+  flex: 0 1 560px;
+  margin: 0;
+  padding-left: 20px;
+}
+@media (max-width: 760px) {
+  .ag-asistente .ag-asistente-cabeza {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  /* Debajo del título, el stepper va centrado: sin el relleno izquierdo. */
+  .ag-asistente .ag-asistente-cabeza .ag-asistente-stepper {
+    flex-basis: auto;
+    padding-left: 0;
+  }
+}
+.ag-asistente .ag-sel-cabeza {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.ag-asistente .ag-con-obra {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--marca);
+  border-radius: 8px;
+  color: var(--marca);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+.ag-asistente .ag-sel-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+}
+.ag-asistente .ag-sel-sub > i {
+  color: var(--marca);
+}
+.ag-asistente .ag-sel-opcional {
+  font-weight: 500;
+  color: #94a3b8;
+}
+.ag-asistente .ag-sel-division {
+  margin: 22px 0 4px;
+  border: 0;
+  border-top: 1px solid #e4e7ec;
+}
+.ag-asistente .ag-sin-obra {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f4f6f9;
+  color: #475569;
+  font-size: 13px;
+}
+.ag-asistente .ag-sin-obra i {
+  margin-right: 6px;
+  color: var(--primary-blue, #0073ea);
+}
+
+/* Dos campos lado a lado: el tipo de turno y, en Colocación, las aberturas a colocar. */
+.ag-asistente .ag-asistente-campos--2 {
+  /* El tipo de turno y, al lado, las aberturas (un número: la mitad de ancho). */
+  grid-template-columns: minmax(0, 300px) minmax(0, 150px);
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .ag-asistente .ag-asistente-campos--2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* La tabla de obras, sin subtítulo: un poco de aire debajo del encabezado de la tarjeta. */
+.ag-asistente .ag-sel-tabla {
+  margin-top: 14px;
+}
+
+/* ── El encabezado propio del calendario: flechas y la fecha de hoy (sólo informativa) a la
+   izquierda, el título centrado (tres columnas iguales, para que no se corra) ── */
+.agenda-v2 .ag-cal-cabeza {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.agenda-v2 .ag-cal-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.agenda-v2 .ag-cal-flecha {
+  width: 40px;
+  height: 34px;
+  border: 1px solid var(--marca);
+  background: #fff;
+  color: var(--marca);
+  cursor: pointer;
+}
+.agenda-v2 .ag-cal-flecha:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.agenda-v2 .ag-cal-flecha + .ag-cal-flecha {
+  margin-left: -12px;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+.agenda-v2 .ag-cal-flecha:hover {
+  background: var(--marca-suave);
+}
+/* La fecha de hoy: un dato, sin borde ni aspecto de botón. */
+.agenda-v2 .ag-cal-hoy {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+.agenda-v2 .ag-cal-hoy i {
+  margin-right: 4px;
+  color: #0073ea;
+}
+.agenda-v2 .ag-cal-titulo {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  text-align: center;
+}
+/* "octubre de 2026" → "Octubre de 2026": sólo la primera letra. */
+.agenda-v2 .ag-cal-titulo::first-letter {
+  text-transform: uppercase;
+}
+@media (max-width: 640px) {
+  .agenda-v2 .ag-cal-cabeza {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .agenda-v2 .ag-cal-cabeza > * {
+    justify-self: center;
+  }
+  .agenda-v2 .ag-cal-titulo {
+    order: -1;
+  }
+  .agenda-v2 .ag-cal-cabeza > span:last-child {
+    display: none;
+  }
+}
+
+/* ── Semana: la grilla del mes con una columna a la izquierda del lunes, una celda por semana
+   alineada con su fila; la semana elegida, con borde azul; los demás días, atenuados ── */
+.agenda-v2 .ag-cal-cuerpo--semanas {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  align-items: start;
+}
+.agenda-v2 .ag-cal-fc {
+  min-width: 0;
+}
+.agenda-v2 .ag-semanas {
+  position: relative;
+}
+.agenda-v2 .ag-semanas-cab,
+.agenda-v2 .ag-semana {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  border: 1px solid #e4e7ec;
+  border-right: 0;
+}
+.agenda-v2 .ag-semanas-cab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafbfc;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+.agenda-v2 .ag-semana {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border-top: 0;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.agenda-v2 .ag-semana:hover {
+  background: #f4f8ff;
+}
+.agenda-v2 .ag-semana--on,
+.agenda-v2 .ag-semana--on:hover {
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px #0073ea;
+  background: #f4f8ff;
+}
+.agenda-v2 .ag-semana-rango {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+}
+.agenda-v2 .ag-semana--on .ag-semana-rango {
+  color: #0073ea;
+}
+.agenda-v2 .ag-semana-n {
+  font-size: 11.5px;
+  color: #64748b;
+}
+.agenda-v2 .ag-calendario .fc .ag-dia-fuera .fc-daygrid-day-frame {
+  opacity: 0.4;
+}
+@media (max-width: 640px) {
+  .agenda-v2 .ag-cal-cuerpo--semanas {
+    grid-template-columns: 92px minmax(0, 1fr);
+  }
+  .agenda-v2 .ag-semana {
+    padding: 6px;
+  }
+  .agenda-v2 .ag-semana-rango {
+    font-size: 11.5px;
+  }
+}
+/* La app tiene su propia clase `.fc` (los campos de formulario, en components.css), que le pone
+   borde y relleno a la raíz de FullCalendar. En la Agenda se anula: la grilla va sin marco extra y la
+   columna de semanas queda pegada a ella. */
+.agenda-v2 .ag-calendario .fc {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+/* El saldo de la obra: en rojo si debe. */
+.ag-asistente .ag-saldo-debe {
+  color: #c0273c;
+  font-weight: 700;
+}
+/* Colocación con saldo: el aviso del recordatorio, a la derecha de las aberturas. */
+.ag-asistente .ag-asistente-campos--2:has(.ag-aviso-saldo) {
+  grid-template-columns: minmax(0, 300px) minmax(0, 150px) minmax(0, 1fr);
+}
+.ag-asistente .ag-aviso-saldo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  align-self: end;
+  margin: 0;
+  padding: 0 0 10px;
+  color: #8a5a00;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ag-asistente .ag-aviso-saldo i {
+  margin-top: 2px;
+  color: #e2a400;
+}
+@media (max-width: 640px) {
+  .ag-asistente .ag-asistente-campos--2:has(.ag-aviso-saldo) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* En la ficha de registro: el pendiente y lo que falta entregar, en el mismo renglón. */
+.ag-asistente .ag-por-entregar {
+  margin-left: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #00a35f;
+}
+/* "Obra del turno" y el "Con Obra", en un mismo renglón y alineados. */
+.ag-asistente .ag-sel-cabeza:has(> .ag-sel-sub) {
+  align-items: center;
+  margin: 14px 0 4px;
+}
+.ag-asistente .ag-sel-cabeza > .ag-sel-sub {
+  margin: 0;
 }

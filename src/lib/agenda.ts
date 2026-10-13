@@ -18,7 +18,7 @@
  * Tipos de turno
  * ──────────────────────────────────────────────────────────────────────────────── */
 
-export type TipoTurno = 'colocacion' | 'reparacion' | 'entrega' | 'medicion'
+export type TipoTurno = 'colocacion' | 'reparacion' | 'entrega' | 'medicion' | 'terminacion'
 
 /** De dónde salen los elementos que se pueden elegir para el turno. */
 export type OrigenTurno = 'obras' | 'pendientes'
@@ -28,6 +28,13 @@ export interface DefTipoTurno {
   titulo: string
   /** La etiqueta de `✋ Tipo de Turno` en el tablero. */
   etiqueta: string
+  /**
+   * El índice de esa etiqueta. Se escribe por índice y no por texto: en el tablero se renombran
+   * etiquetas ("MEDIR" pasó a "Medicion") y el índice es lo que no cambia.
+   */
+  indice: number
+  /** Otros nombres que tuvo la etiqueta, para leer los turnos viejos. */
+  alias?: string[]
   icono: string
   origen: OrigenTurno
   /** Filtro de `✋Etapa de Produccion` de la obra. `null` = todas las obras del cliente. */
@@ -39,10 +46,13 @@ export const ETAPA_A_COLOCAR = 'A Colocar'
 export const ETAPA_A_MEDIR = 'A Medir'
 
 export const TIPOS_TURNO: readonly DefTipoTurno[] = [
-  { id: 'colocacion', titulo: 'Colocación', etiqueta: 'Colocacion', icono: 'fa-hammer', origen: 'obras', etapa: ETAPA_A_COLOCAR },
-  { id: 'reparacion', titulo: 'Reparación', etiqueta: 'Reparacion', icono: 'fa-screwdriver-wrench', origen: 'obras', etapa: null },
-  { id: 'entrega', titulo: 'Entrega/Reparto', etiqueta: 'Reparto', icono: 'fa-truck', origen: 'pendientes', etapa: null },
-  { id: 'medicion', titulo: 'Medición', etiqueta: 'MEDIR', icono: 'fa-ruler-combined', origen: 'obras', etapa: ETAPA_A_MEDIR },
+  { id: 'colocacion', titulo: 'Colocación', etiqueta: 'Colocacion', indice: 1, icono: 'fa-hammer', origen: 'obras', etapa: ETAPA_A_COLOCAR },
+  { id: 'reparacion', titulo: 'Reparación', etiqueta: 'Reparacion', indice: 2, icono: 'fa-screwdriver-wrench', origen: 'obras', etapa: null },
+  { id: 'entrega', titulo: 'Entrega/Reparto', etiqueta: 'Reparto', indice: 0, icono: 'fa-truck', origen: 'pendientes', etapa: null },
+  { id: 'medicion', titulo: 'Medición', etiqueta: 'Medicion', indice: 4, alias: ['MEDIR'], icono: 'fa-ruler-combined', origen: 'obras', etapa: ETAPA_A_MEDIR },
+  /* La etiqueta TERMINACIONES está DESACTIVADA en el tablero: hay que reactivarla en Monday para que
+     un turno de Terminación se pueda registrar (la API no escribe etiquetas desactivadas). */
+  { id: 'terminacion', titulo: 'Terminación', etiqueta: 'TERMINACIONES', indice: 3, icono: 'fa-paint-roller', origen: 'obras', etapa: null },
 ]
 
 export const defTipo = (t: TipoTurno): DefTipoTurno => TIPOS_TURNO.find((d) => d.id === t)!
@@ -52,8 +62,18 @@ export const defTipo = (t: TipoTurno): DefTipoTurno => TIPOS_TURNO.find((d) => d
  * (TERMINACIONES, SELLAR): ésos devuelven `null` y se muestran con su etiqueta tal cual.
  */
 export function tipoDeEtiqueta(etiqueta: string): TipoTurno | null {
-  const e = etiqueta.trim().toLowerCase()
-  return TIPOS_TURNO.find((d) => d.etiqueta.toLowerCase() === e)?.id ?? null
+  const e = sinTildes(etiqueta)
+  if (!e) return null
+  return TIPOS_TURNO.find((d) => [d.etiqueta, ...(d.alias ?? [])].some((x) => sinTildes(x) === e))?.id ?? null
+}
+
+/** Minúsculas y sin tildes: "Medición" y "MEDICION" son la misma etiqueta. */
+function sinTildes(t: string): string {
+  return t
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -62,27 +82,45 @@ export function tipoDeEtiqueta(etiqueta: string): TipoTurno | null {
 
 export type EstadoTurno = 'pendiente' | 'asignado' | 'cumplido' | 'cancelado'
 
-/** Las etiquetas de `🤖 Estado Turno`, tal cual están en el tablero. */
+/** Las etiquetas de `🤖 Estado Turno`, tal cual están hoy en el tablero. */
 export const ETIQUETA_TURNO: Record<EstadoTurno, string> = {
-  pendiente: 'Pendiente',
-  asignado: 'Asignada',
+  pendiente: 'Pendiente de Enviar',
+  asignado: 'Asignado-Enviado',
   cumplido: 'Cumplido',
   cancelado: 'Cancelado',
 }
 
+/**
+ * Los índices de esas etiquetas. El estado se ESCRIBE por índice: las etiquetas se renombran en el
+ * tablero ("Asignada" pasó a "Asignado-Enviado" y "Pendiente" a "Pendiente de Enviar") y escribir
+ * un texto que ya no existe hace fallar la escritura entera.
+ */
+export const INDICE_TURNO: Record<EstadoTurno, number> = {
+  asignado: 0,
+  cumplido: 1,
+  cancelado: 2,
+  pendiente: 5,
+}
+
 /** Rótulo y color de cada estado: los del tablero, para que pantalla y tablero se lean igual. */
 export const VISTA_TURNO: Record<EstadoTurno, { rotulo: string; color: string }> = {
-  pendiente: { rotulo: 'Pendiente', color: '#c4c4c4' },
-  asignado: { rotulo: 'Asignado', color: '#579bfc' },
+  pendiente: { rotulo: 'Pendiente de Enviar', color: '#c4c4c4' },
+  asignado: { rotulo: 'Enviado', color: '#579bfc' },
   cumplido: { rotulo: 'Cumplido', color: '#00c875' },
   cancelado: { rotulo: 'Cancelado', color: '#df2f4a' },
 }
 
-/** Sin etiqueta —un turno cargado a mano que nadie movió— está pendiente. */
+/**
+ * El estado a partir de la etiqueta. Se lee por cómo EMPIEZA ("Asignad…", "Cumplid…",
+ * "Cancelad…"), así un renombre como "Asignado-Enviado" no lo rompe. Sin etiqueta —un turno
+ * cargado a mano que nadie movió— o con "Pendiente…", está pendiente.
+ */
 export function estadoDeTurno(etiqueta: string): EstadoTurno {
-  const e = etiqueta.trim()
-  const hallado = (Object.keys(ETIQUETA_TURNO) as EstadoTurno[]).find((k) => ETIQUETA_TURNO[k] === e)
-  return hallado ?? 'pendiente'
+  const e = sinTildes(etiqueta)
+  if (e.startsWith('asignad')) return 'asignado'
+  if (e.startsWith('cumplid')) return 'cumplido'
+  if (e.startsWith('cancelad')) return 'cancelado'
+  return 'pendiente'
 }
 
 /** Un turno está activo mientras no se cumplió ni se canceló. */
@@ -138,6 +176,8 @@ export interface ObraDeCliente {
   celCoordinar: string
   /** `🤖 Saldo`. `null` si no se pudo leer ni reconstruir. */
   saldo: number | null
+  /** `🤖 % Cancelado` (lo cobrado, de 0 a 100). `null` si la fórmula no contesta. */
+  pctCancelado: number | null
   /** Ids de sus OP en el tablero de órdenes: de sus subelementos salen las aberturas. */
   ordenesIds: string[]
 }
@@ -194,7 +234,6 @@ export function faltantesAlta(d: DatosAlta, hoy: string): string[] {
   if (d.tipo === 'reparacion' && !d.tipoReparacion?.trim()) f.push('Elegí el tipo de reparación.')
   if (!d.fecha) f.push('Elegí la fecha del turno.')
   else if (d.fecha < hoy) f.push('La fecha del turno no puede ser anterior a hoy.')
-  if (!d.hora) f.push('Elegí la hora del turno.')
   return f
 }
 
@@ -232,6 +271,17 @@ export function deColumnaFecha(valor: { date?: string; time?: string | null } | 
   return { fecha, hora: hora === '00:00' ? '' : hora }
 }
 
+/**
+ * Las claves del cuándo en los mensajes: la fecha y, si el turno la tiene, el rango horario
+ * aproximado (la hora del turno). Sin fecha, "NO ESPECIFICADO". `sep`: el espacio tras el ícono (la cancelación
+ * lleva dos, como su plantilla).
+ */
+function clavesCuando(d: { fecha: string; hora?: string }, sep = ' '): string[] {
+  const fecha = `📅${sep}*Fecha:* ${d.fecha ? fechaCorta(d.fecha) : NO_ESP}`
+  /* El rango horario es opcional: sin él, el mensaje lleva sólo la fecha. */
+  return d.hora ? [fecha, `🕐${sep}*Rango Horario Aproximado:* ${d.hora} hs`] : [fecha]
+}
+
 /** "15/10/2026 14:30 hs", o sólo la fecha si el turno no tiene hora. */
 export function fechaHoraCorta(fecha: string, hora?: string): string {
   if (!fecha) return ''
@@ -266,6 +316,7 @@ export const DATO_FINALIZACION: Record<TipoTurno, string | null> = {
   entrega: null,
   reparacion: null,
   medicion: 'Resultado de la medición',
+  terminacion: null,
 }
 
 /** Lo que falta para confirmar: el resultado de la colocación o de la medición. */
@@ -384,7 +435,7 @@ const CIERRE = ['Solo en caso de *CANCELACION* responder.', '¡Muchas gracias!\n
 export function mensajeAsignacion(d: DatosAsignacion): string {
   const nombre = sinCodigo(d.cliente)
   const servicio = `✅ *Servicio:* ${oNoEsp(d.etiquetaTipo)}`
-  const fecha = `📅 *Fecha:* ${d.fecha ? fechaHoraCorta(d.fecha, d.hora) : NO_ESP}`
+  const fecha = clavesCuando(d).join(SALTO)
   const ubicacion = `📍 *Ubicacion:* ${oNoEsp(d.ubicacion)}`
   const material = `⛏️ *Material:* ${oNoEsp(d.material)}`
 
@@ -445,7 +496,7 @@ const saludoAviso = (tipo: TipoTurno | null, cliente: string) =>
 export function mensajeConfirmacion(d: DatosAviso & { servicio: string }): string {
   const datos = [
     `✅ *Servicio:* ${oNoEsp(d.servicio)}`,
-    `📅 *Fecha:* ${d.fecha ? fechaHoraCorta(d.fecha, d.hora) : NO_ESP}`,
+    ...clavesCuando(d),
     `📍 *Ubicación:* ${oNoEsp(d.ubicacion)}`,
     `⛏️ *Material:* ${oNoEsp(d.material)}`,
     d.tipo === 'colocacion' ? `🪟 *Cantidad de Aberturas*: ${oNoEsp(d.aberturas)}` : '',
@@ -465,7 +516,7 @@ export function mensajeConfirmacion(d: DatosAviso & { servicio: string }): strin
 export function mensajeCancelacion(d: DatosAviso): string {
   const datos = [
     `🪟  *Servicio:* ${oNoEsp(d.etiquetaTipo)}`,
-    `📅  *Fecha:* ${d.fecha ? fechaHoraCorta(d.fecha, d.hora) : NO_ESP}`,
+    ...clavesCuando(d, '  '),
     `📍 *Ubicación:* ${oNoEsp(d.ubicacion)}`,
     `⛏️ *Material:* ${oNoEsp(d.material)}`,
     d.tipo === 'colocacion' ? `🪟 *Cantidad de Aberturas*: ${oNoEsp(d.aberturas)}` : '',
@@ -500,11 +551,245 @@ export function mensajeReagendado(d: DatosAviso): string {
     [
       'Te informamos que ha sido reagendado el siguiente turno:',
       `✅ *Servicio:* ${oNoEsp(d.etiquetaTipo)}`,
-      `📅 *Fecha:* ${d.fecha ? fechaHoraCorta(d.fecha, d.hora) : NO_ESP}`,
+      ...clavesCuando(d),
       `📍 *Ubicacion:* ${oNoEsp(d.ubicacion)}`,
       `⛏️ *Material:* ${oNoEsp(d.material)}`,
     ].join(SALTO),
     'Solo en caso de *CANCELACION* responder.',
     '¡Muchas gracias!\n🏠 Polifroni Aberturas\n🤖 Automatizado por The Automation Partner',
   ].join(PARRAFO)
+}
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Calendario: la selección de la etapa 2, la disponibilidad del horario y los colores
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+/** Los tipos que se eligen para un turno sobre una OBRA. Los pendientes de entrega son Reparto. */
+export const TIPOS_DE_OBRA: readonly TipoTurno[] = ['colocacion', 'medicion', 'reparacion', 'terminacion']
+
+/** Los tipos de turno que se eligen al dar de alta un turno, antes de las obras y los pendientes. */
+export const TIPOS_ALTA: readonly TipoTurno[] = ['colocacion', 'medicion', 'reparacion', 'terminacion', 'entrega']
+
+/**
+ * Lo elegido en la etapa 2 del turno nuevo. Primero el TIPO de turno; después:
+ *  - Reparto/Entrega: sólo pendientes de entrega (sin obra).
+ *  - Los demás: "Con Obra" (tildado de entrada) y, con obra, UNA —con sus OP, opcionales—; más los
+ *    pendientes de entrega que se quieran (opcionales), que viajan en el mismo turno.
+ */
+export interface SeleccionTurno {
+  tipo: TipoTurno | null
+  /** "Con Obra": tildado, se listan las obras del cliente; destildado, el turno va sin obra. */
+  conObra: boolean
+  obraId: string | null
+  pendientesIds: string[]
+  /** Las OP de la obra que se vinculan al turno. Opcionales. */
+  opIds: string[]
+}
+
+export const seleccionVacia = (): SeleccionTurno => ({ tipo: null, conObra: true, obraId: null, pendientesIds: [], opIds: [] })
+
+/** El tipo del turno: el que se eligió. */
+export const tipoDeSeleccion = (s: SeleccionTurno): TipoTurno | null => s.tipo
+
+/** ¿Se listan las obras? Con un tipo elegido que no sea Reparto (Reparto lleva sólo pendientes). */
+export const listaObras = (s: SeleccionTurno): boolean => s.tipo !== null && s.tipo !== 'entrega'
+
+/** Elegir el tipo. Reparto no lleva obra: si había una elegida, se descarta (con sus OP). */
+export function elegirTipo(s: SeleccionTurno, tipo: TipoTurno): SeleccionTurno {
+  return tipo === 'entrega' ? { ...s, tipo, obraId: null, opIds: [] } : { ...s, tipo }
+}
+
+/** Tildar o destildar "Con Obra". Destildado, la obra elegida se descarta (con sus OP); los pendientes quedan. */
+export function cambiarConObra(s: SeleccionTurno, conObra: boolean): SeleccionTurno {
+  return conObra ? { ...s, conObra } : { ...s, conObra, obraId: null, opIds: [] }
+}
+
+/** Tildar una obra: es una sola. Otra obra (o destildarla) descarta sus OP. */
+export function elegirObra(s: SeleccionTurno, obraId: string): SeleccionTurno {
+  return { ...s, obraId: s.obraId === obraId ? null : obraId, opIds: [] }
+}
+
+/** Tildar o destildar un pendiente: se pueden elegir varios. */
+export function alternarPendiente(s: SeleccionTurno, pendienteId: string): SeleccionTurno {
+  const ya = s.pendientesIds.includes(pendienteId)
+  return { ...s, pendientesIds: ya ? s.pendientesIds.filter((x) => x !== pendienteId) : [...s.pendientesIds, pendienteId] }
+}
+
+/**
+ * Lo que falta para pasar de la etapa 2:
+ *  - el tipo de turno;
+ *  - Reparto: al menos un pendiente, SÓLO si el cliente tiene pendientes por entregar (`hayPendientes`);
+ *  - los demás, con "Con Obra": la obra. Sin obra, nada más. Los pendientes son opcionales.
+ */
+export function faltantesSeleccion(s: SeleccionTurno, c: { hayPendientes: boolean }): string[] {
+  if (!s.tipo) return ['Elegí el tipo de turno.']
+  if (s.tipo === 'entrega') {
+    return c.hayPendientes && s.pendientesIds.length === 0 ? ['Tildá al menos un pendiente de entrega.'] : []
+  }
+  if (s.conObra && !s.obraId) return ['Tildá la obra del turno (o destildá «Con Obra» para cargar un turno sin obra).']
+  return []
+}
+
+/**
+ * Lo que falta para confirmar el turno en la etapa 3: la fecha y, en Reparación, su tipo. El rango
+ * horario aproximado (la hora) es opcional.
+ */
+export function faltantesRegistro(d: { tipo: TipoTurno | null; fecha: string; hora: string; tipoReparacion?: string }, hoy: string): string[] {
+  const f: string[] = []
+  if (!d.fecha) f.push('Elegí la fecha del turno.')
+  else if (d.fecha < hoy) f.push('La fecha del turno no puede ser anterior a hoy.')
+  if (d.tipo === 'reparacion' && !d.tipoReparacion?.trim()) f.push('Elegí el tipo de reparación.')
+  return f
+}
+
+/**
+ * ¿El horario ya está tomado? Un horario —la misma fecha y la misma hora— está ocupado mientras
+ * tenga un turno ACTIVO (Pendiente o Asignado); se libera cuando ese turno se cumple o se cancela.
+ * Los turnos sin hora (los viejos, cargados a las 00:00) no ocupan ningún horario. `excepto`: el
+ * turno que se está moviendo, que no se pisa a sí mismo.
+ */
+export function horarioOcupado(
+  turnos: readonly { id: string; estado: EstadoTurno; fecha: string; hora: string }[],
+  fecha: string,
+  hora: string,
+  excepto?: string,
+): boolean {
+  if (!fecha || !hora) return false
+  return turnos.some((t) => t.id !== excepto && activo(t.estado) && t.fecha === fecha && t.hora === hora)
+}
+
+/** El material de la obra de un turno, como se filtra en el calendario. */
+export type MaterialTurno = 'pvc' | 'aluminio' | 'sin'
+
+export const MATERIALES: { id: MaterialTurno; titulo: string }[] = [
+  { id: 'pvc', titulo: 'PVC' },
+  { id: 'aluminio', titulo: 'Aluminio' },
+  { id: 'sin', titulo: 'Sin material' },
+]
+
+/** "PVC" → pvc, "Aluminio" → aluminio; cualquier otra cosa (o nada) es "sin material". */
+export function materialDe(material: string): MaterialTurno {
+  const m = sinTildes(material ?? '')
+  if (m === 'pvc') return 'pvc'
+  if (m === 'aluminio') return 'aluminio'
+  return 'sin'
+}
+
+const COLOR_MATERIAL: Record<MaterialTurno, { fondo: string; texto: string }> = {
+  pvc: { fondo: '#00c875', texto: '#ffffff' },
+  aluminio: { fondo: '#ffcb00', texto: '#3d3200' },
+  sin: { fondo: '#c4c4c4', texto: '#1f2937' },
+}
+
+/** El color del turno en el calendario, por el material de la obra: PVC verde, Aluminio amarillo. */
+export function colorDeMaterial(material: string): { fondo: string; texto: string } {
+  return COLOR_MATERIAL[materialDe(material)]
+}
+
+/** El color de un material (el del filtro). */
+export const colorMaterial = (m: MaterialTurno) => COLOR_MATERIAL[m].fondo
+
+/**
+ * El color del porcentaje de cancelación (lo cobrado) de una obra: rojo por debajo del 70 %,
+ * amarillo del 70 % al 90 % y verde del 90 % al 100 %.
+ */
+export function colorCancelacion(pct: number | null): 'rojo' | 'amarillo' | 'verde' | null {
+  if (pct === null || !Number.isFinite(pct)) return null
+  if (pct < 70) return 'rojo'
+  if (pct < 90) return 'amarillo'
+  return 'verde'
+}
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Calendario: el color de cada tipo de turno y la franja horaria
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Los colores de `✋ Tipo de Turno` en el tablero. La pantalla los lee del tablero
+ * (`coloresTipoTurno`), así un cambio de color en Monday se ve igual; éstos quedan para cuando no
+ * se pudieron leer.
+ */
+export const COLOR_TIPO_TURNO: Record<TipoTurno, string> = {
+  colocacion: '#00c875',
+  reparacion: '#df2f4a',
+  entrega: '#fdab3d',
+  medicion: '#9d50dd',
+  terminacion: '#007eb5',
+}
+
+/** El gris de un turno sin tipo, o de un tipo que la app no carga. */
+export const COLOR_SIN_TIPO = '#c4c4c4'
+
+/** La clave con que se busca una etiqueta: sin tildes ni mayúsculas ("MEDICIÓN" = "medicion"). */
+export const claveEtiqueta = sinTildes
+
+/**
+ * El color de un tipo de turno: el de su etiqueta en el tablero (`colores`, por clave de etiqueta),
+ * o el conocido; sin tipo, gris.
+ */
+export function colorDeTipo(tipo: TipoTurno | null, etiqueta: string, colores: Record<string, string> | null): string {
+  const delTablero = colores?.[claveEtiqueta(etiqueta || (tipo ? defTipo(tipo).etiqueta : ''))]
+  if (delTablero) return delTablero
+  return tipo ? COLOR_TIPO_TURNO[tipo] : COLOR_SIN_TIPO
+}
+
+/** Una franja horaria por horas enteras: de `desde` (incluida) a `hasta` (excluida). null = sin tope. */
+export interface Franja {
+  desde: number | null
+  hasta: number | null
+}
+
+export const franjaVacia = (): Franja => ({ desde: null, hasta: null })
+
+export const hayFranja = (f: Franja) => f.desde != null || f.hasta != null
+
+/**
+ * Si un turno entra en la franja. Sin franja, entran todos. Con franja, sólo los que tienen hora y
+ * caen adentro: "de 8 a 12" toma 8:00 a 11:59, y un turno de las 12:00 ya no entra.
+ */
+export function enFranja(hora: string, f: Franja): boolean {
+  if (!hayFranja(f)) return true
+  const m = /^(\d{1,2}):(\d{2})/.exec(hora ?? '')
+  if (!m) return false
+  const min = Number(m[1]) * 60 + Number(m[2])
+  if (f.desde != null && min < f.desde * 60) return false
+  if (f.hasta != null && min >= f.hasta * 60) return false
+  return true
+}
+
+/** Una semana del calendario, de lunes (`inicio`) a domingo (`fin`), en `YYYY-MM-DD`. */
+export interface SemanaCal {
+  inicio: string
+  fin: string
+}
+
+const isoLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/**
+ * Las semanas del mes de `fecha` (`YYYY-MM-DD`), de lunes a domingo: todas las que tienen al menos
+ * un día del mes —las filas del calendario de ese mes—.
+ */
+export function semanasDelMes(fecha: string): SemanaCal[] {
+  const [a, m] = fecha.split('-').map(Number)
+  const primero = new Date(a, m - 1, 1)
+  const ultimo = new Date(a, m, 0)
+  /* El lunes de la semana del día 1 (getDay: domingo 0). */
+  const lunes = new Date(a, m - 1, 1 - ((primero.getDay() + 6) % 7))
+  const semanas: SemanaCal[] = []
+  for (let d = lunes; d <= ultimo; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7)) {
+    semanas.push({ inicio: isoLocal(d), fin: isoLocal(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6)) })
+  }
+  return semanas
+}
+
+/** Cómo va la entrega de un pendiente, por sus cantidades. */
+export type EntregaPendiente = 'pendiente' | 'parcial' | 'entregado'
+
+/**
+ * Nada entregado: "pendiente" (rojo); algo entregado y algo por entregar: "parcial" (naranja); nada
+ * por entregar: "entregado" (verde).
+ */
+export function entregaDePendiente(vendido: number, porEntregar: number): EntregaPendiente {
+  if (porEntregar <= 0) return 'entregado'
+  return vendido - porEntregar > 0 ? 'parcial' : 'pendiente'
 }
