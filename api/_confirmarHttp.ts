@@ -108,6 +108,9 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
       )
     }
 
+    /* El estado se lee de Monday en CADA pedido, antes de mostrar el formulario y antes de escribir:
+       si alguien ya la confirmó desde la app (o la respondió el otro destinatario), al cliente se le
+       muestra el agradecimiento de ya confirmada, nunca el formulario. */
     if (req.method !== 'POST') {
       return html(res, 200, doc.situacion === 'pendiente' ? formulario(doc, accion) : paginaSinRespuesta(doc))
     }

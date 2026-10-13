@@ -33,6 +33,8 @@ export const COL_OP = {
   nroPvc: 'numeric_mm7ep0eq',
   nroAluminio: 'text_mm7gjg24',
   obra: 'board_relation_mm7e604m',
+  /** 🤖Motivo por el que NO Confirmo (text): lo que escribió el cliente al no confirmar. */
+  motivoNoConfirmo: 'text_mm7zjn8y',
 } as const
 
 /** 🚫Confirmacion Op Cliente de la obra: la app la deja en "Pend de Confirmar" al enviar. */
@@ -57,8 +59,8 @@ export const ETIQUETAS = {
     pendiente: 'Pend de Confirmar',
     pendienteAnteriores: ['Generada y Enviada Pend Confirmar', 'Enviada Pend Confirmar', 'Enviada Pend de Confirmar'],
     confirmada: 'Confirmada',
-    /* No existe todavía en `🤖Estado OP`: se crea la primera vez (`create_labels_if_missing`), como
-       hace la app con "Enviada a Taller" y "Cancelada". */
+    /* Ya no se escribe (regla del usuario, 09/10/2026: "No confirmar" deja la OP Cancelada). Se sigue
+       leyendo por las OP que quedaron así de antes. */
     rechazada: 'NO Confirmado',
   },
   obra: { confirmada: 'CONFIRMADO OP', rechazada: 'NO CONFIRMADO' },
@@ -74,8 +76,9 @@ export const ETIQUETAS = {
  *  - `pendiente`: se muestra el formulario.
  *  - `confirmada`: ya se confirmó. En la OP también cuenta si ya siguió adelante con esa confirmación
  *    (enviada al taller, producción completada): se muestra la pantalla de "¡Confirmamos tu pedido!".
- *  - `rechazada`: ya se pidió una revisión; se muestra "Recibimos tu observación".
- *  - `cancelada`: la OP se canceló (en general, para emitir una corregida).
+ *  - `rechazada`: el cliente no confirmó; se muestra "Recibimos tu observación". En la OP es la
+ *    Cancelada que tiene el motivo del cliente (`🤖Motivo por el que NO Confirmo`).
+ *  - `cancelada`: la OP se canceló desde la app (en general, para emitir una corregida).
  *  - `sinEnviar`: la OP todavía no se envió a confirmar (no debería pasar con un enlace real).
  */
 export type SituacionRespuesta = 'pendiente' | 'confirmada' | 'rechazada' | 'cancelada' | 'sinEnviar'
@@ -259,6 +262,8 @@ export async function buscarDocumento(
     const numero = txt(c[COL_OP.nroAluminio]) || txt(c[COL_OP.nroPvc])
     const etiqueta = txt(c[COL_OP.estado])
     const obraId = String(c[COL_OP.obra]?.linked_item_ids?.[0] ?? '')
+    const motivo = txt(c[COL_OP.motivoNoConfirmo])
+    const situacion = situacionOp(etiqueta, indiceDe(c[COL_OP.estado]))
     return {
       documento,
       id: String(i.id),
@@ -266,9 +271,10 @@ export async function buscarDocumento(
       titulo: ['Orden de Producción', numero ? `N° ${numero}` : '', tipo ? `· ${tipo}` : ''].filter(Boolean).join(' '),
       detalle: (c[COL_OP.obra]?.display_value ?? '').trim(),
       etiqueta,
-      situacion: situacionOp(etiqueta, indiceDe(c[COL_OP.estado])),
+      /* Cancelada con el motivo del cliente: la canceló su "No confirmar", y se le muestra eso. */
+      situacion: situacion === 'cancelada' && motivo ? 'rechazada' : situacion,
       nombre: nombreDelEnlace ?? (await nombreEnObra(consulta, obraId, rol)),
-      motivo: '',
+      motivo,
     }
   }
   const i = await porClave(
@@ -364,11 +370,19 @@ export async function registrarRespuesta(
   const confirma = r.tipo === 'confirmar'
 
   if (doc.documento === 'op') {
-    await escribir(BOARD_ORDENES, doc.id, {
-      /* "Confirmada" por índice (su nombre puede cambiar en el tablero). "NO Confirmado" no tiene
-         índice: va por nombre y se crea la primera vez. */
-      [COL_OP.estado]: confirma ? { index: INDICE_OP.confirmada } : { label: ETIQUETAS.op.rechazada },
-    })
+    /* Confirmar: "Confirmada". No confirmar: la OP queda "Cancelada" con el motivo del cliente en
+       `🤖Motivo por el que NO Confirmo` (regla del usuario, 09/10/2026): un cambio es otra OP. Las
+       etiquetas van por índice, porque su nombre puede cambiar en el tablero. */
+    await escribir(
+      BOARD_ORDENES,
+      doc.id,
+      confirma
+        ? { [COL_OP.estado]: { index: INDICE_OP.confirmada } }
+        : {
+            [COL_OP.estado]: { index: INDICE_OP.cancelada },
+            [COL_OP.motivoNoConfirmo]: r.motivo.replace(/\s*\n\s*/g, ' ').slice(0, LIMITES.motivo),
+          },
+    )
     if (doc.padreId) {
       await escribir(BOARD_OBRAS, doc.padreId, {
         [COL_OBRA_CONFIRMACION]: { label: confirma ? ETIQUETAS.obra.confirmada : ETIQUETAS.obra.rechazada },

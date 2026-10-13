@@ -138,12 +138,13 @@ function simulado(items: Record<string, unknown>[]) {
   }
   return { consulta, llamadas }
 }
-const op = (estado: string, clave = CLAVE) => ({
+const op = (estado: string, clave = CLAVE, motivo = '') => ({
   id: '501',
   name: 'Obra X - IDOP-1',
   state: 'active',
   column_values: [
     { id: COL_OP.clave, text: clave },
+    { id: COL_OP.motivoNoConfirmo, text: motivo },
     { id: COL_OP.estado, text: estado },
     { id: COL_OP.tipo, text: 'PVC' },
     { id: COL_OP.nroPvc, text: '2291' },
@@ -264,17 +265,22 @@ async function pedir(metodo: string, ruta: string, cuerpo = '', ua = 'Mozilla/5.
 }
 
 let estadoOp = 'Generada y Enviada Pend Confirmar'
+let motivoOp = ''
 const mutaciones: string[] = []
 globalThis.fetch = (async (_url: string, init: { body: string }) => {
   const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
   if (query.trim().startsWith('mutation')) {
     mutaciones.push(String(variables.valores ?? variables.cuerpo))
-    /* La OP se confirma por índice ({"index":1}), no por nombre. */
-    if (/"index":1[,}]|Confirmada/.test(String(variables.valores ?? ''))) estadoOp = 'Confirmada'
+    /* La OP se confirma y se cancela por índice ({"index":1} / {"index":2}), no por nombre. */
+    const v = JSON.parse(String(variables.valores ?? '{}')) as Record<string, { index?: number } | string>
+    const estado = v[COL_OP.estado]
+    if (typeof estado === 'object' && estado.index === 1) estadoOp = 'Confirmada'
+    if (typeof estado === 'object' && estado.index === 2) estadoOp = 'Cancelada'
+    if (typeof v[COL_OP.motivoNoConfirmo] === 'string') motivoOp = v[COL_OP.motivoNoConfirmo] as string
     return new Response(JSON.stringify({ data: { ok: true } }))
   }
   if (query.includes('items(ids:')) return new Response(JSON.stringify({ data: { items: [OBRA_CONTACTOS] } }))
-  const items = (variables.c as string[])[0] === CLAVE ? [op(estadoOp)] : []
+  const items = (variables.c as string[])[0] === CLAVE ? [op(estadoOp, CLAVE, motivoOp)] : []
   return new Response(JSON.stringify({ data: { boards: [{ items_page: { items } }] } }))
 }) as typeof fetch
 
@@ -336,6 +342,43 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.ok(r.cuerpo.includes('Estimado/a<span id="saludoNombre"> Juan Pérez</span>,'))
 }
 assert.equal((await pedir('GET', `/c/${otroCodigo}`)).status, 404, 'código firmado de una clave que no está en Monday')
+
+/* ── Ya la confirmaron desde la app antes de que el cliente abriera el enlace ─────────────────── */
+{
+  estadoOp = 'Confirmada'
+  const antes = mutaciones.length
+  const r = await pedir('GET', ruta)
+  assert.ok(r.cuerpo.includes('<span id="respuesta" hidden>Confirmar</span>'), 've la orden ya confirmada')
+  assert.ok(!r.cuerpo.includes('name="estado_obra"'), 'no se le muestra el formulario')
+  /* Y si tenía el formulario abierto de antes y lo manda igual: no se escribe nada. */
+  const p = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=cambio')
+  assert.equal(p.status, 409)
+  assert.ok(p.cuerpo.includes('<span id="respuesta" hidden>Confirmar</span>'))
+  assert.equal(mutaciones.length, antes, 'no pisa la confirmación de la app')
+}
+
+/* ── "No confirmar": la OP queda Cancelada con el motivo del cliente ──────────────────────────── */
+{
+  estadoOp = 'Pend de Confirmar'
+  motivoOp = ''
+  const antes = mutaciones.length
+  const r = await pedir('POST', ruta, 'estado_obra=No+confirmar&motivo=La+ventana+del%0Aliving+mide+distinto')
+  assert.equal(r.status, 200)
+  assert.ok(r.cuerpo.includes('<span id="respuesta" hidden>No confirmar</span>'), 'el agradecimiento de "revisar"')
+  assert.ok(r.cuerpo.includes('La ventana del\nliving mide distinto'), 'con lo que contó')
+  const deLaOp = JSON.parse(mutaciones[antes])
+  assert.deepEqual(
+    deLaOp,
+    { [COL_OP.estado]: { index: 2 }, [COL_OP.motivoNoConfirmo]: 'La ventana del living mide distinto' },
+    'Cancelada (índice 2) y el motivo en 🤖Motivo por el que NO Confirmo',
+  )
+  assert.ok(mutaciones[antes + 1].includes('NO CONFIRMADO'), 'la obra, NO CONFIRMADO')
+  /* Vuelve a abrir el enlace: ve su respuesta con el motivo, no "orden cancelada". */
+  const g = await pedir('GET', ruta)
+  assert.ok(g.cuerpo.includes('<span id="respuesta" hidden>No confirmar</span>') && g.cuerpo.includes('La ventana del living mide distinto'))
+  assert.ok(!g.cuerpo.includes('Esta orden fue cancelada'))
+  motivoOp = ''
+}
 
 /* ── El presupuesto: sus dos HTML, con el paso 2 (ubicación y coordinador) ─────────────────────── */
 {
