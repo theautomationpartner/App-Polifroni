@@ -641,7 +641,9 @@ export async function completarConfirmacion(
         }`,
         {
           cuenta: cliente.cuentaId,
-          nombre: [obra.idObra, p.bolsaNombre].filter(Boolean).join(' - '),
+          /* Sólo el ID de la obra, sin el nombre del cliente (regla del usuario, 13/10/2026). Si Monday
+             todavía no le asignó el ID, el número del ítem de la obra. */
+          nombre: obra.idObra || `Obra ${obraId}`,
           mov: JSON.stringify({
             [COL_MOV.movimiento]: { label: 'Venta-Sin Fact' },
             [COL_MOV.saldoInicial]: String(saldoInicialNuevo(await movimientosDe(consulta, cliente.cuentaId))),

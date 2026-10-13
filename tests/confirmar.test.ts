@@ -747,7 +747,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     assert.equal(cta.length, 1)
     assert.ok(cta[0].query.includes('change_multiple_column_values'), 'la obra, en la misma mutation')
     assert.equal(cta[0].variables.cuenta, '45')
-    assert.equal(cta[0].variables.nombre, 'IDOBRA-900 - PEREZ JUAN')
+    assert.equal(cta[0].variables.nombre, 'IDOBRA-900', 'sólo el ID de la obra, sin el cliente')
     assert.deepEqual(JSON.parse(String(cta[0].variables.mov)), {
       [COL_MOV.movimiento]: { label: 'Venta-Sin Fact' },
       [COL_MOV.saldoInicial]: '1000',
