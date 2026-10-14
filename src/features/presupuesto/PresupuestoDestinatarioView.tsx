@@ -118,6 +118,10 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
       },
     })
 
+  /** Se editó el contacto desde su card (ya quedó en Monday): la card y el envío siguen con lo nuevo. */
+  const editado = (t: TipoContacto, c: Contacto) =>
+    dispatch({ type: 'setPresupuesto', cambios: t === 'Cliente' ? { cliente: c } : { arquitecto: c } })
+
   const abrir = async (id: string) => {
     let tipo = tipos.current.get(id) ?? null
     setLeyendo(tipo ?? 'buscando')
@@ -189,6 +193,7 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
           cliente={presupuesto.cliente}
           leyendo={leyendo !== null}
           onQuitar={() => asignar('Cliente', null)}
+          onGuardado={(c) => editado('Cliente', c)}
         />
       ) : (
         <ContactosFichas
@@ -196,6 +201,7 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
           arquitecto={presupuesto.arquitecto}
           leyendo={leyendo === 'Cliente' || leyendo === 'Constructor' ? leyendo : null}
           onQuitar={(t) => asignar(t, null)}
+          onGuardado={editado}
         />
       )}
 
