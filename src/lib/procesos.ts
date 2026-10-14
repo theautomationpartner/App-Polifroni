@@ -26,14 +26,8 @@ export const PROCESOS: ProcesoDef[] = [
       'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp, y gana o pierde cada uno: el ganado se registra como obra.',
     detalle: '2 operaciones',
   },
-  {
-    id: 'gestionObras',
-    icono: 'fa-person-digging',
-    titulo: 'Obras',
-    descripcion:
-      'Factura las obras de tus clientes según lo pendiente de facturar de cada una, emite el comprobante en ARCA y envíalo por WhatsApp.',
-    detalle: '1 operación',
-  },
+  /* Bloqueada en producción (rama main) hasta terminar de probarla en dev: se ve, apagada. */
+  { id: null, icono: 'fa-person-digging', titulo: 'Obras', detalle: 'Próximamente' },
   {
     id: 'obras',
     icono: 'fa-industry',
@@ -48,7 +42,7 @@ export const PROCESOS: ProcesoDef[] = [
     titulo: 'Agenda',
     descripcion:
       'Registra turnos de colocación, reparación, entrega y medición con tus clientes, avísales por WhatsApp y gestiona cada turno hasta que se cumpla.',
-    detalle: '2 operaciones',
+    detalle: '1 operación',
   },
 ]
 

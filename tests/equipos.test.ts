@@ -250,3 +250,16 @@ console.log('equipos (rol por team): OK')
   assert.ok(puedeUsar(con(['admin']), 'ia'))
   assert.throws(() => exigirRuta(con(['ventas']), 'finalizar'), (e: ErrorAuth) => e.codigo === 'operacion_no_permitida')
 }
+
+/* ── Obras, bloqueada en producción (rama main) ──────────────────────────────────────────────── */
+{
+  /* Facturar una obra no la usa nadie en producción, ni el admin: su área se ve "Próximamente". */
+  for (const roles of [['admin'], ['administracion'], ['ventas'], ['produccion'], ['admin', 'ventas']] as const) {
+    assert.ok(!puedeOperar(roles, 'facturar'), `Facturar una obra bloqueada (${roles.join(', ')})`)
+    assert.ok(!puedeEntrar(roles, 'gestionObras', OPERACIONES), `el área Obras bloqueada (${roles.join(', ')})`)
+  }
+  /* Presupuesto y Agenda, en cambio, siguen habilitadas. */
+  assert.ok(puedeOperar(['admin'], 'presupuestos') && puedeOperar(['ventas'], 'gestionarPresupuestos'))
+  assert.ok(puedeOperar(['administracion'], 'calendario'))
+  console.log('equipos: Obras bloqueada en producción, OK')
+}
