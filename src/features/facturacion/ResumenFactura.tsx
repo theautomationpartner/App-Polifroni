@@ -102,7 +102,7 @@ export function ResumenFactura() {
         /* La nota de crédito lleva el CAE de la factura que anula. */
         comprobante:
           factura.tipo === 'notaCredito' && factura.asociada
-            ? { tipo: 'notaCredito', caeAsociado: factura.asociada.cae }
+            ? { tipo: 'notaCredito', caeAsociado: factura.asociada.cae, motivo: factura.motivo }
             : { tipo: 'factura' },
         documento,
         avanzar: (l) => dispatch({ type: 'setFactura', cambios: { comprobantes: l } }),
@@ -223,6 +223,13 @@ export function ResumenFactura() {
           <Fila label="Comprobante asociado">
             <span className="rvalue-txt" title={`CAE ${factura.asociada.cae}`}>
               {factura.asociada.nombre}
+            </span>
+          </Fila>
+        )}
+        {factura.tipo === 'notaCredito' && (
+          <Fila label="Motivo">
+            <span className="rvalue-txt" title={factura.motivo}>
+              {factura.motivo.trim()}
             </span>
           </Fila>
         )}

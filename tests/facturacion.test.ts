@@ -30,6 +30,7 @@ import {
   porcentajeFacturado,
   formatearImporte,
   problemaMontoNotaCredito,
+  problemaMotivo,
   proyeccion,
   problemaDocumento,
   problemaMonto,
@@ -112,6 +113,13 @@ prueba('nota de crédito: mayor a cero y sin pasar lo que la factura asociada ad
   assert.match(problemaMontoNotaCredito('0', 100_000) ?? '', /mayor a cero/)
   assert.match(problemaMontoNotaCredito('100.000,01', 100_000) ?? '', /no puede superar/)
   assert.match(problemaMontoNotaCredito('', 100_000) ?? '', /Ingresá/)
+})
+
+prueba('nota de crédito: el motivo es obligatorio (y con tope)', () => {
+  assert.match(problemaMotivo('') ?? '', /Escribí el motivo/)
+  assert.match(problemaMotivo('   ') ?? '', /Escribí el motivo/)
+  assert.equal(problemaMotivo('Descuento acordado'), null)
+  assert.match(problemaMotivo('x'.repeat(501)) ?? '', /500 caracteres/)
 })
 
 prueba('el importe se escribe como en la app', () => {

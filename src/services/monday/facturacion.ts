@@ -108,6 +108,8 @@ const COL_FACT = {
   cae: 'text_mm3k93vs',
   /** ✋CAE de Fact a NC/ND: en una nota de crédito, el CAE de la factura que anula. */
   caeAsociado: 'numeric_mm3kqm31',
+  /** ✋ Observaciones: en una nota de crédito, su motivo. */
+  observaciones: 'long_text_mm3kfam',
   obra: 'board_relation_mm3ksj4p',
   estadoEnvio: 'color_mm3kg5dm',
   sobre: 'color_mm3x1kd',
@@ -378,7 +380,7 @@ export async function obrasDeCuenta(obraIds: string[], constructorId: string | n
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /** Qué comprobante se emite: una factura, o una nota de crédito con el CAE de la factura que anula. */
-export type ComprobanteAEmitir = { tipo: 'factura' } | { tipo: 'notaCredito'; caeAsociado: string }
+export type ComprobanteAEmitir = { tipo: 'factura' } | { tipo: 'notaCredito'; caeAsociado: string; motivo: string }
 
 /**
  * 1. El ítem del comprobante, como lo crea el botón "Emitir Factura": Factura (o Nota de Credito, con
@@ -405,7 +407,12 @@ export async function crearComprobante(
       nombre: 'fact',
       valores: JSON.stringify({
         [COL_FACT.tipo]: { ids: [nc ? OPCION.notaCredito : OPCION.factura] },
-        ...(nc ? { [COL_FACT.caeAsociado]: comprobante.caeAsociado.replace(/\D/g, '') } : {}),
+        ...(nc
+          ? {
+              [COL_FACT.caeAsociado]: comprobante.caeAsociado.replace(/\D/g, ''),
+              [COL_FACT.observaciones]: { text: comprobante.motivo.trim() },
+            }
+          : {}),
         [COL_FACT.moneda]: { ids: [OPCION.pesos] },
         [COL_FACT.condicionVenta]: { ids: [OPCION.cuentaCorriente] },
         [COL_FACT.sobre]: { index: OPCION.sobreObra },

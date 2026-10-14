@@ -11,6 +11,8 @@ import {
   pesos,
   problemaMonto,
   problemaMontoNotaCredito,
+  problemaMotivo,
+  MAX_MOTIVO,
   tipoHabilitado,
   type TipoFacturacion,
 } from '@/lib/facturacion'
@@ -43,6 +45,8 @@ export function FacturarTipoView() {
   const obra = obras[0] ?? null
   const bloqueada = emisionIniciada(factura)
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
+  /** Se intentó continuar: lo que falta se marca en rojo. */
+  const [marcar, setMarcar] = useState(false)
   const [errorMonday, setErrorMonday] = useState<string | null>(null)
   /** Las facturas emitidas de la obra (para la nota de crédito). `null`: todavía no se leyeron. */
   const [facturas, setFacturas] = useState<FacturaEmitida[] | null>(null)
@@ -52,6 +56,7 @@ export function FacturarTipoView() {
   const facturado = obra?.facturado ?? 0
   const elegida = elegidas[0] ?? null
   const nc = tipo === 'notaCredito'
+  const problemaMot = nc ? problemaMotivo(factura.motivo) : null
   /** Lo que la nota de crédito puede anular: lo que admite la factura asociada, y nunca más que lo facturado. */
   const disponibleNc = asociada ? Math.min(asociada.disponible, facturado) : 0
   const problema = !elegida
@@ -122,6 +127,11 @@ export function FacturarTipoView() {
     if (nc && (leyendoFacturas || facturas === null)) return
     if (nc && !asociada) {
       setAviso({ titulo: 'Falta la factura a anular', texto: 'Tildá en la tabla la factura de la obra que anula la nota de crédito.' })
+      return
+    }
+    if (nc && problemaMot) {
+      setMarcar(true)
+      setAviso({ titulo: 'Falta el motivo de la nota de crédito', texto: problemaMot })
       return
     }
     if (problema || !elegida) {
@@ -236,6 +246,37 @@ export function FacturarTipoView() {
                 onElegir={(f) => (f ? elegirAsociada(f) : fijar({ asociada: null, elegidas: [] }))}
                 onMonto={cambiarMonto}
               />
+
+              {/* Por qué se emite: obligatorio. Queda en ✋ Observaciones del comprobante. Es el mismo campo
+                  de la "Observación" de los datos de la medición: arranca en un renglón y crece. */}
+              <div className="carga-grid fac-motivo">
+                <div className={`med-campo ${marcar && problemaMot ? 'fac-monto--falta' : ''}`}>
+                  <label className="med-l" htmlFor="fac-motivo">
+                    Motivo de la nota de crédito *
+                    <span className="med-l-sub">queda en las observaciones del comprobante</span>
+                  </label>
+                  <textarea
+                    id="fac-motivo"
+                    className="med-input med-area"
+                    rows={2}
+                    maxLength={MAX_MOTIVO}
+                    placeholder="Ej: descuento acordado con el cliente por demora en la colocación"
+                    value={factura.motivo}
+                    disabled={bloqueada}
+                    aria-invalid={(marcar && !!problemaMot) || undefined}
+                    onChange={(e) => {
+                      e.currentTarget.style.height = 'auto'
+                      e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 160)}px`
+                      fijar({ motivo: e.target.value })
+                    }}
+                  />
+                  {marcar && problemaMot && (
+                    <p className="fact-input-error" role="alert">
+                      <i className="fas fa-circle-exclamation" /> {problemaMot}
+                    </p>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </div>

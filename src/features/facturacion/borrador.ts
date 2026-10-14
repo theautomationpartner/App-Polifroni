@@ -52,6 +52,8 @@ export interface BorradorFactura {
   tipo: TipoFacturacion | null
   /** Nota de crédito: la factura de la obra que anula (su CAE va en el comprobante). */
   asociada: FacturaEmitida | null
+  /** Nota de crédito: por qué se emite. Va en ✋ Observaciones del comprobante. */
+  motivo: string
   /** La obra que se factura, con su monto. Vacío mientras no se eligió qué facturar. */
   elegidas: ObraElegida[]
   /** El CUIT/CUIL/DNI a facturar. Arranca con el del cliente; vacío = Consumidor Final. */
@@ -68,6 +70,7 @@ export const facturaInicial = (): BorradorFactura => ({
   obras: [],
   tipo: null,
   asociada: null,
+  motivo: '',
   elegidas: [],
   documento: '',
   comprobantes: [],

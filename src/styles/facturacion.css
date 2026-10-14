@@ -441,3 +441,17 @@
     max-width: none;
   }
 }
+
+/* El motivo de la nota de crédito, debajo de la tabla de facturas: a todo el ancho. */
+.facturar-v2 .fac-motivo {
+  display: block;
+  margin: 4px 0 0;
+}
+.facturar-v2 .fac-motivo .med-area {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+.facturar-v2 .fac-motivo .fact-input-error {
+  margin-top: 6px;
+}
