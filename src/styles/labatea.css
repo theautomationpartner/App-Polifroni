@@ -844,8 +844,16 @@
 .topsel-op {
   display: block;
   /* La caja mide lo que su opción más larga ("CONSULTAR ORDENES DE PRODUCCION") necesita para
-     entrar en UN renglón, y el menú mide lo mismo que la caja. */
-  --sel-ancho: 340px;
+     entrar en UN renglón, y el menú mide lo mismo que la caja. Un 5% menos (340 → 323) para que la
+     barra de etapas de "Crear y Cargar Presupuestos" entre en la misma fila (pedido del usuario). */
+  --sel-ancho: 323px;
+}
+/* Con la caja un 5% más angosta, el relleno interno cede lo que falta para que la operación más
+   larga ("CARGAR Y ENVIAR ORDENES DE PRODUCCION") siga entrando entera. */
+.topsel-op .selbox--btn {
+  padding-left: 10px;
+  padding-right: 10px;
+  gap: 8px;
 }
 /* Si la caja se achica (pantallas angostas), la operación se corta con "…" en UN renglón, como el
    usuario: partida en dos o tres renglones se salía de la caja. */
@@ -884,7 +892,7 @@
    que la barra de etapas siga entrando en la MISMA fila y el encabezado no crezca a dos pisos. */
 @media (max-width: 1380px) {
   .topsel-op {
-    --sel-ancho: 300px;
+    --sel-ancho: 285px;
   }
   .topsel .sel-usuario,
   .topsel .selbox--fijo {
@@ -896,7 +904,7 @@
 }
 @media (max-width: 1240px) {
   .topsel-op {
-    --sel-ancho: 260px;
+    --sel-ancho: 247px;
   }
   .topsel .sel-usuario,
   .topsel .selbox--fijo {

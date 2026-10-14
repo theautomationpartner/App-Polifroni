@@ -741,6 +741,46 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
         border-color: var(--primary-blue);
         background: #fff;
       }
+
+      /* La dirección: el pin de ubicación adentro del campo, a la izquierda. */
+      .con-icono {
+        position: relative;
+      }
+      .con-icono__icono {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        transform: translateY(-50%);
+        fill: var(--red);
+        pointer-events: none;
+      }
+      .con-icono .input-text {
+        padding-left: 38px;
+      }
+
+      /* El coordinador: un select con la misma caja que los campos de texto y su propia flecha. */
+      select.input-text {
+        appearance: none;
+        -webkit-appearance: none;
+        padding-right: 38px;
+        cursor: pointer;
+      }
+      /* Con :focus también: el foco de .input-text usa el atajo "background", que borraría la flecha. */
+      select.input-text,
+      select.input-text:focus {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23676879' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 20px;
+      }
+      select.input-text:invalid {
+        color: var(--text-gray);
+      }
+      select.input-text option {
+        color: var(--text-dark);
+      }
       .motivo .ayuda {
         margin-top: 6px;
         font-size: 12px;
@@ -832,9 +872,9 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
               <i>✅</i>
             </label>
             <label class="opcion opcion--no">
-              <input type="radio" name="estado_obra" value="No confirmar" required />
+              <input type="radio" name="estado_obra" value="Rechazar" required />
               <span>
-                No confirmar
+                Rechazar
                 <small>Es necesario revisar o ajustar algún dato antes de aprobar.</small>
               </span>
               <i>✖️</i>
@@ -864,25 +904,25 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
           </div>
 
           <div class="motivo">
-            <label for="ubicacion">Ubicación de la obra</label>
-            <input
-              type="text"
-              id="ubicacion"
-              name="ubicacion"
-              class="input-text"
-              placeholder="Ej.: Av. San Martín 1500, Piso 3"
-            />
+            <label for="ubicacion">Dirección de la obra (ingresa nombre de calle y número)</label>
+            <div class="con-icono">
+              <svg class="con-icono__icono" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" />
+              </svg>
+              <input
+                type="text"
+                id="ubicacion"
+                name="ubicacion"
+                class="input-text"
+                placeholder="Ej.: Av. San Martín 1500"
+                autocomplete="street-address"
+              />
+            </div>
           </div>
 
           <div class="motivo">
             <label for="coordinador">Coordinador de la obra</label>
-            <input
-              type="text"
-              id="coordinador"
-              name="coordinador"
-              class="input-text"
-              placeholder="Ej.: Arquitecto Juan Pérez"
-            />
+            {{CAMPO_COORDINADOR}}
           </div>
 
           <button type="submit" class="enviar enviar--exito" id="btnPaso2">Finalizar y enviar datos</button>
@@ -919,7 +959,7 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
       // Cambios al seleccionar opciones de radio
       for (const opcion of document.querySelectorAll('input[name="estado_obra"]')) {
         opcion.addEventListener('change', (e) => {
-          const rechaza = e.target.value === 'No confirmar';
+          const rechaza = e.target.value === 'Rechazar';
 
           bloqueMotivo.hidden = !rechaza;
           motivo.required = rechaza;
@@ -959,8 +999,8 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
           return; // Salimos de la función para que el usuario llene los datos
         }
 
-        // Si eligió "No confirmar", nos aseguramos que el action sea el original
-        if (estadoSeleccionado.value === 'No confirmar') {
+        // Si eligió "Rechazar", nos aseguramos que el action sea el original
+        if (estadoSeleccionado.value === 'Rechazar') {
           form.action = webhookOriginal;
         }
 

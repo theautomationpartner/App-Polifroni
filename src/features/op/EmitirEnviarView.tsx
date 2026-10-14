@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
@@ -7,6 +7,7 @@ import { EnviarOp, type OrdenLocal } from '@/features/envio/EnviarOp'
 import { coordinador } from '@/features/obras/coordinador'
 import { useObra } from '@/features/obras/useObra'
 import { FinalizarOperacion } from '@/features/shared/FinalizarOperacion'
+import { Fila } from '@/features/shared/FilaResumen'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useRefrescarObra } from '@/features/shared/PasoNav'
@@ -20,20 +21,6 @@ import { guardarOpGenerada, registrarPvc } from './registrarPvc'
 
 /** "2026-09-25" → "25/09/2026". */
 const fecha = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso.split('-').reverse().join('/') : iso)
-
-/** Un renglón del resumen (el `Fila` de La Batea): rótulo a la izquierda, valor a la derecha. */
-function Fila({ label, requerido = true, children }: { label: string; requerido?: boolean; children: ReactNode }) {
-  const vacio = children === '' || children == null
-  return (
-    <div className="rrow">
-      <span className="rlabel">
-        {label}
-        {requerido && <span className="rreq">*</span>}
-      </span>
-      <span className={`rvalue ${vacio ? 'rvalue--falta' : ''}`}>{vacio ? '--' : children}</span>
-    </div>
-  )
-}
 
 /**
  * Etapa 3 · Emitir y Enviar OP (PVC, al cliente o constructor).
@@ -399,7 +386,7 @@ export function EmitirEnviarView() {
       )}
       {guardando && (
         <ModalCargando
-          titulo="Guardando la orden en el tablero"
+          titulo="Guardando en el sistema"
           detalle="Se está creando la OP como «Generada Pend de Enviar», con la OP de HETMO y la OP final adjuntas."
         />
       )}

@@ -11,6 +11,7 @@ import type { Abertura } from '@/features/op/observaciones'
 import type { VidrioLeido } from '@/services/monday/ordenes'
 import { presupuestoInicial, type BorradorPresupuesto } from '@/features/presupuesto/borrador'
 import { edicionInicial, type BorradorEdicion } from '@/features/editar/borrador'
+import { facturaInicial, type BorradorFactura } from '@/features/facturacion/borrador'
 import type { OrdenEditable } from '@/services/monday/edicionOp'
 import { puedeEntrar, puedeOperar } from '@/lib/permisos'
 import type { Destino, Obra, Operacion, Paso, Proceso, Rol, Usuario, UsuarioActual } from '@/types'
@@ -30,6 +31,7 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
   { id: 'calendario', titulo: 'AGENDA DE TURNOS', proceso: 'agenda' },
   { id: 'presupuestos', titulo: 'CREAR Y CARGAR PRESUPUESTOS', proceso: 'presupuesto' },
   { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
+  { id: 'facturar', titulo: 'FACTURAR UNA OBRA', proceso: 'gestionObras' },
 ]
 
 /**
@@ -55,7 +57,8 @@ export const conEtapas = (operacion: Operacion | null): boolean =>
   operacion === 'enviar' ||
   operacion === 'editar' ||
   operacion === 'vidrios' ||
-  operacion === 'presupuestos'
+  operacion === 'presupuestos' ||
+  operacion === 'facturar'
 
 /** A quién se envía, tal como lo lista la pregunta de la primera etapa. */
 export const DESTINOS: readonly { id: Destino; titulo: string }[] = [
@@ -178,6 +181,8 @@ export interface AppState {
   presupuesto: BorradorPresupuesto
   /** Editar Órdenes de Producción: la orden elegida y sus subelementos. */
   edicion: BorradorEdicion
+  /** Obras · Facturar una Obra: el cliente, su cuenta, las obras elegidas y sus comprobantes. */
+  factura: BorradorFactura
   /** Con valor, se muestra el cierre de la operación (y después se vuelve al inicio). */
   exito: Exito | null
   /** Hay un envío o una generación corriendo: no se puede salir a mitad de camino. */
@@ -201,6 +206,7 @@ export const initialState: AppState = {
   vidriosOps: [],
   presupuesto: presupuestoInicial(),
   edicion: edicionInicial(),
+  factura: facturaInicial(),
   exito: null,
   accionEnCurso: null,
   errorMonday: null,
@@ -220,6 +226,8 @@ export type Action =
   /** Editar OP: elegir la orden es terminar la etapa 1. Otra orden descarta lo leído de la anterior. */
   | { type: 'elegirOrdenEdicion'; orden: OrdenEditable }
   | { type: 'setEdicion'; cambios: Partial<BorradorEdicion> }
+  /** Facturar una Obra: lo elegido en cada etapa y lo que ya quedó en Monday. */
+  | { type: 'setFactura'; cambios: Partial<BorradorFactura> }
   /**
    * Presupuesto: cambiar entre crear uno nuevo y cargar otro empieza de nuevo (lo elegido era para
    * el otro camino).
@@ -255,6 +263,7 @@ const sinTrabajo = {
   vidriosOps: [] as string[],
   presupuesto: presupuestoInicial(),
   edicion: edicionInicial(),
+  factura: facturaInicial(),
   paso: 'obra' as Paso,
   pasoMax: 0,
 }
@@ -264,12 +273,12 @@ export function reducer(state: AppState, action: Action): AppState {
     /* Un área u operación que el team no habilita no se abre, la pida quien la pida. */
     case 'setProceso':
       if (action.proceso && !areaPermitida(action.proceso, state.usuario?.roles)) return state
-      /* La Agenda va directo a su calendario: es su única operación. */
+      /* La Agenda va directo a su calendario, y Obras a su facturación: es su única operación. */
       return {
         ...initialState,
         ...sesionDe(state),
         proceso: action.proceso,
-        operacion: action.proceso === 'agenda' ? 'calendario' : null,
+        operacion: action.proceso === 'agenda' ? 'calendario' : action.proceso === 'gestionObras' ? 'facturar' : null,
       }
 
     case 'setOperacion':
@@ -278,7 +287,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'setVidriosOps':
       return { ...state, vidriosOps: action.ids }
-
 
     case 'setPresupuesto':
       return { ...state, presupuesto: { ...state.presupuesto, ...action.cambios } }
@@ -296,10 +304,12 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'setEdicion':
       return { ...state, edicion: { ...state.edicion, ...action.cambios } }
 
+    case 'setFactura':
+      return { ...state, factura: { ...state.factura, ...action.cambios } }
+
     case 'setModoPresupuesto':
       if (state.accionEnCurso || state.presupuesto.modo === action.modo) return state
       return { ...state, ...sinTrabajo, presupuesto: { ...presupuestoInicial(), modo: action.modo } }
-
 
     case 'setDestino':
       if (state.accionEnCurso || state.destino === action.destino) return state

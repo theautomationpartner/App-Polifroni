@@ -12,6 +12,7 @@
  *  - El tipo de carpintería, el color, el PDF y la fecha de envío son de cada SUBELEMENTO.
  */
 import type { ArchivoObra } from '@/types'
+import { indiceDeValor } from '@/lib/estadosOp'
 import { memoGlobal } from './cache'
 import { archivosDeColumna, subirArchivo } from './obras'
 import { byId, valor, type CV } from './parse'
@@ -36,6 +37,9 @@ export const COL_PRES = {
   estado: 'color_mkvg6w7v',
   idPresupuesto: 'pulse_id_mkvgv9tn',
   creacion: 'pulse_log_mkwkx88a',
+  /** 🤖Creado por: el usuario de la app que creó la bolsa (columna creada el 13/10/2026). La obra que
+      nace de su confirmación lo toma como ✋Asignado a:. */
+  creadoPor: 'multiple_person_mm83jvyr',
 } as const
 
 /** Columnas del subelemento (cada presupuesto enviado). */
@@ -48,12 +52,21 @@ export const COL_SUB = {
   estadoEnvio: 'color_mkvgch3n',
   idPdf: 'pulse_id_mkvgbfmj',
   fechaEnvio: 'date_mm1zw6h1',
+  /** ✋Total Pactado del presupuesto. */
+  total: 'numeric_mm836j1t',
   /** 🤖Clave Confirmacion: la clave del enlace de confirmación que salió en el mensaje. */
   clave: 'text_mm7wn1jz',
+  /** 🤖 Estado de Confirmacion: Confirmado | Rechazado | Error de Confirmacion (vacío: sin respuesta). */
+  confirmacion: 'color_mm0dsv6p',
+  /** 🤖Motivo: por qué se rechazó. */
+  motivo: 'text_mm7wmv13',
 } as const
 
 /** Etiquetas del tablero que escribe la app. */
 export const ETIQUETA_PRES = {
+  /** El estado del ítem cuando se envía su primer presupuesto (regla del usuario, 13/10/2026). "Cargar
+      otro" sólo deja afuera las bolsas Ganadas o Perdidas (`bolsaParaCargar`). */
+  presupuestoEnviado: 'Presupuesto Enviado',
   solicitud: 'Solicitud de Presupuesto',
   /** Índice de "Solicitud de Presupuesto" en `🤖Estado Presupuesto`: más estable que el texto. */
   indiceSolicitud: 5,
@@ -240,6 +253,14 @@ export interface PresupuestoEnviado {
   estadoEnvio: string
   /** El PDF del presupuesto (`✋Presupuesto pdf`). `null` si no tiene. */
   pdf: ArchivoObra | null
+  /** ✋Total Pactado. `null` en los que no lo tienen (los anteriores a esta columna). */
+  total: number | null
+  /** 🤖 Estado de Confirmacion, tal cual (vacío: todavía sin respuesta). */
+  confirmacion: string
+  /** 🤖Clave Confirmacion: la del enlace que salió (un reenvío la reusa). */
+  clave: string
+  /** 🤖Motivo del rechazo. */
+  motivo: string
 }
 
 /** Una bolsa de presupuestos, con a quién pertenece y lo que ya se le mandó. */
@@ -273,7 +294,17 @@ export const CAMPOS_BOLSA = `
   }
   subitems {
     id name
-    column_values(ids: ${JSON.stringify([COL_SUB.tipo, COL_SUB.color, COL_SUB.fechaEnvio, COL_SUB.estadoEnvio, COL_SUB.pdf])}) { id text value }
+    column_values(ids: ${JSON.stringify([
+      COL_SUB.tipo,
+      COL_SUB.color,
+      COL_SUB.fechaEnvio,
+      COL_SUB.estadoEnvio,
+      COL_SUB.pdf,
+      COL_SUB.total,
+      COL_SUB.confirmacion,
+      COL_SUB.clave,
+      COL_SUB.motivo,
+    ])}) { id text value }
   }
 `
 
@@ -312,6 +343,12 @@ export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
         fechaEnvio: valor(sc[COL_SUB.fechaEnvio]),
         estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
         pdf: pdfDe(sc[COL_SUB.pdf]),
+        total: valor(sc[COL_SUB.total]).trim() ? Number(valor(sc[COL_SUB.total])) : null,
+        /* Sin respuesta: vacío. El tablero le puso nombre a esa etiqueta (índice 5, "Pend de Confirmar"),
+           así que se decide por el índice y no por el texto. */
+        confirmacion: [null, 5].includes(indiceDeValor(sc[COL_SUB.confirmacion]?.value)) ? '' : valor(sc[COL_SUB.confirmacion]),
+        clave: valor(sc[COL_SUB.clave]),
+        motivo: valor(sc[COL_SUB.motivo]),
       }
     }),
   }
@@ -362,6 +399,38 @@ export async function leerBolsa(id: string): Promise<(BolsaPresupuesto & { estad
   return { ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }
 }
 
+/**
+ * La relación inversa de cada contacto hacia sus presupuestos: en 👤 Clientes, "Presupuestos"; en
+ * 👤 Constructor/Arquitecto, "link to Presupuestos" (la que crea el ✋Constructor/Arquitecto de la bolsa).
+ */
+const COL_PRESUPUESTOS_DEL_CONTACTO: Record<TipoContacto, string> = {
+  Cliente: 'board_relation_mkvvkdg7',
+  Constructor: 'board_relation_mkvgpwq5',
+}
+
+/**
+ * Los presupuestos (bolsas) de un cliente o de un constructor, en CUALQUIER estado: el estado del ítem
+ * es sólo informativo (regla del usuario, 13/10/2026). Se leen desde el contacto, por su relación
+ * inversa, sin recorrer el tablero. Los archivados o borrados no van.
+ */
+export async function bolsasDeContacto(tipo: TipoContacto, id: string): Promise<(BolsaPresupuesto & { estado: string })[]> {
+  const rel = await mondayApi<{ items: { column_values: CV[] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_PRESUPUESTOS_DEL_CONTACTO[tipo]}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
+    { ids: [id] },
+  )
+  const ids = (rel.items[0]?.column_values[0]?.linked_item_ids ?? []).map(String)
+  if (!ids.length) return []
+  const d = await mondayApi<{ items: (ItemBolsa & { state: string; board: { id: string }; estado: CV[] })[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) { state board { id } ${CAMPOS_BOLSA} estado: column_values(ids: ["${COL_PRES.estado}"]) { id text } }
+    }`,
+    { ids },
+  )
+  return d.items
+    .filter((i) => i.state === 'active' && String(i.board.id) === String(BOARD_PRESUPUESTOS))
+    .map((i) => ({ ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }))
+}
+
 /* ────────────────────────────────────────────────────────────────────────────────
  * Escrituras
  * ──────────────────────────────────────────────────────────────────────────────── */
@@ -370,17 +439,20 @@ const relacion = (c: Contacto | null) => (c ? { item_ids: [Number(c.id)] } : und
 
 /**
  * Crea la bolsa: el ítem del presupuesto, con el cliente y/o el constructor, a quién se le envió y en
- * "Solicitud de Presupuesto" (abierta a recibir más presupuestos).
+ * "Presupuesto Enviado" (se crea al enviar el primero). El estado es sólo informativo.
  */
 export async function crearBolsa(a: {
   nombre: string
   cliente: Contacto | null
   arquitecto: Contacto | null
   enviarA: string
+  /** El id de Monday del usuario logueado en la app. */
+  creadoPor: string | null
 }): Promise<string> {
   const valores: Record<string, unknown> = {
-    [COL_PRES.estado]: { label: ETIQUETA_PRES.solicitud },
+    [COL_PRES.estado]: { label: ETIQUETA_PRES.presupuestoEnviado },
   }
+  if (a.creadoPor) valores[COL_PRES.creadoPor] = { personsAndTeams: [{ id: Number(a.creadoPor), kind: 'person' }] }
   if (a.cliente) valores[COL_PRES.cliente] = relacion(a.cliente)
   if (a.arquitecto) valores[COL_PRES.arquitecto] = relacion(a.arquitecto)
   if (a.enviarA) valores[COL_PRES.enviarA] = { label: a.enviarA }
@@ -391,6 +463,22 @@ export async function crearBolsa(a: {
     { nombre: a.nombre, valores: JSON.stringify(valores) },
   )
   return String(d.create_item.id)
+}
+
+/**
+ * Cierra el alta de una bolsa nueva: "Presupuesto Enviado" y quién la creó. Va al FINAL, con los
+ * subelementos ya creados: una automatización del tablero pasa la bolsa a "Solicitud de Presupuesto"
+ * apenas se le crea un subelemento, y esta escritura tiene que quedar después.
+ */
+export async function marcarBolsaEnviada(bolsaId: string, creadoPor: string | null): Promise<void> {
+  const valores: Record<string, unknown> = { [COL_PRES.estado]: { label: ETIQUETA_PRES.presupuestoEnviado } }
+  if (creadoPor) valores[COL_PRES.creadoPor] = { personsAndTeams: [{ id: Number(creadoPor), kind: 'person' }] }
+  await mondayApi(
+    `mutation ($id: ID!, $valores: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_PRESUPUESTOS}, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
+    }`,
+    { id: bolsaId, valores: JSON.stringify(valores) },
+  )
 }
 
 /** A quién se le mandó esta vez (✋Enviar a), en una bolsa que ya existía. */
@@ -413,16 +501,22 @@ export async function crearPresupuestoEnviado(a: {
   color: string
   /** `YYYY-MM-DD`. */
   fechaEnvio: string
-  /** La clave del enlace de confirmación (`itemId` del enlace). */
-  clave: string
+  /** ✋Total Pactado. */
+  total: number
+  /**
+   * La clave del enlace de confirmación, sólo si se pidió confirmar este presupuesto. Sin ella la
+   * columna queda vacía: nadie puede confirmarlo por enlace.
+   */
+  clave: string | null
 }): Promise<string> {
-  const valores = {
+  const valores: Record<string, unknown> = {
     [COL_SUB.tipo]: { labels: [a.tipo] },
     [COL_SUB.color]: { labels: [a.color] },
     [COL_SUB.estadoEnvio]: { label: ETIQUETA_PRES.enviado },
     [COL_SUB.fechaEnvio]: { date: a.fechaEnvio },
-    [COL_SUB.clave]: a.clave,
+    [COL_SUB.total]: String(a.total),
   }
+  if (a.clave) valores[COL_SUB.clave] = a.clave
   const d = await mondayApi<{ create_subitem: { id: string } }>(
     `mutation ($padre: ID!, $valores: JSON!) {
       create_subitem(parent_item_id: $padre, item_name: "Presupuesto", column_values: $valores, create_labels_if_missing: false) { id }

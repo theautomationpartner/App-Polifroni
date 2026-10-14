@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { sugerir, type EntradaIndice } from '@/lib/busquedaObras'
+import type { EtiquetaResultado } from '@/services/monday/indiceObras'
 
-/** Una obra en el desplegable: el nombre y el id. */
+/** Una obra en el desplegable: el nombre y el id (y, si la hay, su pastilla). */
 export interface ObraEncontrada {
   id: string
   nombre: string
+  etiqueta?: EtiquetaResultado
 }
 
 interface Opciones {

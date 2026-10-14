@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 interface ModalProps {
+  /** Vacío: la ventana dibuja su propio encabezado dentro del cuerpo (el asistente del turno). */
   title: string
   icon?: ReactNode
   /**

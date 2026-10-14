@@ -251,26 +251,24 @@ un `text_xxxxx` suelto.
 ## Área Presupuesto: Crear y Cargar Presupuestos
 
 Tablero 📄 Presupuestos (9984126961): un ítem por cliente o constructor —la "bolsa"— y un subelemento
-(9984270591) por cada presupuesto enviado. Dos etapas:
+(9984270591) por cada presupuesto enviado. Tres etapas:
 
 1. **Seleccionar Cliente / Seleccionar Presupuesto.** "¿Qué querés hacer?": *Crear nuevo presupuesto*
-   (se busca el cliente en 👤 Clientes y/o el constructor en 👤 Constructor/Arquitecto; al menos uno) o
-   *Cargar otro presupuesto* (se busca una bolsa en "Solicitud de Presupuesto" por su cliente o
-   constructor).
-2. **Cargar y Enviar Presupuesto.** El PDF (arrastrar y soltar), `✋Tipo de Carpinteria` y `✋ Color`
-   (las etiquetas se leen de las columnas del subelemento) y el bloque de envío de la OP, por
-   WhatsApp con `/api/whatsapp` (`documento: 'presupuesto'`, el texto lo arma `src/lib/presupuesto.ts`).
+   (un solo buscador sobre 👤 Clientes y 👤 Constructor/Arquitecto; cada uno va a su card) o *Cargar otro
+   presupuesto* (una bolsa en "Solicitud de Presupuesto").
+2. **Cargar Presupuestos.** Tipo de carpintería, color y PDF, y "Agregar a la lista". La tabla
+   "Presupuestos a enviar" junta todos los presupuestos (uno o varios), con Ver Presup, editar tipo/color
+   (lápiz) y quitar.
+3. **Enviar Presupuestos.** El bloque de envío de la OP: sale un texto genérico ("Le adjuntamos los
+   presupuestos solicitados...", `textoPresupuestos` en `src/lib/presupuesto.ts`) y después cada PDF en su
+   mensaje. La confirmación es OPCIONAL: si se elige un responsable, se indica qué presupuesto confirma
+   (todos o uno) y sólo a él le llega un enlace por cada uno, firmado por el servidor con la clave de ese
+   presupuesto (`[[ENLACE_CONFIRMACION:<clave>]]` → `textoPresupuestoDestino` en `api/_whatsappHttp.ts`).
 
-En Monday no se escribe nada hasta que el presupuesto sale. Al enviarse, "Finalizar Operación" crea la
-bolsa (sólo al crear: en "Solicitud de Presupuesto", con el cliente/constructor y `✋Enviar a:`) y el
-subelemento con tipo, color, `🤖 Estado de Envio` = Enviado, `Fecha Envio` y el PDF. La app nunca toca
-`✋Enviar` (color_mkvg4tax): es el botón del escenario de Make que manda el presupuesto.
-
-**Confirmación del presupuesto.** Como en la OP, con cliente y constructor se elige el «Responsable de
-confirmar el presupuesto». Sólo a él le llega el enlace de confirmación (ver «El enlace de
-confirmación» más abajo). La clave del enlace queda guardada en el subelemento, en
-`🤖Clave Confirmacion` (`text_mm7wn1jz`).
-Reglas en `src/lib/presupuesto.ts`, probadas con `npm run test:presupuesto`.
+En Monday no se escribe nada hasta que salen. Al enviarse, "Finalizar Operación" crea la bolsa (sólo al
+crear) y un subelemento por presupuesto con tipo, color, "Enviado", Fecha Envio, el PDF y —sólo los que
+se pidió confirmar— su `🤖Clave Confirmacion`. La app nunca toca `✋Enviar` (color_mkvg4tax): es el botón
+del escenario de Make. Reglas probadas con `npm run test:presupuesto`.
 
 ### El enlace de confirmación (OP y presupuesto)
 

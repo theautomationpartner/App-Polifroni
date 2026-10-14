@@ -4,8 +4,10 @@
  *
  *   POST multipart/form-data
  *     datos    JSON: { destinos: [{ tipo, nombre, whatsapp, confirmador, texto? }], reenvio, ordenId,
- *                      obraId, numero, tipo, documento?, clave }
- *     archivo  el PDF de la OP
+ *                      obraId, numero, tipo, documento?, clave, claves? }
+ *     archivo  el PDF de la OP. El presupuesto puede mandar VARIOS (`archivo` repetido): sale cada
+ *              uno en su mensaje, después del texto. La factura también: cada comprobante sale con
+ *              su propio texto (`textos`, uno por archivo, en el mismo orden) y después su PDF.
  *
  *   200 { msj_cliente_arquitecto: "enviado", link_op, resultados }
  *   4xx/5xx { mensajeError }   el motivo, para mostrarlo junto al botón
@@ -23,11 +25,13 @@
  *
  * El enlace para confirmar lo arma ACÁ el servidor, firmado (ver `_confirmacion.ts`), con la `clave`
  * que manda la app: el navegador nunca ve el secreto ni puede armar un enlace propio. En el
- * presupuesto el texto lo arma la app, con la marca `[[ENLACE_CONFIRMACION]]` donde va el enlace.
+ * presupuesto el texto lo arma la app, con una marca `[[ENLACE_CONFIRMACION:<clave>]]` por cada
+ * presupuesto que el responsable tiene que confirmar (ver `marcaPresupuesto`). En el presupuesto la
+ * confirmación es OPCIONAL: puede no haber responsable de confirmar.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ErrorDrive, ErrorTokenDrive, driveConfigurado, subirYCompartir } from './_drive.js'
-import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion } from './_confirmacion.js'
+import { MARCA_ENLACE, enlaceConfirmacion, esClave, faltaConfiguracion, origenDelPedido } from './_confirmacion.js'
 import { textoEdicion, textoPrimerEnvio, textoReenvio, textoTaller } from './_mensajeOp.js'
 import { mensajeTelInvalido, validarTelWsp } from './_telWsp.js'
 import { ErrorWsp, enviarMensaje, esperarEntregas, tieneWhatsapp, wspConfigurado } from './_wsp360.js'
@@ -41,6 +45,8 @@ interface DestinoPedido {
   confirmador?: boolean
   /** Presupuesto: el texto para este destinatario, armado por la app. */
   texto?: string
+  /** Factura: un texto por archivo, armados por la app. */
+  textos?: string[]
 }
 
 interface DatosPedido {
@@ -53,6 +59,7 @@ interface DatosPedido {
   /**
    * `presupuesto`: sale un presupuesto, con el texto que manda la app.
    * `taller`: la OP confirmada sale al taller de fabricación (su WhatsApp, `TALLER_WHATSAPP`).
+   * `factura`: los comprobantes emitidos, cada uno con su texto. No llevan enlace de confirmación.
    */
   documento?: string
   /** El nombre de la obra (el mensaje al taller lo nombra). */
@@ -61,10 +68,42 @@ interface DatosPedido {
   clave?: string
   /** La OP final nueva de una orden editada: sale con su propio mensaje (`textoEdicion`). */
   edicion?: boolean
+  /** Presupuesto: las claves de los presupuestos que el responsable tiene que confirmar. */
+  claves?: string[]
+}
+
+/**
+ * La marca de UN presupuesto a confirmar en el texto que arma la app: se cambia por el enlace firmado
+ * con esa clave. La misma de `src/lib/presupuesto.ts` (`marcaPresupuesto`).
+ */
+export const marcaPresupuesto = (clave: string): string => `[[ENLACE_CONFIRMACION:${clave}]]`
+/** Cualquier marca de enlace: la vieja sin clave y las de presupuesto, con su clave. */
+const RE_MARCAS = /\[\[ENLACE_CONFIRMACION(?::([^\]]*))?\]\]/g
+
+/**
+ * El texto de un destinatario del presupuesto, con los enlaces puestos. Sólo el responsable de
+ * confirmar puede traer marcas, y cada una tiene que ser de una clave pedida. `null`: el texto no es
+ * válido y no se manda nada.
+ */
+export function textoPresupuestoDestino(
+  d: { tipo: string; confirmador: boolean; texto: string },
+  claves: readonly string[],
+  origen: string | null = null,
+): string | null {
+  const marcas = [...d.texto.matchAll(RE_MARCAS)].map((m) => (m[1] ?? '').toLowerCase())
+  if (!d.confirmador) return marcas.length ? null : d.texto
+  if (marcas.some((c) => !claves.includes(c))) return null
+  if (claves.some((c) => !marcas.includes(c))) return null
+  return d.texto.replace(RE_MARCAS, (_, c: string) =>
+    enlaceConfirmacion({ documento: 'presupuesto', clave: c.toLowerCase(), rol: rolDe(d.tipo) }, origen),
+  )
 }
 
 const ERROR_INTERNO_PRESUPUESTO =
   'Ocurrió un error interno al intentar enviar el presupuesto por WhatsApp. No se registró nada en el sistema: volvé a intentar el envío en unos minutos. Si el error persiste, no dude en contactarse con el soporte de TAP.'
+
+const ERROR_INTERNO_FACTURA =
+  'Ocurrió un error interno al intentar enviar la factura por WhatsApp. La factura ya está emitida: volvé a intentar el envío en unos minutos. Si el error persiste, no dude en contactarse con el soporte de TAP.'
 
 const ERROR_INTERNO =
   'Ocurrió un error interno al intentar enviar el mensaje en la aplicacion. Dale click al boton de Finalizar Operacion para registrar la orden y no perder los datos ya cargados. Mas tarde intenta enviar la orden ya cargada nuevamente. Si el error persiste, no dude en contactarse con el soporte de TAP.'
@@ -80,6 +119,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
   if (req.method !== 'POST') return responder(res, 405, { mensajeError: 'Method Not Allowed' })
   /* Hasta leer el pedido no se sabe qué documento es: los errores de antes hablan de "la orden". */
   let presupuesto = false
+  let factura = false
   /* Sin las credenciales no se intenta nada: el código le dice al soporte qué falta. */
   const sinConfigurar = !wspConfigurado() ? 'ERROR_API_KEY_360MESSENGER' : !driveConfigurado() ? 'ERROR_CREDENCIALES_GOOGLE_DRIVE' : null
   if (sinConfigurar) {
@@ -91,23 +131,38 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     const form = await leerFormulario(req)
     const datos = JSON.parse(String(form.get('datos') ?? '{}')) as DatosPedido
     presupuesto = datos.documento === 'presupuesto'
+    factura = datos.documento === 'factura'
     /* Al taller: un solo destinatario, el WhatsApp del taller (variable del servidor), sin enlace de
        confirmación ni confirmador. */
     const taller = datos.documento === 'taller'
-    const doc = presupuesto ? 'el presupuesto' : 'la orden'
-    const archivo = form.get('archivo')
-    if (!(archivo instanceof Blob) || archivo.size === 0) {
-      return responder(res, 400, { mensajeError: presupuesto ? 'No llegó el PDF del presupuesto.' : 'No llegó el PDF de la orden.' })
+    const doc = docDe(presupuesto, factura)
+    /* El presupuesto y la factura pueden traer varios PDF; la OP, uno. */
+    const varios = presupuesto || factura
+    const archivos = form.getAll('archivo').filter((a): a is File => a instanceof Blob && a.size > 0)
+    const archivo = archivos[0]
+    if (!archivo) {
+      return responder(res, 400, {
+        mensajeError: presupuesto ? 'No llegó el PDF del presupuesto.' : factura ? 'No llegó el PDF de la factura.' : 'No llegó el PDF de la orden.',
+      })
     }
-    /* Los dos documentos llevan el enlace para confirmarlos: sin su configuración no se manda nada. */
-    const falta = taller ? null : faltaConfiguracion()
+    /* Los dos documentos llevan el enlace para confirmarlos: sin su configuración no se manda nada. El
+       presupuesto, sólo si se pidió confirmarlo. */
+    const claves = presupuesto ? (datos.claves ?? []).map((c) => texto(c).toLowerCase()) : []
+    const pideConfirmacion = !taller && !factura && (!presupuesto || claves.length > 0)
+    /* El enlace apunta al MISMO deploy que manda el mensaje (dev → dev, producción → producción): el
+       código que envía es el que después sirve la tarjeta de WhatsApp, el formulario y la respuesta. */
+    const origen = origenDelPedido(req.headers)
+    const falta = pideConfirmacion ? faltaConfiguracion(origen) : null
     if (falta) {
       return responder(res, 503, {
         mensajeError: `Ocurrio un error al intentar enviar ${doc} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ${falta}`,
       })
     }
     const clave = texto(datos.clave).toLowerCase()
-    if (!taller && !esClave(clave)) {
+    if (presupuesto && claves.some((c) => !esClave(c))) {
+      return responder(res, 400, { mensajeError: 'Falta la clave del enlace para confirmar el presupuesto.' })
+    }
+    if (!taller && !presupuesto && !factura && !esClave(clave)) {
       return responder(res, 400, { mensajeError: `Falta la clave del enlace para confirmar ${doc}.` })
     }
     const celTaller = texto(process.env.TALLER_WHATSAPP)
@@ -131,6 +186,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
           whatsapp: texto(d.whatsapp),
           confirmador: d.confirmador === true,
           texto: texto(d.texto),
+          textos: (d.textos ?? []).map(texto),
         }
       })
       .filter((d) => d.whatsapp)
@@ -138,6 +194,10 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     /* El presupuesto lleva el texto que armó la app: sin él no se manda un mensaje vacío. */
     if (presupuesto && destinos.some((d) => !d.texto)) {
       return responder(res, 400, { mensajeError: 'Falta el texto del mensaje del presupuesto.' })
+    }
+    /* La factura: un texto por comprobante, sin ninguno vacío y sin enlaces de confirmación. */
+    if (factura && destinos.some((d) => d.textos.length !== archivos.length || d.textos.some((t) => !t || /\[\[ENLACE_CONFIRMACION/.test(t)))) {
+      return responder(res, 400, { mensajeError: 'Falta el texto del mensaje de la factura.' })
     }
 
     /* 2. Todos los celulares, antes de mandar nada. */
@@ -165,30 +225,64 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     /* El enlace para confirmar va SÓLO a quien confirma: tiene que haber exactamente uno marcado. Sin
        él (o con dos) no se manda nada, en vez de mandarle el enlace a quien no corresponde. */
     const confirmadores = validados.filter((d) => d.confirmador)
-    if (!taller && confirmadores.length !== 1) {
+    if (!taller && !presupuesto && !factura && confirmadores.length !== 1) {
       return responder(res, 400, {
         mensajeError: `Falta indicar quién es el responsable de confirmar ${doc}: no se envió nada.`,
       })
     }
-    /* En el presupuesto el texto lo arma la app: sólo el de quien confirma puede traer el enlace. */
-    if (presupuesto && validados.some((d) => !d.confirmador && d.texto.includes(MARCA_ENLACE))) {
+    /* En el presupuesto la confirmación es opcional: a lo sumo UN responsable, y con él al menos un
+       presupuesto a confirmar (y sin él, ninguno). El texto lo arma la app: sólo el de quien confirma
+       puede traer enlaces, y cada uno de una clave pedida. */
+    if (presupuesto && (confirmadores.length > 1 || (confirmadores.length === 1) !== (claves.length > 0))) {
+      return responder(res, 400, {
+        mensajeError: 'Indicá qué presupuesto tiene que confirmar el responsable (o quitá el responsable): no se envió nada.',
+      })
+    }
+    const textosPresupuesto = presupuesto ? validados.map((d) => textoPresupuestoDestino(d, claves, origen)) : []
+    if (textosPresupuesto.some((t) => t === null)) {
       return responder(res, 400, { mensajeError: ERROR_INTERNO_PRESUPUESTO })
     }
 
     /* 3. El PDF, en Drive y compartido. */
-    const nombreArchivo =
-      archivo instanceof File && archivo.name ? archivo.name : presupuesto ? 'Presupuesto.pdf' : 'Orden de Produccion.pdf'
-    const enDrive = await subirYCompartir(new Uint8Array(await archivo.arrayBuffer()), nombreArchivo, archivo.type)
+    const nombreDe = (a: File, i: number) =>
+      a instanceof File && a.name
+        ? a.name
+        : presupuesto
+          ? `Presupuesto${archivos.length > 1 ? ` ${i + 1}` : ''}.pdf`
+          : factura
+            ? `Factura${archivos.length > 1 ? ` ${i + 1}` : ''}.pdf`
+            : 'Orden de Produccion.pdf'
+    const enDriveTodos: Awaited<ReturnType<typeof subirYCompartir>>[] = []
+    for (const [i, a] of (varios ? archivos : [archivo]).entries()) {
+      enDriveTodos.push(await subirYCompartir(new Uint8Array(await a.arrayBuffer()), nombreDe(a, i), a.type))
+    }
+    const enDrive = enDriveTodos[0]
 
     /* 4. A cada uno, el texto y después el archivo. */
     const reenvio = datos.reenvio === true
     const edicion = datos.edicion === true
     const enviados: { nombre: string; phone: string; ids: string[] }[] = []
-    for (const d of validados) {
-      const mensaje = taller ? d.texto : textoParaDestino(presupuesto ? 'presupuesto' : 'op', d, { reenvio, clave, edicion })
+    for (const [i, d] of validados.entries()) {
+      /* La factura: cada comprobante con su texto y, enseguida, su PDF. */
+      if (factura) {
+        const ids: string[] = []
+        for (const [j, e] of enDriveTodos.entries()) {
+          ids.push(await enviarMensaje({ phonenumber: d.tel.phone, text: d.textos[j] }))
+          ids.push(await enviarMensaje({ phonenumber: d.tel.phone, url: e.webContentLink }))
+        }
+        enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids })
+        continue
+      }
+      const mensaje = taller
+        ? d.texto
+        : presupuesto
+          ? (textosPresupuesto[i] ?? '')
+          : textoParaDestino('op', d, { reenvio, clave, edicion, origen })
       const idTexto = await enviarMensaje({ phonenumber: d.tel.phone, text: mensaje })
-      const idArchivo = await enviarMensaje({ phonenumber: d.tel.phone, url: enDrive.webContentLink })
-      enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, idArchivo] })
+      /* Después del texto, cada PDF en su mensaje (el presupuesto puede llevar varios). */
+      const idsArchivos: string[] = []
+      for (const e of enDriveTodos) idsArchivos.push(await enviarMensaje({ phonenumber: d.tel.phone, url: e.webContentLink }))
+      enviados.push({ nombre: d.nombre, phone: d.tel.phone, ids: [idTexto, ...idsArchivos] })
     }
 
     /* 5. La confirmación de la cola. */
@@ -217,6 +311,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     return responder(res, 200, {
       ...(taller ? { msj_taller: 'enviado' } : { msj_cliente_arquitecto: 'enviado' }),
       link_op: enDrive.webViewLink,
+      ...(varios ? { links: enDriveTodos.map((e) => e.webViewLink) } : {}),
       resultados,
     })
   } catch (e) {
@@ -224,7 +319,7 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     /* El token de Drive venció: no salió ningún mensaje (el PDF se sube antes de mandar). */
     if (e instanceof ErrorTokenDrive) {
       return responder(res, 503, {
-        mensajeError: `Ocurrio un error al intentar enviar ${presupuesto ? 'el presupuesto' : 'la orden'} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_TOKEN_GOOGLE_DRIVE`,
+        mensajeError: `Ocurrio un error al intentar enviar ${docDe(presupuesto, factura)} por WhatsApp. Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ERROR_TOKEN_GOOGLE_DRIVE`,
       })
     }
     /* Drive o 360messenger: se dice CUÁL falló con un código, así el soporte sabe dónde mirar sin
@@ -232,15 +327,18 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
     const codigo = e instanceof ErrorDrive ? 'ERROR_GOOGLE_DRIVE' : e instanceof ErrorWsp ? 'ERROR_360MESSENGER' : null
     if (codigo) {
       return responder(res, 502, {
-        mensajeError: `Ocurrio un error al intentar enviar ${presupuesto ? 'el presupuesto' : 'la orden'} por WhatsApp. ${
+        mensajeError: `Ocurrio un error al intentar enviar ${docDe(presupuesto, factura)} por WhatsApp. ${
           codigo === 'ERROR_GOOGLE_DRIVE' ? 'No se pudo subir el PDF a Google Drive, así que no salió ningún mensaje.' : 'El servicio de WhatsApp rechazó el mensaje.'
         } Por favor, contactate con el soporte de TAP para ver lo ocurrido, CODIGO: ${codigo}`,
         detalle: e instanceof Error ? e.message : '',
       })
     }
-    return responder(res, 502, { mensajeError: presupuesto ? ERROR_INTERNO_PRESUPUESTO : ERROR_INTERNO })
+    return responder(res, 502, { mensajeError: presupuesto ? ERROR_INTERNO_PRESUPUESTO : factura ? ERROR_INTERNO_FACTURA : ERROR_INTERNO })
   }
 }
+
+/** Cómo se nombra el documento en los errores. */
+const docDe = (presupuesto: boolean, factura: boolean) => (presupuesto ? 'el presupuesto' : factura ? 'la factura' : 'la orden')
 
 /**
  * El texto que recibe un destinatario. El enlace para confirmar va SÓLO a quien confirma (el
@@ -252,9 +350,14 @@ export async function manejarWhatsapp(req: Pedido, res: ServerResponse): Promise
 export function textoParaDestino(
   documento: 'op' | 'presupuesto',
   d: { tipo: string; nombre: string; confirmador: boolean; texto: string },
-  { reenvio, clave, edicion = false }: { reenvio: boolean; clave: string; edicion?: boolean },
+  {
+    reenvio,
+    clave,
+    edicion = false,
+    origen = null,
+  }: { reenvio: boolean; clave: string; edicion?: boolean; origen?: string | null },
 ): string {
-  const enlace = d.confirmador ? enlaceConfirmacion({ documento, clave, rol: rolDe(d.tipo) }) : null
+  const enlace = d.confirmador ? enlaceConfirmacion({ documento, clave, rol: rolDe(d.tipo) }, origen) : null
   if (documento === 'presupuesto') return enlace ? d.texto.split(MARCA_ENLACE).join(enlace) : d.texto.split(MARCA_ENLACE).join('')
   if (edicion) return textoEdicion(d.nombre, enlace)
   return reenvio ? textoReenvio(d.nombre, enlace) : textoPrimerEnvio(d.nombre, enlace)

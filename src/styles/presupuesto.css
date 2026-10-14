@@ -2,34 +2,129 @@
    Casi todo sale de las clases de Producción (`obras-v2`): el buscador, la ficha, el recuadro de
    carga, los campos `med-*` y el bloque de envío. Acá va sólo lo propio del área. */
 
-/* Etapa 1, crear: el cliente y el constructor, uno debajo del otro, cada uno con su buscador y su
-   ficha. */
-.presupuesto-v2 .pres-contactos {
+/* Etapa 1, crear: un solo buscador y, debajo, las cards del cliente y del constructor en UN
+   componente, lado a lado (una debajo de la otra si no hay ancho). */
+.presupuesto-v2 .pres-fichas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .presupuesto-v2 .pres-fichas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.presupuesto-v2 .pres-ficha {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
 }
-.presupuesto-v2 .pres-contacto > .carga-sec-t {
-  margin: 0 0 10px;
-}
-.presupuesto-v2 .pres-contacto > .carga-sec-t > i {
-  color: var(--marca);
-}
-
-/* El contacto opcional sin elegir: una línea, no una ficha en esqueleto (que se leería "cargando"). */
-.presupuesto-v2 .pres-ficha-vacia {
+.presupuesto-v2 .pres-ficha-cab {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 18px 24px;
-  color: #94a3b8;
-  font-size: 13.5px;
-  font-weight: 600;
+  width: 100%;
+  margin-bottom: 6px;
 }
-.presupuesto-v2 .pres-quitar {
-  margin-top: 10px;
+.presupuesto-v2 .pres-ficha-cab .carga-sec-t {
+  margin: 0;
+}
+.presupuesto-v2 .pres-ficha-cab .carga-sec-t > i {
+  color: var(--marca);
+}
+.presupuesto-v2 .pres-ficha-acc {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.presupuesto-v2 .pres-ficha-btn {
   padding: 6px 12px;
   font-size: 12.5px;
+}
+/* Editar va en el azul de la app (`btn-primary`). Mientras su acción no esté definida queda apagado,
+   pero sigue azul: el gris de `btn-primary:disabled` lo hacía parecer otro botón. */
+.presupuesto-v2 .pres-ficha-btn--editar:disabled {
+  background: var(--primary-blue);
+  color: #fff;
+  opacity: 0.55;
+}
+/* La card del cliente: borde suave, rojo hasta que se carga un cliente y verde con él. */
+.presupuesto-v2 .pres-ficha--falta {
+  border-color: rgba(223, 47, 74, 0.45);
+  box-shadow: 0 0 0 3px rgba(223, 47, 74, 0.08);
+}
+.presupuesto-v2 .pres-ficha--ok {
+  border-color: rgba(0, 200, 117, 0.55);
+  box-shadow: 0 0 0 3px rgba(0, 200, 117, 0.08);
+}
+.presupuesto-v2 .pres-ficha .client-name {
+  overflow-wrap: anywhere;
+}
+/* El contacto sin elegir (o quitado): la misma card, con cada dato como un bloque gris (los
+   `skeleton` de la ficha de la obra). Cada fila mide lo mismo que con el dato cargado, así la card no
+   se achica. */
+.presupuesto-v2 .pres-ficha .client-id:has(> .pres-sk),
+.presupuesto-v2 .pres-ficha .client-name:has(> .pres-sk),
+.presupuesto-v2 .pres-ficha .badges:has(> .pres-sk),
+.presupuesto-v2 .pres-ficha .status-indicator:has(> .pres-sk) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.presupuesto-v2 .pres-ficha .client-id:has(> .pres-sk) {
+  height: 17px;
+}
+.presupuesto-v2 .pres-ficha .client-name:has(> .pres-sk) {
+  height: 37px;
+}
+.presupuesto-v2 .pres-ficha .badges:has(> .pres-sk) {
+  height: 29px;
+}
+.presupuesto-v2 .pres-ficha .status-indicator:has(> .pres-sk) {
+  height: 21px;
+}
+.presupuesto-v2 .pres-sk {
+  margin: 0;
+}
+.presupuesto-v2 .pres-sk--id {
+  width: 150px;
+  height: 12px;
+}
+.presupuesto-v2 .pres-sk--nombre {
+  width: 260px;
+  max-width: 100%;
+  height: 24px;
+}
+.presupuesto-v2 .pres-sk--badge {
+  width: 140px;
+  height: 24px;
+  border-radius: 16px;
+}
+.presupuesto-v2 .pres-sk--estado {
+  width: 220px;
+  height: 14px;
+}
+/* Las acciones apagadas sin contacto: se ven, pero atenuadas. */
+.presupuesto-v2 .pres-ficha-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* La pastilla de cada resultado del buscador, al lado del nombre. */
+.presupuesto-v2 .pres-ritem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.presupuesto-v2 .pres-ritem .ritem-name {
+  min-width: 0;
+}
+.presupuesto-v2 .pres-ritem .op-estado {
+  flex-shrink: 0;
 }
 
 /* Etapa 2: una sola card a la izquierda del envío, con tipo y color arriba y el recuadro de carga
@@ -200,4 +295,329 @@
 }
 .pres-modal .pres-plano .cobro-lector-cara > .fa-cloud-arrow-up {
   display: none;
+}
+
+/* ════════════════════ Presupuestos a enviar (etapas 2 y 3) ════════════════════
+   Una fila por presupuesto, cada una como una card: el ícono del PDF con su nombre y su peso, el tipo
+   de carpintería, el color y las acciones. */
+.presupuesto-v2 .pres-agregar {
+  align-self: flex-end;
+  margin-top: 14px;
+}
+.presupuesto-v2 .pres-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.presupuesto-v2 .pres-lista > .carga-sec-t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.presupuesto-v2 .pres-lista > .carga-sec-t > i {
+  color: var(--marca);
+}
+.presupuesto-v2 .pres-lista-n {
+  margin-left: 2px;
+}
+.presupuesto-v2 .pres-lista-vacia {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  padding: 24px;
+  border: 1px dashed var(--marca-borde);
+  border-radius: 12px;
+  background: #f9fafb;
+  color: #94a3b8;
+  font-size: 13.5px;
+  text-align: center;
+}
+.presupuesto-v2 .pres-lista-vacia > i {
+  font-size: 26px;
+  color: var(--marca-apagada);
+}
+.presupuesto-v2 .pres-filas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.presupuesto-v2 .pres-fila {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto auto;
+  column-gap: 12px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.presupuesto-v2 .pres-fila-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--marca);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.presupuesto-v2 .pres-fila-arch {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.presupuesto-v2 .pres-fila-nombre {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.presupuesto-v2 .pres-fila-peso {
+  font-size: 12px;
+  color: #94a3b8;
+}
+.presupuesto-v2 .pres-fila-acc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.presupuesto-v2 .pres-fila-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--marca);
+  cursor: pointer;
+}
+.presupuesto-v2 .pres-fila-icono:hover:not(:disabled) {
+  background: var(--marca-suave);
+  border-color: var(--marca-borde);
+}
+.presupuesto-v2 .pres-fila-icono--quitar {
+  color: var(--red);
+}
+.presupuesto-v2 .pres-fila-icono:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Tipo y color: etiquetas, una al lado de la otra. */
+.presupuesto-v2 .pres-fila-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.presupuesto-v2 .pres-fila-tags .op-estado {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .presupuesto-v2 .pres-fila {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .presupuesto-v2 .pres-fila-tags,
+  .presupuesto-v2 .pres-fila-acc {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+/* Etapa 2: los datos y la lista en UN componente, separados sólo por una línea divisoria. */
+.presupuesto-v2 .pres-unido {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+}
+.presupuesto-v2 .pres-unido > .pres-carga {
+  padding-right: 24px;
+}
+.presupuesto-v2 .pres-unido > .pres-lista {
+  padding-left: 24px;
+  border-left: 1px solid #e2e8f0;
+}
+@media (max-width: 1100px) {
+  .presupuesto-v2 .pres-unido {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .presupuesto-v2 .pres-unido > .pres-carga {
+    padding-right: 0;
+    padding-bottom: 24px;
+  }
+  .presupuesto-v2 .pres-unido > .pres-lista {
+    padding-left: 0;
+    padding-top: 24px;
+    border-left: 0;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+/* En la vista del mensaje, cada PDF sale en su propia burbuja, después del texto. */
+.msj-burbuja--adj {
+  margin-top: 6px;
+  padding: 8px 10px;
+}
+
+/* Etapa 3: el responsable de confirmar y, a su derecha, qué presupuesto confirma. Cada selector ocupa
+   su columna entera; sin ancho para los dos, uno debajo del otro. */
+.presupuesto-v2 .pres-confirmar-fila {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  /* Alineados por abajo: si un rótulo ocupa dos renglones, los selectores igual quedan parejos. */
+  align-items: end;
+}
+.presupuesto-v2 .pres-confirmar-fila .w-contactos {
+  width: 100%;
+}
+@media (max-width: 1100px) {
+  .presupuesto-v2 .pres-confirmar-fila {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .presupuesto-v2 .pres-confirmar-fila .w-contactos {
+    width: 337px;
+  }
+}
+
+/* Los presupuestos que ya se enviaron (al cargar sobre uno existente): la misma fila, apagada, y un
+   espacio antes de los que se agregan ahora. */
+.presupuesto-v2 .pres-fila--enviado {
+  background: #f8fafc;
+}
+.presupuesto-v2 .pres-fila--enviado .pres-fila-ic {
+  background: #94a3b8;
+}
+.presupuesto-v2 .pres-filas[aria-label='Presupuestos ya enviados'] {
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+/* Etapa 1, cargar sobre uno existente: "¿Sobre qué presupuesto vas a cargar?" (rótulo arriba, como los
+   demás campos) y la ficha del presupuesto, separados de las cards de los contactos. */
+.presupuesto-v2 .pres-elegir-bolsa.carga-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+}
+.presupuesto-v2 .pres-fichas ~ .pres-elegir-bolsa,
+.presupuesto-v2 .pres-fichas ~ .cliente-ficha,
+.presupuesto-v2 .pres-fichas ~ .aviso {
+  margin-top: 16px;
+}
+
+/* Cargar sobre uno existente: una sola card, de todo el ancho. */
+.presupuesto-v2 .pres-fichas--unica {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* El Total Pactado de cada presupuesto, entre las etiquetas y las acciones. */
+.presupuesto-v2 .pres-fila-total {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+}
+/* Etapa 2: tipo, color y total en una fila (uno debajo del otro si no hay ancho). */
+.presupuesto-v2 .pres-carga .pres-datos {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .presupuesto-v2 .pres-carga .pres-datos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Consultar y Gestionar: una fila por presupuesto (regla del usuario, 13/10/2026) ── */
+.presupuesto-v2 .pres-tabla--subs col.pres-w-fecha {
+  width: 104px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-tipo {
+  width: 108px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-color {
+  width: 132px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-total {
+  width: 118px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-pdf {
+  width: 92px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-estado {
+  width: 160px;
+}
+.presupuesto-v2 .pres-tabla--subs col.pres-w-acc {
+  width: 330px;
+}
+.presupuesto-v2 .pres-tabla--subs .ant-col-der,
+.presupuesto-v2 .pres-tabla--subs thead th.ant-col-der {
+  text-align: right;
+}
+.presupuesto-v2 .pres-tabla--subs .ag-acciones {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+/* La fila abre la ficha del presupuesto. */
+.presupuesto-v2 tr.pres-fila-click {
+  cursor: pointer;
+}
+.presupuesto-v2 tr.pres-fila-click:focus-visible {
+  outline: 2px solid var(--marca);
+  outline-offset: -2px;
+}
+/* Ver el PDF desde la tabla: un botón chico, sin robar la fila. */
+.presupuesto-v2 .ant-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.presupuesto-v2 .ant-pdf-btn i {
+  color: #e2445c;
+}
+.presupuesto-v2 .ant-pdf-btn:hover {
+  border-color: var(--marca);
+  color: var(--marca);
+}
+/* La ficha: el recordatorio enviado (verde) o con error (rojo). */
+.ag-ficha-turno .pres-rec-ok {
+  color: var(--green);
+}
+.ag-ficha-turno .pres-rec-err {
+  color: var(--red);
+}
+/* En la tabla y en la ficha, las etiquetas de tipo y color van a la izquierda, como el resto de los datos. */
+.presupuesto-v2 .pres-tabla--subs .pres-fila-tags,
+.ag-ficha-turno .pres-fila-tags {
+  justify-content: flex-start;
+}
+.presupuesto-v2 .ant-pdf-btn {
+  white-space: nowrap;
+}
+/* El "Ver presupuesto" de la ficha: del tamaño de un dato, no de un botón principal. */
+.ag-ficha-turno .pres-ver {
+  padding: 6px 12px;
+  font-size: 13px;
 }

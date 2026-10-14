@@ -1,312 +1,255 @@
-import { useEffect, useMemo, useState } from "react";
-import { Aviso } from "@/components/ui/Aviso";
-import { AvisoModal } from "@/components/ui/AvisoModal";
-import { ModalCargando } from "@/components/ui/ModalCargando";
-import { hoyLocal } from "@/features/op/DatosMedicion";
-import { PasoHeader, PasoTitulo } from "@/features/shared/PasoHeader";
-import { useAccionEnCurso } from "@/features/shared/useAccionEnCurso";
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Aviso } from '@/components/ui/Aviso'
+import { AvisoModal } from '@/components/ui/AvisoModal'
+import { ModalCargando } from '@/components/ui/ModalCargando'
+import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
+import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import {
   FILTROS_GESTION,
-  INDICES_GESTION,
-  ganable,
-  gestionable,
+  INDICES_CERRADOS,
+  accionesPresupuesto,
+  etiquetaEnviarA,
+  fechaLocal,
+  formatoImporte,
   pasaFiltro,
+  yaEnviado,
   type FiltroGestion,
-} from "@/lib/presupuesto";
-import { normalizar } from "@/lib/texto";
+} from '@/lib/presupuesto'
+import { normalizar } from '@/lib/texto'
 import {
+  RespuestaRechazada,
+  getUrlArchivo,
   leerPresupuestoGestion,
   listarPresupuestosGestion,
   mondayHabilitado,
-  perderPresupuesto,
-  type DatosClienteObra,
+  registrarEnvioGestion,
+  responderPresupuesto,
+  type PresupuestoEnviado,
   type PresupuestoGestion,
-} from "@/services/monday";
-import { useApp, useDispatch } from "@/state/hooks";
-import { ganarPresupuesto, type DatosGanar, type ProgresoGanar } from "./ganar";
+} from '@/services/monday'
+import { useApp } from '@/state/hooks'
+import { EnvioPresupuestos } from './EnvioPresupuestos'
 import {
-  ModalGanarPresupuesto,
+  FichaPresupuesto,
+  ModalConfirmarPresupuesto,
   ModalPerderPresupuesto,
-} from "./ModalesPresupuesto";
+  SituacionChip,
+  fechaCorta,
+  type AccionFila,
+  type FilaGestion,
+} from './ModalesPresupuesto'
+import { Etiquetas, verPdfMonday } from './TablaPresupuestos'
 
 /** Presupuestos por página de la tabla. */
-const POR_PAGINA = 8;
+const POR_PAGINA = 8
+/** Lo que dura la animación de cierre de la fila desplegada (la misma de la OP). */
+const CIERRE_MS = 220
+const COLUMNAS = 8
 
-/** "2026-10-05" → "05/10/2026". */
-const fechaCorta = (iso: string) =>
-  iso ? iso.split("-").reverse().join("/") : "";
-
-/** La fecha del último presupuesto enviado de la bolsa (o vacío). */
-const ultimoEnvio = (p: PresupuestoGestion) =>
-  p.presupuestos.reduce((m, s) => (s.fechaEnvio > m ? s.fechaEnvio : m), "");
-
-/** La pastilla del estado, con el color de la etiqueta en el tablero (la misma `op-estado` de la OP). */
-function EstadoChip({ texto, color }: { texto: string; color: string }) {
-  return (
-    <span
-      className="op-estado op-estado--sm"
-      style={{ ["--op-c" as string]: color || "#c4c4c4" }}
-    >
-      {texto || "Sin estado"}
-    </span>
-  );
+/** El PDF del presupuesto, bajado de Monday: sale por WhatsApp desde la app, como en la etapa 3. */
+async function bajarPdf(p: PresupuestoEnviado): Promise<File> {
+  if (!p.pdf) throw new Error('El presupuesto no tiene PDF.')
+  const r = await fetch(await getUrlArchivo(p.pdf.assetId))
+  if (!r.ok) throw new Error(`No se pudo bajar el PDF (HTTP ${r.status})`)
+  const blob = await r.blob()
+  return new File([blob], p.pdf.nombre || 'Presupuesto.pdf', { type: blob.type || 'application/pdf' })
 }
 
-type Abierta = { accion: "ganar" | "perder"; p: PresupuestoGestion };
-/** Cómo terminó un presupuesto en esta visita: sigue a la vista, con su resultado. */
-type Resuelto = { como: "ganado"; idObra: string } | { como: "perdido" };
+/** El envío abierto en una fila: el PDF ya bajado y la clave (un reintento manda la misma). */
+interface EnvioAbierto {
+  subId: string
+  archivo: File
+  clave: string | null
+  reenvio: boolean
+}
 
 /**
- * Consultar y Gestionar Presupuestos.
+ * Consultar y Gestionar Presupuestos (regla del usuario, 13/10/2026).
  *
- * Al entrar se traen del tablero SÓLO los presupuestos que todavía se gestionan: los pendientes de
- * confirmar (enviados o en solicitud), en negociación y vencidos. Los ganados y los perdidos no. El
- * campo filtra en vivo por presupuesto, cliente o constructor; las pestañas, por estado.
+ * Una fila por PRESUPUESTO (subelemento) de todas las bolsas que no están Ganadas ni Perdidas: su
+ * último envío, la bolsa, tipo, color, total pactado, el PDF y su respuesta. El campo filtra en vivo;
+ * las pestañas, por envío y respuesta. Un click en la fila abre su ficha (último envío y recordatorio).
  *
- *  - GANAR (no para los vencidos): pide qué presupuesto se ganó, el total pactado y el plano, y crea la obra con su registro
- *    en la cuenta corriente (ver `ganarPresupuesto`).
- *  - PERDIDO: lo pasa a "Perdido".
+ *  - ENVIAR / REENVIAR (según si ya salió): despliega la fila con el bloque de envío de la etapa 3
+ *    (`EnvioPresupuestos`), como el reenvío de una OP. En un reenvío, los textos y el WhatsApp lo dicen.
+ *  - CONFIRMAR (no si la bolsa está vencida): lo mismo que la confirmación del cliente por el enlace.
+ *  - PERDIDO: lo mismo que "Rechazar" del enlace (sólo el presupuesto).
  *
- * Antes de cada acción se relee el presupuesto: otra persona pudo haberlo movido. Uno resuelto en esta
+ * Confirmar y Perdido los hace el servidor, por el mismo camino que el enlace. Uno resuelto en esta
  * visita sigue en la tabla, con su resultado y sin acciones, hasta la próxima consulta.
  */
 export function GestionarPresupuestosView() {
-  const dispatch = useDispatch();
-  const { usuario, usuarios, responsableId, accionEnCurso } = useApp();
+  const { usuario, accionEnCurso } = useApp()
 
-  const [lista, setLista] = useState<PresupuestoGestion[] | null>(null);
-  const [error, setError] = useState(false);
-  const [intento, setIntento] = useState(0);
-  const [busqueda, setBusqueda] = useState("");
-  const [filtro, setFiltro] = useState<FiltroGestion>("todos");
-  const [pagina, setPagina] = useState(0);
-  const [resueltos, setResueltos] = useState<Record<string, Resuelto>>({});
-  /** Lo que un "Ganar" a medias ya dejó en Monday, por presupuesto: el reintento sigue desde ahí. */
-  const [progresos, setProgresos] = useState<
-    Record<
-      string,
-      { progreso: ProgresoGanar; datos: DatosGanar; cliente: DatosClienteObra }
-    >
-  >({});
+  const [lista, setLista] = useState<PresupuestoGestion[] | null>(null)
+  const [error, setError] = useState(false)
+  const [intento, setIntento] = useState(0)
+  const [busqueda, setBusqueda] = useState('')
+  const [filtro, setFiltro] = useState<FiltroGestion>('todos')
+  const [pagina, setPagina] = useState(0)
 
-  const [abierta, setAbierta] = useState<Abierta | null>(null);
-  const [trabajando, setTrabajando] = useState<{
-    id: string;
-    titulo: string;
-    detalle: string;
-  } | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-  const [bloqueo, setBloqueo] = useState<{
-    titulo: string;
-    texto: string;
-  } | null>(null);
+  const [ficha, setFicha] = useState<FilaGestion | null>(null)
+  const [modal, setModal] = useState<{ accion: 'confirmar' | 'perder'; fila: FilaGestion } | null>(null)
+  const [envio, setEnvio] = useState<EnvioAbierto | null>(null)
+  const [cerrando, setCerrando] = useState<string | null>(null)
+  const [abriendo, setAbriendo] = useState<string | null>(null)
+  /** Los presupuestos que ya salieron con la fila abierta: el bloque queda en "Enviado exitosamente". */
+  const [enviados, setEnviados] = useState<Set<string>>(() => new Set())
+  const [trabajando, setTrabajando] = useState<{ id: string; titulo: string; detalle: string } | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
+  const [bloqueo, setBloqueo] = useState<{ titulo: string; texto: string } | null>(null)
 
-  useAccionEnCurso(
-    "Esperá a que termine de actualizarse el presupuesto.",
-    trabajando !== null,
-  );
+  useAccionEnCurso('Esperá a que termine de actualizarse el presupuesto.', trabajando !== null)
 
   useEffect(() => {
-    let vivo = true;
-    listarPresupuestosGestion(INDICES_GESTION)
+    let vivo = true
+    listarPresupuestosGestion(INDICES_CERRADOS)
       .then((l) => {
-        if (!vivo) return;
-        setLista(l);
-        setResueltos({});
-        setError(false);
+        if (!vivo) return
+        setLista(l)
+        setError(false)
       })
       .catch(() => {
-        if (!vivo) return;
-        setLista([]);
-        setError(true);
-      });
+        if (!vivo) return
+        setLista([])
+        setError(true)
+      })
     return () => {
-      vivo = false;
-    };
-  }, [intento]);
+      vivo = false
+    }
+  }, [intento])
 
-  /** Uno resuelto en esta visita se ve en "Todos" y en la pestaña de la que salió. */
-  const pasa = (f: FiltroGestion, p: PresupuestoGestion) =>
-    pasaFiltro(f, p.estado) || (!!resueltos[p.id] && f === "todos");
+  /** Todas las filas: un presupuesto por fila, con su bolsa. */
+  const filas = useMemo<FilaGestion[]>(() => (lista ?? []).flatMap((bolsa) => bolsa.presupuestos.map((p) => ({ bolsa, p }))), [lista])
 
-  const filtrados = useMemo(() => {
-    const q = normalizar(busqueda.trim());
+  const filtradas = useMemo(() => {
+    const q = normalizar(busqueda.trim())
     return (
-      (lista ?? [])
+      filas
         .filter(
-          (p) =>
-            pasa(filtro, p) &&
+          ({ bolsa, p }) =>
+            pasaFiltro(filtro, p) &&
             (!q ||
-              [
-                p.nombre,
-                p.idPresupuesto,
-                p.cliente?.nombre ?? "",
-                p.arquitecto?.nombre ?? "",
-                p.id,
-              ].some((v) => normalizar(v).includes(q))),
+              [bolsa.nombre, bolsa.idPresupuesto, p.nombre, bolsa.cliente?.nombre ?? '', bolsa.arquitecto?.nombre ?? '', p.tipo, p.color].some(
+                (v) => normalizar(v).includes(q),
+              )),
         )
-        /* Del envío más reciente al más viejo; los que no tienen fecha, al final. */
-        .sort(
-          (a, b) =>
-            ultimoEnvio(b).localeCompare(ultimoEnvio(a)) ||
-            b.id.localeCompare(a.id),
-        )
-    );
-    // `pasa` depende de `resueltos`, que ya está en la lista.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lista, busqueda, filtro, resueltos]);
+        /* Los que todavía no salieron, primero; después, del envío más reciente al más viejo. */
+        .sort((a, b) => (b.p.fechaEnvio || '9999').localeCompare(a.p.fechaEnvio || '9999') || b.p.id.localeCompare(a.p.id))
+    )
+  }, [filas, busqueda, filtro])
 
-  const paginas = Math.max(1, Math.ceil(filtrados.length / POR_PAGINA));
-  const enPagina = Math.min(pagina, paginas - 1);
-  const visibles = filtrados.slice(
-    enPagina * POR_PAGINA,
-    (enPagina + 1) * POR_PAGINA,
-  );
-  useEffect(() => setPagina(0), [busqueda, filtro, intento]);
+  const paginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
+  const enPagina = Math.min(pagina, paginas - 1)
+  const visibles = filtradas.slice(enPagina * POR_PAGINA, (enPagina + 1) * POR_PAGINA)
+  useEffect(() => setPagina(0), [busqueda, filtro, intento])
 
-  const cuenta = (f: FiltroGestion) =>
-    (lista ?? []).filter((p) => pasa(f, p)).length;
-  const reemplazar = (p: PresupuestoGestion) =>
-    setLista((l) => (l ?? []).map((x) => (x.id === p.id ? p : x)));
+  const cuenta = (f: FiltroGestion) => filas.filter(({ p }) => pasaFiltro(f, p)).length
 
-  /** A quién se asigna la obra: el responsable del encabezado (el admin puede elegirlo). */
-  const responsable =
-    usuarios.find((u) => u.id === responsableId)?.name ?? usuario?.name ?? "";
+  /** Cambia un presupuesto (y, si hace falta, su bolsa) en la lista, sin volver a leer todo. */
+  const actualizar = (bolsaId: string, subId: string, cambios: Partial<PresupuestoEnviado>, bolsa: Partial<PresupuestoGestion> = {}) =>
+    setLista((l) =>
+      (l ?? []).map((b) =>
+        b.id !== bolsaId
+          ? b
+          : { ...b, ...bolsa, presupuestos: b.presupuestos.map((p) => (p.id === subId ? { ...p, ...cambios } : p)) },
+      ),
+    )
 
-  /**
-   * Relee antes de tocar. Si ya no se gestiona —o, para ganarlo, si está vencido—, se dice por qué y
-   * no se escribe nada.
-   */
-  const fresco = async (
-    p: PresupuestoGestion,
-    accion: "ganar" | "perder",
-  ): Promise<PresupuestoGestion | null> => {
-    const f = await leerPresupuestoGestion(p.id);
-    if (!f) {
-      setBloqueo({
-        titulo: "No se puede hacer",
-        texto: "El presupuesto ya no está en el tablero.",
-      });
-      setLista((l) => (l ?? []).filter((x) => x.id !== p.id));
-      return null;
-    }
-    /* Un "Ganar" a medias ya lo pudo haber dejado Ganado: el reintento sólo termina lo que falta. */
-    if (!gestionable(f.estado) && !progresos[p.id]) {
-      reemplazar(f);
-      setBloqueo({
-        titulo: "No se puede hacer",
-        texto: `El presupuesto ahora está «${f.estado}» y ya no se gestiona.`,
-      });
-      return null;
-    }
-    if (accion === "ganar" && !ganable(f.estado) && !progresos[p.id]) {
-      reemplazar(f);
-      setBloqueo({
-        titulo: "No se puede ganar",
-        texto:
-          "El presupuesto está vencido: un presupuesto vencido no se puede ganar.",
-      });
-      return null;
-    }
-    return f;
-  };
+  /* ── Enviar / Reenviar: la fila se despliega con el bloque de envío ───────────────────────────── */
 
-  const ganar = async (
-    p: PresupuestoGestion,
-    datos: DatosGanar,
-    cliente: DatosClienteObra,
-  ) => {
-    setAbierta(null);
-    setTrabajando({
-      id: p.id,
-      titulo: "Confirmando el presupuesto y creando la obra...",
-      detalle:
-        "Se crea la obra, se registra la venta en la cuenta corriente y el presupuesto pasa a Ganado. Esperá unos segundos.",
-    });
-    const previo = progresos[p.id]?.progreso ?? {};
-    let progreso: ProgresoGanar = { ...previo };
+  const cerrarEnvio = () => {
+    if (!envio) return
+    const id = envio.subId
+    setCerrando(id)
+    setTimeout(() => {
+      setEnvio((e) => (e?.subId === id ? null : e))
+      setCerrando(null)
+      setEnviados((s) => {
+        const n = new Set(s)
+        n.delete(id)
+        return n
+      })
+    }, CIERRE_MS)
+  }
+
+  const alternarEnvio = async ({ p }: FilaGestion, reenvio: boolean) => {
+    if (envio?.subId === p.id) return cerrarEnvio()
+    if (envio) cerrarEnvio()
+    setAviso(null)
+    setAbriendo(p.id)
     try {
-      const f = await fresco(p, "ganar");
-      if (!f) return;
-      const r = await ganarPresupuesto({
-        presupuesto: f,
-        datos,
-        cliente,
-        responsableId: responsableId ?? usuario?.id ?? null,
-        hoy: hoyLocal(),
-        progreso,
-        avance: (c) => {
-          progreso = { ...progreso, ...c };
-        },
-      });
-      setProgresos((m) => {
-        const { [p.id]: _, ...resto } = m;
-        return resto;
-      });
-      setResueltos((m) => ({
-        ...m,
-        [p.id]: { como: "ganado", idObra: r.idObra },
-      }));
-      reemplazar({ ...f, estado: "Ganado", colorEstado: "#00c875" });
-      setAviso(
-        `${f.nombre} quedó Ganado: se creó la obra${r.idObra ? ` ${r.idObra}` : ""} y se registró la venta en la cuenta corriente.`,
-      );
-    } catch (e) {
-      console.warn("[presupuesto] no se pudo ganar", e);
-      /* Lo que ya quedó escrito se guarda: el reintento no crea otra obra ni otro movimiento. */
-      if (progreso.obraId)
-        setProgresos((m) => ({ ...m, [p.id]: { progreso, datos, cliente } }));
-      setBloqueo({
-        titulo: "No se pudo terminar de registrar el presupuesto",
-        texto: progreso.obraId
-          ? "Monday no respondió a mitad de camino: la obra ya se creó, pero falta completar el registro. Tocá «Reintentar» en la fila para terminarlo con los mismos datos; no se crea otra obra."
-          : "Monday no respondió al intentar crear la obra. No se registró nada: reintentá en unos segundos. Si la falla persiste, contactate con el soporte de TAP.",
-      });
-    } finally {
-      setTrabajando(null);
-    }
-  };
-
-  const perder = async (p: PresupuestoGestion) => {
-    setAbierta(null);
-    setTrabajando({
-      id: p.id,
-      titulo: "Dando el presupuesto por perdido...",
-      detalle: "Se está pasando el presupuesto a Perdido.",
-    });
-    try {
-      const f = await fresco(p, "perder");
-      if (!f) return;
-      await perderPresupuesto(f.id);
-      setResueltos((m) => ({ ...m, [p.id]: { como: "perdido" } }));
-      reemplazar({ ...f, estado: "Perdido", colorEstado: "#df2f4a" });
-      setAviso(`${f.nombre} quedó Perdido.`);
+      const archivo = await bajarPdf(p)
+      setEnvio({ subId: p.id, archivo, clave: p.clave || null, reenvio })
     } catch {
-      dispatch({
-        type: "errorMonday",
-        accion: "dar el presupuesto por perdido",
-      });
+      setBloqueo({ titulo: 'No se pudo abrir el envío', texto: 'No se pudo bajar el PDF del presupuesto desde Monday. Probá de nuevo en unos segundos.' })
     } finally {
-      setTrabajando(null);
+      setAbriendo(null)
     }
-  };
+  }
 
-  const total = lista?.length ?? 0;
-  const ocupado = trabajando !== null || !!accionEnCurso;
+  /* ── Confirmar / Perdido: lo mismo que el enlace, en el servidor ──────────────────────────────── */
+
+  const responder = async (f: FilaGestion, r: { tipo: 'confirmar'; ubicacion: string; coordinador: string } | { tipo: 'rechazar'; motivo: string }) => {
+    setModal(null)
+    setFicha(null)
+    setAviso(null)
+    const confirma = r.tipo === 'confirmar'
+    setTrabajando({
+      id: f.p.id,
+      titulo: confirma ? 'Confirmando el presupuesto...' : 'Dando el presupuesto por perdido...',
+      detalle: confirma
+        ? 'El presupuesto queda Confirmado y Ganado, con su tipo, color, total y PDF. La obra y su registro en la cuenta corriente se crean enseguida.'
+        : 'El presupuesto queda Rechazado.',
+    })
+    try {
+      await responderPresupuesto(f.p.id, r, usuario?.name ?? '')
+      if (confirma) {
+        /* La bolsa quedó Ganada: sus otros presupuestos ya no se gestionan. */
+        actualizar(f.bolsa.id, f.p.id, { confirmacion: 'Confirmado' }, { estado: 'Ganado', colorEstado: '#00c875' })
+        setAviso(`${f.p.nombre} de ${f.bolsa.nombre} quedó Confirmado. La obra y su registro en la cuenta corriente se están creando.`)
+      } else {
+        actualizar(f.bolsa.id, f.p.id, { confirmacion: 'Rechazado', motivo: r.motivo })
+        setAviso(`${f.p.nombre} de ${f.bolsa.nombre} quedó Rechazado.`)
+      }
+    } catch (e) {
+      if (e instanceof RespuestaRechazada && e.yaRespondido) {
+        /* Ya respondió el cliente por el enlace u otro usuario: se trae cómo quedó. */
+        void leerPresupuestoGestion(f.bolsa.id)
+          .then((b) => b && setLista((l) => (l ?? []).map((x) => (x.id === b.id ? b : x))))
+          .catch(() => {})
+        setBloqueo({ titulo: 'El presupuesto ya tiene respuesta', texto: e.message })
+      } else {
+        setBloqueo({
+          titulo: confirma ? 'No se pudo confirmar el presupuesto' : 'No se pudo dar por perdido',
+          texto: e instanceof Error ? e.message : 'Probá de nuevo en unos segundos.',
+        })
+      }
+    } finally {
+      setTrabajando(null)
+    }
+  }
+
+  const accion = (f: FilaGestion, a: AccionFila) => {
+    setFicha(null)
+    if (a === 'enviar' || a === 'reenviar') void alternarEnvio(f, a === 'reenviar')
+    else setModal({ accion: a, fila: f })
+  }
+
+  const ocupado = trabajando !== null || !!accionEnCurso
 
   return (
     <section className="view paso-layout obras-v2 anticipos-v2 agenda-v2 presupuesto-v2">
       <PasoHeader />
       <PasoTitulo
         titulo="Consultar y Gestionar Presupuestos"
-        descripcion="Los presupuestos pendientes de confirmar, en negociación y vencidos. Ganá uno para crear su obra, o dalo por perdido."
+        descripcion="Los presupuestos que todavía no se ganaron ni se perdieron. Envialos o reenvialos, confirmalos o dalos por perdidos. Tocá una fila para ver su ficha."
         sinNumero
       />
 
       {!mondayHabilitado() && (
         <Aviso tono="err">
-          Falta el token de Monday para desarrollo. Cargalo en{" "}
-          <strong>.env.local</strong> como <strong>VITE_MONDAY_TOKEN</strong> y
+          Falta el token de Monday para desarrollo. Cargalo en <strong>.env.local</strong> como <strong>VITE_MONDAY_TOKEN</strong> y
           reiniciá <strong>npm run dev</strong>.
         </Aviso>
       )}
@@ -314,22 +257,14 @@ export function GestionarPresupuestosView() {
       <div className="card unified-toolbar consulta-buscador">
         <div className="search-container">
           <div className="search-wrapper">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <circle cx="11" cy="11" r="8" />
               <path d="M21 21l-4.35-4.35" />
             </svg>
             <input
               type="search"
               className="search-input"
-              placeholder="Buscar por presupuesto, cliente o constructor"
+              placeholder="Buscar por presupuesto, cliente, constructor, tipo o color"
               aria-label="Buscar presupuestos"
               autoComplete="off"
               value={busqueda}
@@ -339,8 +274,8 @@ export function GestionarPresupuestosView() {
           </div>
           <span className="search-helper" role="status" aria-live="polite">
             {lista === null
-              ? "Leyendo los presupuestos..."
-              : `${filtrados.length} de ${total} ${total === 1 ? "presupuesto" : "presupuestos"}`}
+              ? 'Leyendo los presupuestos...'
+              : `${filtradas.length} de ${filas.length} ${filas.length === 1 ? 'presupuesto' : 'presupuestos'}`}
           </span>
         </div>
       </div>
@@ -348,35 +283,32 @@ export function GestionarPresupuestosView() {
       <div className="cobro-static">
         <div className="cobro-card">
           <div className="ag-filtros">
-            <div
-              className="ag-tabs"
-              role="tablist"
-              aria-label="Filtrar por estado"
-            >
+            <div className="ag-tabs" role="tablist" aria-label="Filtrar por envío y respuesta">
               {FILTROS_GESTION.map((f) => (
                 <button
                   key={f.id}
                   type="button"
                   role="tab"
                   aria-selected={filtro === f.id}
-                  className={`ag-tab ${filtro === f.id ? "ag-tab--on" : ""}`}
+                  className={`ag-tab ${filtro === f.id ? 'ag-tab--on' : ''}`}
                   onClick={() => setFiltro(f.id)}
                 >
                   {f.titulo}
-                  {lista !== null && (
-                    <span className="ag-tab-n">{cuenta(f.id)}</span>
-                  )}
+                  {lista !== null && <span className="ag-tab-n">{cuenta(f.id)}</span>}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="ant-tabla-wrap">
-            <table className="ant-tabla ant-tabla--fija ag-tabla pres-tabla">
+            <table className="ant-tabla ant-tabla--fija ag-tabla pres-tabla pres-tabla--subs">
               <colgroup>
                 <col className="pres-w-fecha" />
                 <col className="pres-w-pres" />
-                <col className="pres-w-n" />
+                <col className="pres-w-tipo" />
+                <col className="pres-w-color" />
+                <col className="pres-w-total" />
+                <col className="pres-w-pdf" />
                 <col className="pres-w-estado" />
                 <col className="pres-w-acc" />
               </colgroup>
@@ -384,7 +316,10 @@ export function GestionarPresupuestosView() {
                 <tr>
                   <th>Último envío</th>
                   <th>Presupuesto</th>
-                  <th className="ant-col-cen">Enviados</th>
+                  <th>Tipo</th>
+                  <th>Color</th>
+                  <th className="ant-col-der">Total pactado</th>
+                  <th className="ant-col-cen">PDF</th>
                   <th className="ant-col-cen">Estado</th>
                   <th className="ant-col-cen">Acción</th>
                 </tr>
@@ -392,27 +327,26 @@ export function GestionarPresupuestosView() {
               <tbody>
                 {lista === null ? (
                   <tr>
-                    <td colSpan={5} className="ant-aviso">
-                      <i className="fas fa-spinner fa-spin" /> Leyendo los
-                      presupuestos...
+                    <td colSpan={COLUMNAS} className="ant-aviso">
+                      <i className="fas fa-spinner fa-spin" /> Leyendo los presupuestos...
                     </td>
                   </tr>
                 ) : visibles.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="ant-aviso">
-                      <i className="fas fa-circle-info" />{" "}
+                    <td colSpan={COLUMNAS} className="ant-aviso">
+                      <i className="fas fa-circle-info" />{' '}
                       {error
-                        ? "No se pudieron leer los presupuestos desde Monday."
+                        ? 'No se pudieron leer los presupuestos desde Monday.'
                         : busqueda.trim()
                           ? `Ningún presupuesto coincide con «${busqueda.trim()}».`
-                          : "No hay presupuestos con estos filtros."}{" "}
+                          : 'No hay presupuestos con estos filtros.'}{' '}
                       {error && (
                         <button
                           type="button"
                           className="cobro-reintentar"
                           onClick={() => {
-                            setLista(null);
-                            setIntento((n) => n + 1);
+                            setLista(null)
+                            setIntento((n) => n + 1)
                           }}
                         >
                           Volver a intentar
@@ -421,83 +355,96 @@ export function GestionarPresupuestosView() {
                     </td>
                   </tr>
                 ) : (
-                  visibles.map((p) => {
-                    const enCurso = trabajando?.id === p.id;
-                    const r = resueltos[p.id];
-                    const fecha = ultimoEnvio(p);
-                    const quien = [p.cliente?.nombre, p.arquitecto?.nombre]
-                      .filter(Boolean)
-                      .join(" · ");
-                    const aMedias = !!progresos[p.id];
-                    return (
+                  visibles.map((f) => {
+                    const { bolsa, p } = f
+                    const acciones = accionesPresupuesto(bolsa.estado, p)
+                    const enCurso = trabajando?.id === p.id
+                    const abierta = envio?.subId === p.id
+                    const quien = [bolsa.cliente?.nombre, bolsa.arquitecto?.nombre].filter(Boolean).join(' · ')
+                    const fila = (
                       <tr
                         key={p.id}
-                        className={[
-                          "ant-row",
-                          enCurso ? "ant-row--cancelando" : "",
-                          r?.como === "ganado" ? "ag-row--cumplida" : "",
-                          r?.como === "perdido" ? "ag-row--cancelada" : "",
-                        ].join(" ")}
+                        className={['ant-row', 'pres-fila-click', enCurso ? 'ant-row--cancelando' : ''].join(' ')}
+                        tabIndex={0}
+                        title="Ver la ficha del presupuesto"
+                        onClick={() => setFicha(f)}
+                        onKeyDown={(e) => e.key === 'Enter' && e.target === e.currentTarget && setFicha(f)}
                       >
                         <td>
-                          {fecha ? (
-                            <span className="ant-nro">{fechaCorta(fecha)}</span>
+                          {p.fechaEnvio ? (
+                            <span className="ant-nro">{fechaCorta(p.fechaEnvio)}</span>
                           ) : (
-                            <span className="ant-sd">Sin fecha</span>
+                            /* Los enviados antes de la columna de fecha no la tienen. */
+                            <span className="ant-sd">{yaEnviado(p.estadoEnvio) ? 'Sin fecha' : 'Sin enviar'}</span>
                           )}
                         </td>
-                        <td className="ag-turno" title={p.nombre}>
-                          <span className="ag-turno-cli">{p.nombre}</span>
-                          <span className="ant-detalle">
-                            {[p.idPresupuesto, quien]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </span>
+                        <td className="ag-turno" title={`${bolsa.nombre} · ${p.nombre}`}>
+                          <span className="ag-turno-cli">{bolsa.nombre}</span>
+                          <span className="ant-detalle">{[p.nombre, quien].filter(Boolean).join(' · ')}</span>
                         </td>
-                        <td className="ant-col-cen">{p.presupuestos.length}</td>
+                        <td>{p.tipo ? <Etiquetas tipo={p.tipo} color="" /> : <span className="ant-sd">—</span>}</td>
+                        <td>{p.color ? <Etiquetas tipo="" color={p.color} /> : <span className="ant-sd">—</span>}</td>
+                        <td className="ant-col-der">
+                          {p.total !== null ? <span className="ant-nro">{formatoImporte(p.total)}</span> : <span className="ant-sd">—</span>}
+                        </td>
+                        <td className="ant-col-cen" onClick={(e) => e.stopPropagation()}>
+                          {p.pdf ? (
+                            <button
+                              type="button"
+                              className="ant-pdf-btn"
+                              title="Ver el PDF del presupuesto"
+                              aria-label={`Ver el PDF de ${p.nombre}`}
+                              onClick={() => p.pdf && void verPdfMonday(p.pdf.assetId)}
+                            >
+                              <i className="fas fa-file-pdf" /> Ver
+                            </button>
+                          ) : (
+                            <span className="ant-sd">Sin PDF</span>
+                          )}
+                        </td>
                         <td className="ant-col-cen">
-                          <EstadoChip texto={p.estado} color={p.colorEstado} />
+                          <SituacionChip p={p} />
                         </td>
-                        <td className="ant-col-cen ag-col-acc">
+                        <td className="ant-col-cen ag-col-acc" onClick={(e) => e.stopPropagation()}>
                           {enCurso ? (
                             <span className="ag-trabajando">
-                              <i className="fas fa-circle-notch spin" />{" "}
-                              Actualizando…
+                              <i className="fas fa-circle-notch spin" /> Actualizando…
                             </span>
-                          ) : r?.como === "ganado" ? (
-                            <span className="ag-resuelto ag-resuelto--ok">
-                              <i className="fas fa-circle-check" /> Obra creada
-                              {r.idObra ? ` · ${r.idObra}` : ""}
-                            </span>
-                          ) : r?.como === "perdido" ? null : (
+                          ) : !acciones.envio && !acciones.confirmar && !acciones.perder ? null : (
                             <div className="ag-acciones">
-                              {/* Un vencido no se gana: sólo se puede dar por perdido. */}
-                              {(ganable(p.estado) || aMedias) && (
+                              {acciones.envio && (
+                                <button
+                                  type="button"
+                                  className={`ant-reenviar ${abierta ? 'ant-reenviar--on' : ''}`}
+                                  disabled={ocupado || abriendo !== null}
+                                  aria-expanded={abierta}
+                                  aria-busy={abriendo === p.id}
+                                  onClick={() => void alternarEnvio(f, acciones.envio === 'reenviar')}
+                                >
+                                  {abriendo === p.id ? (
+                                    <>
+                                      <i className="fas fa-circle-notch spin" /> Abriendo…
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className={`fas ${abierta ? 'fa-chevron-up' : acciones.envio === 'reenviar' ? 'fa-rotate-right' : 'fa-paper-plane'}`} />{' '}
+                                      {abierta ? 'Cerrar' : acciones.envio === 'reenviar' ? 'Reenviar' : 'Enviar'}
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                              {acciones.confirmar && (
                                 <button
                                   type="button"
                                   className="ag-acc ag-acc--ok"
                                   disabled={ocupado}
-                                  onClick={() => {
-                                    setAviso(null);
-                                    setAbierta({ accion: "ganar", p });
-                                  }}
+                                  onClick={() => accion(f, 'confirmar')}
                                 >
-                                  <i
-                                    className={`fas ${aMedias ? "fa-rotate-right" : "fa-trophy"}`}
-                                  />{" "}
-                                  {aMedias ? "Reintentar" : "Ganar"}
+                                  <i className="fas fa-circle-check" /> Confirmar
                                 </button>
                               )}
-                              {!aMedias && (
-                                <button
-                                  type="button"
-                                  className="ag-acc ag-acc--cancel"
-                                  disabled={ocupado}
-                                  onClick={() => {
-                                    setAviso(null);
-                                    setAbierta({ accion: "perder", p });
-                                  }}
-                                >
+                              {acciones.perder && (
+                                <button type="button" className="ag-acc ag-acc--cancel" disabled={ocupado} onClick={() => accion(f, 'perder')}>
                                   <i className="fas fa-thumbs-down" /> Perdido
                                 </button>
                               )}
@@ -505,7 +452,64 @@ export function GestionarPresupuestosView() {
                           )}
                         </td>
                       </tr>
-                    );
+                    )
+                    if (!abierta || !envio) return fila
+                    return (
+                      <Fragment key={p.id}>
+                        {fila}
+                        <tr className={`ant-reenvio ${cerrando === p.id ? 'ant-reenvio--cierra' : ''}`}>
+                          <td colSpan={COLUMNAS}>
+                            <div className="cq-envio">
+                              <EnvioPresupuestos
+                                key={`${p.id}-${envio.reenvio}`}
+                                cliente={bolsa.cliente}
+                                arquitecto={bolsa.arquitecto}
+                                enviarA={bolsa.enviarA}
+                                presupuestos={[{ id: p.id, archivo: envio.archivo, tipo: p.tipo, color: p.color, clave: envio.clave }]}
+                                enviado={enviados.has(p.id)}
+                                reenvio={envio.reenvio}
+                                sinContactos="El presupuesto no tiene un cliente ni un constructor/arquitecto vinculado: vinculalo en Monday."
+                                onClaves={(l) => setEnvio((e) => (e && e.subId === p.id ? { ...e, clave: l[0]?.clave ?? e.clave } : e))}
+                                onEnviado={(e) => {
+                                  setEnviados((s) => new Set(s).add(p.id))
+                                  const primerEnvio = !yaEnviado(p.estadoEnvio)
+                                  const fecha = fechaLocal(new Date(e.cuando))
+                                  const clave = e.claves[p.id] ?? null
+                                  const enviarA = etiquetaEnviarA(e.roles)
+                                  void registrarEnvioGestion({ subId: p.id, bolsaId: bolsa.id, fecha, clave, enviarA, primerEnvio })
+                                    .then(() => {
+                                      actualizar(
+                                        bolsa.id,
+                                        p.id,
+                                        { estadoEnvio: 'Enviado', fechaEnvio: fecha, ...(clave ? { clave } : {}) },
+                                        { ...(enviarA ? { enviarA } : {}), ...(primerEnvio ? { estado: 'Presupuesto Enviado' } : {}) },
+                                      )
+                                      setAviso(`${p.nombre} de ${bolsa.nombre} se ${envio.reenvio ? 'reenvió' : 'envió'} por WhatsApp.`)
+                                    })
+                                    .catch(() =>
+                                      setBloqueo({
+                                        titulo: 'Se envió, pero no se registró',
+                                        texto: `El presupuesto salió por WhatsApp, pero no se pudo dejar asentado en Monday (Enviado y su fecha${clave ? ', con la clave del enlace' : ''}). Cargalo a mano en el subelemento ${p.nombre}.`,
+                                      }),
+                                    )
+                                }}
+                                onCelular={(rol, celular) =>
+                                  setLista((l) =>
+                                    (l ?? []).map((b) =>
+                                      b.id !== bolsa.id
+                                        ? b
+                                        : rol === 'Cliente'
+                                          ? { ...b, cliente: b.cliente ? { ...b.cliente, celular } : null }
+                                          : { ...b, arquitecto: b.arquitecto ? { ...b.arquitecto, celular } : null },
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      </Fragment>
+                    )
                   })
                 )}
               </tbody>
@@ -514,17 +518,11 @@ export function GestionarPresupuestosView() {
 
           {lista !== null && (
             <div className="obras-pager">
-              <button
-                type="button"
-                className="obras-pager-btn"
-                disabled={enPagina === 0}
-                onClick={() => setPagina(enPagina - 1)}
-              >
+              <button type="button" className="obras-pager-btn" disabled={enPagina === 0} onClick={() => setPagina(enPagina - 1)}>
                 <i className="fas fa-chevron-left" /> Anterior
               </button>
               <span className="obras-pager-info">
-                Página {enPagina + 1} de {paginas} · {filtrados.length}{" "}
-                {filtrados.length === 1 ? "presupuesto" : "presupuestos"}
+                Página {enPagina + 1} de {paginas} · {filtradas.length} {filtradas.length === 1 ? 'presupuesto' : 'presupuestos'}
               </span>
               <button
                 type="button"
@@ -547,38 +545,23 @@ export function GestionarPresupuestosView() {
         </div>
       </div>
 
-      {abierta?.accion === "ganar" && (
-        <ModalGanarPresupuesto
-          presupuesto={abierta.p}
-          responsable={responsable}
-          previo={
-            progresos[abierta.p.id]
-              ? {
-                  datos: progresos[abierta.p.id].datos,
-                  cliente: progresos[abierta.p.id].cliente,
-                }
-              : null
-          }
-          onClose={() => setAbierta(null)}
-          onConfirmar={(datos, cliente) =>
-            void ganar(abierta.p, datos, cliente)
-          }
+      {ficha && <FichaPresupuesto fila={ficha} onClose={() => setFicha(null)} onAccion={(a) => accion(ficha, a)} />}
+      {modal?.accion === 'confirmar' && (
+        <ModalConfirmarPresupuesto
+          fila={modal.fila}
+          onClose={() => setModal(null)}
+          onConfirmar={(ubicacion, coordinador) => void responder(modal.fila, { tipo: 'confirmar', ubicacion, coordinador })}
         />
       )}
-      {abierta?.accion === "perder" && (
+      {modal?.accion === 'perder' && (
         <ModalPerderPresupuesto
-          presupuesto={abierta.p}
-          onClose={() => setAbierta(null)}
-          onConfirmar={() => void perder(abierta.p)}
+          fila={modal.fila}
+          onClose={() => setModal(null)}
+          onConfirmar={(motivo) => void responder(modal.fila, { tipo: 'rechazar', motivo })}
         />
       )}
 
-      {trabajando && (
-        <ModalCargando
-          titulo={trabajando.titulo}
-          detalle={trabajando.detalle}
-        />
-      )}
+      {trabajando && <ModalCargando titulo={trabajando.titulo} detalle={trabajando.detalle} />}
 
       {bloqueo && (
         <AvisoModal titulo={bloqueo.titulo} onClose={() => setBloqueo(null)}>
@@ -586,5 +569,5 @@ export function GestionarPresupuestosView() {
         </AvisoModal>
       )}
     </section>
-  );
+  )
 }

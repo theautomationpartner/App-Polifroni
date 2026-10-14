@@ -16,27 +16,33 @@
  * Se corre con esbuild + node (`npm run test:presupuesto`); vive fuera de `src/`.
  */
 import assert from 'node:assert/strict'
-import { MARCA_ENLACE as MARCA_ENLACE_SERVIDOR } from '../api/_confirmacion'
-import { MARCA_ENLACE } from '../src/lib/claveConfirmacion'
+import { marcaPresupuesto as marcaPresupuestoServidor, textoPresupuestoDestino } from '../api/_whatsappHttp'
 import { destinoDe, faltantesDestino } from '../src/lib/destinatario'
 import { etiquetasPasos } from '../src/lib/pasos'
 import {
-  INDICES_GESTION,
   datosContacto,
   nuevaClave,
   etiquetaEnviarA,
-  faltantesGanar,
   fechaLocal,
   ganable,
   gestionable,
   importeDe,
   nombreBolsa,
-  nombreMovimiento,
   pasaFiltro,
   tipoObraDe,
+  colorTipoCarpinteria,
+  formatoImporte,
   rolesDeEnviarA,
   rolesIniciales,
-  textoPresupuesto,
+  etiquetaPresupuesto,
+  marcaPresupuesto,
+  textoPresupuestos,
+  bolsaParaCargar,
+  INDICES_CERRADOS,
+  accionesPresupuesto,
+  situacionDe,
+  yaEnviado,
+  esSinArquitecto,
 } from '../src/lib/presupuesto'
 
 /* ✋Enviar a: */
@@ -69,27 +75,50 @@ assert.ok(
 assert.equal(nombreBolsa({ nombre: 'PEREZ JUAN', celular: '' }, { nombre: 'ARQ. GOMEZ', celular: '' }), 'PEREZ JUAN')
 assert.equal(nombreBolsa(null, { nombre: 'ARQ. GOMEZ', celular: '' }), 'ARQ. GOMEZ')
 
-/* Mensaje */
+/* Mensaje: uno o varios presupuestos, texto genérico */
 assert.equal(
-  textoPresupuesto('1111 - PEREZ JUAN', new Date(2026, 9, 5, 15, 0)),
+  textoPresupuestos('1111 - PEREZ JUAN', 1, new Date(2026, 9, 5, 15, 0)),
   [
     '👋Hola *PEREZ JUAN*,',
-    'Adjuntamos el presupuesto. Si tenés alguna consulta sobre este o tu cuenta, por favor respondé a este mensaje o contactanos.',
+    'Le adjuntamos el presupuesto solicitado. Si tenés alguna consulta sobre este o tu cuenta, por favor respondé a este mensaje o contactanos.',
     '📄 *Concepto:* Presupuesto\n📅 *Fecha:* 05/10/2026',
     'Polifroni Aberturas\nAutomatizado por *The Automation Partner*',
   ].join('\n\n'),
-  'la plantilla del usuario, sin el código de la cuenta y con la fecha del envío',
+  'un presupuesto: la plantilla del usuario, sin el código de la cuenta y con la fecha del envío',
 )
-assert.ok(!/https?:\/\//.test(textoPresupuesto('X')), 'el presupuesto no lleva enlace')
-assert.ok(textoPresupuesto('').startsWith('👋Hola *Cliente*'))
+const varios = textoPresupuestos('PEREZ JUAN', 3, new Date(2026, 9, 5))
+assert.ok(varios.includes('Le adjuntamos los presupuestos solicitados.'), 'varios: en plural')
+assert.ok(varios.includes('📄 *Concepto:* Presupuestos (3)'))
+assert.ok(!/ENLACE_CONFIRMACION|https?:\/\//.test(varios), 'sin confirmación, sin enlaces')
+assert.ok(textoPresupuestos('', 1).startsWith('👋Hola *Cliente*'))
+assert.equal(
+  etiquetaPresupuesto({ nombreArchivo: 'Presupuesto_Cocina.pdf', tipo: 'Aluminio', color: 'Negro' }),
+  'Presupuesto_Cocina (Aluminio · Negro)',
+)
 
-/* Enlace de confirmación: sólo para quien confirma. La app pone la marca; el servidor, el enlace firmado */
-const conEnlace = textoPresupuesto('PEREZ JUAN', new Date(2026, 9, 5), true)
-assert.ok(conEnlace.includes(`podés confirmarlo haciendo click en el siguiente enlace: ${MARCA_ENLACE}`))
-assert.ok(conEnlace.indexOf(MARCA_ENLACE) < conEnlace.indexOf('Polifroni Aberturas'), 'el enlace va antes de la firma')
-assert.ok(!textoPresupuesto('PEREZ JUAN', new Date(2026, 9, 5)).includes(MARCA_ENLACE), 'sin confirmador, sin enlace')
-assert.ok(!/hook\.us1\.make\.com/.test(conEnlace), 'ninguna URL de Make en el mensaje')
-assert.equal(MARCA_ENLACE, MARCA_ENLACE_SERVIDOR, 'la app y el servidor usan la misma marca')
+/* Confirmación opcional: el responsable recibe un enlace por presupuesto a confirmar (uno o todos) */
+const k1 = nuevaClave()
+const k2 = nuevaClave()
+const uno = textoPresupuestos('PEREZ JUAN', 2, new Date(2026, 9, 5), [{ etiqueta: 'Cocina (PVC · BLANCO)', clave: k1 }])
+assert.ok(uno.includes(`el presupuesto *Cocina (PVC · BLANCO)* te parece correcto, podés confirmarlo haciendo click en el siguiente enlace: ${marcaPresupuesto(k1)}`))
+assert.ok(uno.indexOf(marcaPresupuesto(k1)) < uno.indexOf('Polifroni Aberturas'), 'el enlace va antes de la firma')
+const todos = textoPresupuestos('PEREZ JUAN', 2, new Date(2026, 9, 5), [
+  { etiqueta: 'Cocina', clave: k1 },
+  { etiqueta: 'Baño', clave: k2 },
+])
+assert.ok(todos.includes(`• *Cocina*: ${marcaPresupuesto(k1)}`) && todos.includes(`• *Baño*: ${marcaPresupuesto(k2)}`), 'todos: un enlace por presupuesto')
+assert.ok(!/hook\.us1\.make\.com/.test(todos), 'ninguna URL de Make en el mensaje')
+assert.equal(marcaPresupuesto(k1), marcaPresupuestoServidor(k1), 'la app y el servidor usan la misma marca')
+
+/* El servidor pone los enlaces firmados: sólo a quien confirma, y sólo de claves pedidas */
+process.env.CONFIRMACION_URL = 'https://app.ejemplo.com'
+process.env.CONFIRMACION_SECRET = 'x'.repeat(40)
+const firmado = textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: todos }, [k1, k2])
+assert.ok(firmado && !firmado.includes('ENLACE_CONFIRMACION') && (firmado.match(/https:\/\/app\.ejemplo\.com\/c\//g) ?? []).length === 2)
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: false, texto: todos }, [k1, k2]), null, 'el que no confirma no lleva enlaces')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: todos }, [k1]), null, 'una marca de una clave no pedida')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: true, texto: uno }, [k1, k2]), null, 'una clave pedida sin su enlace')
+assert.equal(textoPresupuestoDestino({ tipo: 'Cliente', confirmador: false, texto: varios }, []), varios, 'sin confirmación, el texto tal cual')
 const c1 = nuevaClave()
 const c2 = nuevaClave()
 assert.ok(c1.length >= 32 && c1 !== c2, 'claves únicas')
@@ -98,43 +127,96 @@ assert.ok(c1.length >= 32 && c1 !== c2, 'claves únicas')
 assert.equal(fechaLocal(new Date(2026, 9, 5, 23, 30)), '2026-10-05')
 
 /* Etapas */
-assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'crear'), ['Seleccionar Cliente', 'Cargar y Enviar Presupuesto'])
-assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'cargar'), ['Seleccionar Presupuesto', 'Cargar y Enviar Presupuesto'])
+assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'crear'), ['Seleccionar Cliente', 'Cargar Presupuestos', 'Enviar Presupuestos'])
+assert.deepEqual(etiquetasPasos(null, null, 'presupuestos', 'cargar'), ['Seleccionar Presupuesto', 'Cargar Presupuestos', 'Enviar Presupuestos'])
 assert.equal(etiquetasPasos(null, null, 'enviar').length, 3, 'Producción sigue con tres etapas')
 
-/* Consultar y Gestionar: qué se lista */
-assert.deepEqual([...INDICES_GESTION].sort(), [1, 3, 4, 5], 'enviado, negociación, vencido y solicitud')
-for (const e of ['Presupuesto Enviado', 'En Negociacion', 'Presupuesto vencido', 'Solicitud de Presupuesto']) assert.ok(gestionable(e), e)
-for (const e of ['Ganado', 'Perdido', 'Proyecto Ganado con otro pres', '']) assert.ok(!gestionable(e), e)
-assert.ok(pasaFiltro('pendientes', 'Presupuesto Enviado'))
-assert.ok(pasaFiltro('pendientes', 'Solicitud de Presupuesto'))
-assert.ok(!pasaFiltro('pendientes', 'En Negociacion'))
-assert.ok(pasaFiltro('vencidos', 'Presupuesto vencido'))
-assert.ok(!pasaFiltro('todos', 'Ganado'))
-assert.ok(!ganable('Presupuesto vencido'), 'un vencido no se gana')
+/* Consultar y Gestionar: los presupuestos de las bolsas que no están Ganadas ni Perdidas (13/10/2026) */
+assert.deepEqual(INDICES_CERRADOS, [0, 2], 'Ganado y Perdido no se listan')
+for (const e of ['Presupuesto Enviado', 'En Negociacion', 'Presupuesto vencido', 'Solicitud de Presupuesto', 'Proyecto Ganado con otro pres', '']) {
+  assert.ok(gestionable(e), e)
+}
+for (const e of ['Ganado', 'Perdido']) assert.ok(!gestionable(e), e)
+assert.ok(!ganable('Presupuesto vencido'), 'un vencido no se confirma')
 for (const e of ['Presupuesto Enviado', 'En Negociacion', 'Solicitud de Presupuesto']) assert.ok(ganable(e), e)
-assert.ok(!ganable('Perdido'))
 
-/* Ganar */
+/* La respuesta del presupuesto y el envío */
+assert.equal(situacionDe(''), 'pendiente')
+assert.equal(situacionDe('Confirmado'), 'confirmado')
+assert.equal(situacionDe('Rechazado'), 'rechazado')
+assert.equal(situacionDe('Error de Confirmacion'), 'error')
+assert.ok(yaEnviado('Enviado') && !yaEnviado('') && !yaEnviado('Enviar'))
+{
+  const pdf = { assetId: '1' }
+  const sinEnviar = { estadoEnvio: '', confirmacion: '', pdf }
+  const enviado = { estadoEnvio: 'Enviado', confirmacion: '', pdf }
+  assert.deepEqual(accionesPresupuesto('Solicitud de Presupuesto', sinEnviar), { envio: 'enviar', confirmar: true, perder: true })
+  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', enviado), { envio: 'reenviar', confirmar: true, perder: true }, 'ya salió: Reenviar')
+  assert.equal(accionesPresupuesto('Presupuesto vencido', enviado).confirmar, false, 'vencido: no se confirma')
+  assert.equal(accionesPresupuesto('Presupuesto vencido', enviado).perder, true, 'vencido: sí se pierde')
+  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, pdf: null }), { envio: null, confirmar: false, perder: true }, 'sin PDF')
+  for (const c of ['Confirmado', 'Rechazado', 'Error de Confirmacion']) {
+    assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, confirmacion: c }), { envio: null, confirmar: false, perder: false }, c)
+  }
+  assert.deepEqual(accionesPresupuesto('Ganado', enviado), { envio: null, confirmar: false, perder: false }, 'bolsa recién ganada')
+  assert.ok(pasaFiltro('paraEnviar', sinEnviar) && !pasaFiltro('enviados', sinEnviar))
+  assert.ok(pasaFiltro('enviados', enviado) && !pasaFiltro('paraEnviar', enviado))
+  assert.ok(pasaFiltro('rechazados', { ...enviado, confirmacion: 'Rechazado' }))
+  assert.ok(pasaFiltro('todos', { ...enviado, confirmacion: 'Confirmado' }))
+}
+
+/* El reenvío: el mensaje lo dice */
+{
+  const t = textoPresupuestos('PEREZ JUAN', 1, new Date(2026, 9, 5), [], true)
+  assert.ok(t.includes('🔁 Te *REENVIAMOS* el presupuesto solicitado'), t)
+  assert.ok(t.includes('📄 *Concepto:* Reenvío de presupuesto'), t)
+  assert.ok(!textoPresupuestos('PEREZ JUAN', 1, new Date(2026, 9, 5)).includes('REENVIAMOS'), 'un envío normal no')
+}
+
+/* Tipo, color e importes */
 assert.equal(tipoObraDe('PVC'), 'PVC')
 assert.equal(tipoObraDe('Alumino'), 'Aluminio')
 assert.equal(tipoObraDe('Aluminio A30New'), 'Aluminio')
 assert.equal(tipoObraDe(''), '')
+assert.equal(colorTipoCarpinteria('PVC'), '#00c875', 'PVC: verde')
+for (const t of ['Aluminio', 'Alumino', 'Aluminio A30New']) assert.equal(colorTipoCarpinteria(t), '#ffcb00', `${t}: amarillo`)
 assert.equal(importeDe('1.731.694,48'), 1731694.48)
 assert.equal(importeDe('1731694.48'), 1731694.48)
 assert.equal(importeDe('$ 604500'), 604500)
 assert.equal(importeDe('604.500'), 604500, 'puntos de miles sin coma')
 assert.equal(importeDe('1.731.694'), 1731694)
 assert.equal(importeDe('abc'), null)
+assert.equal(formatoImporte(1297684), '$ 1.297.684', 'total del presupuesto, sin decimales si es entero')
+assert.equal(formatoImporte(1731694.48), '$ 1.731.694,48')
 assert.equal(importeDe(''), null)
-const listo = { presupuestoElegido: true, conPdf: true, total: '604.500', conCliente: true, cuentas: 1, cuentaElegida: true }
-assert.deepEqual(faltantesGanar(listo), [])
-assert.equal(faltantesGanar({ ...listo, total: '0' }).length, 1, 'el total tiene que ser mayor a cero')
-assert.equal(faltantesGanar({ ...listo, conPdf: false }).length, 1)
-assert.ok(faltantesGanar({ ...listo, conCliente: false })[0].includes('cliente'), 'sin cliente no hay cuenta corriente')
-assert.ok(faltantesGanar({ ...listo, cuentas: 0 })[0].includes('cuenta corriente activa'))
-assert.equal(faltantesGanar({ ...listo, cuentas: 2, cuentaElegida: false }).length, 1, 'con varias cuentas, se elige')
-assert.equal(nombreMovimiento('IDOBRA-787', 'DIAZ CARLOS NICOLAS'), 'IDOBRA-787 - DIAZ CARLOS NICOLAS', 'como lo deja Make')
-assert.equal(nombreMovimiento('', 'DIAZ'), 'DIAZ')
+
+
+/* Cargar otro: las bolsas del cliente sin ganar ni perder; los nuevos van a la más reciente. */
+{
+  const env = (id: string, fechaEnvio: string) =>
+    ({ id, nombre: id, tipo: 'PVC', color: 'Blanco', fechaEnvio, estadoEnvio: 'Enviado', pdf: null, total: 1 }) as const
+  const bolsa = (id: string, estado: string, presupuestos: ReturnType<typeof env>[]) => ({
+    id, nombre: 'PEREZ', idPresupuesto: '', creacion: '', cliente: null, arquitecto: null, enviarA: 'Cliente', presupuestos: [...presupuestos], estado,
+  })
+  const r = bolsaParaCargar([
+    bolsa('100', 'Presupuesto Enviado', [env('11', '2026-10-02')]),
+    bolsa('300', 'Ganado', [env('31', '2026-10-01')]),
+    bolsa('200', 'En Negociacion', [env('21', '2026-10-01'), env('22', '2026-10-05')]),
+    bolsa('400', 'Perdido', [env('41', '2026-10-03')]),
+  ])
+  assert.equal(r?.bolsa.id, '200', 'la más reciente de las abiertas (no la ganada ni la perdida)')
+  assert.deepEqual(r?.enviados.map((e) => e.id), ['21', '11', '22'], 'los enviados de las abiertas, por fecha')
+  assert.equal(bolsaParaCargar([bolsa('1', 'Ganado', []), bolsa('2', 'Perdido', [])]), null, 'sin abiertas: no se avanza')
+  assert.equal(bolsaParaCargar([]), null)
+}
+
+
+/* "SIN ARQUITECTO" no es una persona: no se le envía el presupuesto (13/10/2026) */
+assert.ok(esSinArquitecto({ id: '10910009068', nombre: 'Lo que sea' }), 'por su id')
+assert.ok(esSinArquitecto({ id: '1', nombre: 'SIN ARQUITECTO' }), 'por su nombre')
+assert.ok(esSinArquitecto({ id: '1', nombre: '0000 - Sin Constructor' }), 'con código de cuenta')
+assert.ok(!esSinArquitecto({ id: '55', nombre: 'ARQ. GOMEZ' }))
+assert.ok(!esSinArquitecto({ id: '55', nombre: 'Sinatra Juan' }), 'un apellido que empieza con "Sin" no')
+assert.ok(!esSinArquitecto(null))
 
 console.log('presupuesto: todas las reglas pasan')

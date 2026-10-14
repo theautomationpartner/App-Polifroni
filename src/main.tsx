@@ -10,6 +10,7 @@ import '@/styles/obras.css'
 import '@/styles/labatea.css'
 import '@/styles/agenda.css'
 import '@/styles/presupuesto.css'
+import '@/styles/facturacion.css'
 import '@/styles/seguridad.css'
 
 const container = document.getElementById('root')

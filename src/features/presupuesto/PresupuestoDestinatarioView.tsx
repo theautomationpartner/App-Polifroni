@@ -1,246 +1,236 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
+import { Modal } from '@/components/ui/Modal'
+import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ModalErrorConsulta, conTope } from '@/features/agenda/ModalErrorConsulta'
-import { BuscadorObras, ayudaDe, useBuscadorObras } from '@/features/shared/BuscadorObras'
+import { BuscadorObras, ayudaDe, useBuscadorObras, type ObraEncontrada } from '@/features/shared/BuscadorObras'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
-import { indexar, type EntradaIndice } from '@/lib/busquedaObras'
+import { indexar } from '@/lib/busquedaObras'
 import { etiquetaPaso } from '@/lib/pasos'
-import { normalizar } from '@/lib/texto'
+import { bolsaParaCargar } from '@/lib/presupuesto'
 import {
+  bolsasDeContacto,
   buscarContactos,
   cargarIndiceContactos,
   getContacto,
-  leerBolsa,
-  listarBolsasAbiertas,
   mondayHabilitado,
-  ETIQUETA_PRES,
-  type BolsaPresupuesto,
   type Contacto,
   type TipoContacto,
 } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { conDestinatario } from './borrador'
-import { BolsaFicha, ContactoFicha } from './Fichas'
+import { ContactoUnicoFicha, ContactosFichas } from './Fichas'
 import { ModoSelect } from './ModoSelect'
 
 /** Lo que dice el buscador compartido cuando Monday no trae nada; acá se reemplaza por uno propio. */
 const SIN_RESULTADOS_BUSCADOR = 'Sin resultados en Monday. Probá con parte del nombre o pegá el id.'
 
-const TEXTOS: Record<TipoContacto, { titulo: string; placeholder: string; vacio: string; sinResultados: string; tituloBuscar: string }> = {
-  Cliente: {
-    titulo: 'Cliente',
-    placeholder: 'Buscar cliente por nombre',
-    vacio: 'Escribí el nombre del cliente o su id para buscar.',
-    sinResultados: 'Sin resultados para la búsqueda ingresada. Probá ingresando otro nombre de cliente.',
-    tituloBuscar: 'Buscar directamente en Monday, por si el cliente todavía no está en la lista rápida',
-  },
-  Constructor: {
-    titulo: 'Constructor/Arquitecto',
-    placeholder: 'Buscar constructor o arquitecto por nombre',
-    vacio: 'Escribí el nombre del constructor/arquitecto o su id para buscar.',
-    sinResultados: 'Sin resultados para la búsqueda ingresada. Probá ingresando otro nombre de constructor/arquitecto.',
-    tituloBuscar: 'Buscar directamente en Monday, por si el constructor todavía no está en la lista rápida',
-  },
+/** Cómo se nombra y se pinta cada tipo de contacto: la pastilla del resultado y la ventana de reemplazo. */
+const TIPO: Record<TipoContacto, { etiqueta: string; color: string; articulo: string }> = {
+  Cliente: { etiqueta: 'Cliente', color: '#89263c', articulo: 'un cliente' },
+  Constructor: { etiqueta: 'Constructor/Arquitecto', color: '#575ce5', articulo: 'un constructor/arquitecto' },
 }
 
-/**
- * Un buscador de contactos (cliente o constructor) con su ficha: el mismo buscador de la obra en
- * Producción, sobre el índice del tablero de ese contacto. Sugiere mientras se escribe y el botón
- * Buscar va a Monday por el que la lista rápida todavía no tiene.
- */
-function BuscadorContacto({
-  tipo,
-  elegido,
-  onElegido,
-  onError,
-}: {
-  tipo: TipoContacto
-  elegido: Contacto | null
-  onElegido: (c: Contacto | null) => void
-  onError: (accion: string) => void
-}) {
-  const t = TEXTOS[tipo]
-  const [indice, setIndice] = useState<EntradaIndice[]>([])
-  const [cargando, setCargando] = useState(false)
-  const [noEncontrado, setNoEncontrado] = useState(false)
+const SIN_RESULTADOS = 'Sin resultados para la búsqueda ingresada. Probá con otro nombre de cliente o de constructor/arquitecto.'
+const SIN_RESULTADOS_CLIENTE = 'Sin resultados para la búsqueda ingresada. Probá con otro nombre de cliente.'
 
-  /* El índice llega de a una página: cada una ya sirve para sugerir, sin esperar a todas. */
-  useEffect(() => cargarIndiceContactos(tipo, (lista) => setIndice(indexar(lista))), [tipo])
-
-  const abrir = async (id: string) => {
-    setCargando(true)
-    try {
-      const c = await conTope(getContacto(tipo, id))
-      if (!c) {
-        setNoEncontrado(true)
-        return
-      }
-      onElegido(c)
-    } catch {
-      onError(`leer los datos del ${tipo === 'Cliente' ? 'cliente' : 'constructor/arquitecto'}`)
-    } finally {
-      setCargando(false)
-    }
-  }
-
-  const b = useBuscadorObras({
-    indice,
-    buscarRemoto: async (texto) => {
-      try {
-        return await conTope(buscarContactos(tipo, texto))
-      } catch (e) {
-        onError(`buscar el ${tipo === 'Cliente' ? 'cliente' : 'constructor/arquitecto'}`)
-        throw e
-      }
-    },
-    abrir,
-    onSinResultados: () => {},
-    pedidoVacio: t.vacio,
-  })
-  const ayudaBuscador = ayudaDe(b, indice.length > 0, true, '')
-  const ayuda = ayudaBuscador === SIN_RESULTADOS_BUSCADOR ? (b.error ? '' : t.sinResultados) : ayudaBuscador
-
+/** Una fila del desplegable: el nombre, la pastilla de lo que es (la misma `op-estado` de los estados) y el id. */
+function FilaContacto({ f }: { f: ObraEncontrada }) {
   return (
-    <section className="pres-contacto">
-      <h3 className="carga-sec-t">
-        <i className={`fas ${tipo === 'Cliente' ? 'fa-user' : 'fa-helmet-safety'}`} /> {t.titulo}
-      </h3>
-      <BuscadorObras
-        b={b}
-        placeholder={t.placeholder}
-        ayuda={ayuda}
-        ayudaEnRojo={false}
-        deshabilitado={!mondayHabilitado()}
-        ocupado={cargando}
-        tituloBuscar={t.tituloBuscar}
-      />
-      <ContactoFicha
-        tipo={tipo}
-        contacto={cargando ? null : elegido}
-        cargando={cargando}
-        onQuitar={() => onElegido(null)}
-      />
-      {noEncontrado && (
-        <AvisoModal titulo="No se encontró" onClose={() => setNoEncontrado(false)}>
-          Lo que buscaste no está en el tablero de {tipo === 'Cliente' ? 'Clientes' : 'Constructor/Arquitecto'}. Probá con
-          parte del nombre o pegá el id del ítem.
-        </AvisoModal>
-      )}
-    </section>
+    <>
+      <span className="ritem-main pres-ritem">
+        <span className="ritem-name">{f.nombre}</span>
+        {f.etiqueta && (
+          <span className="op-estado op-estado--sm" style={{ ['--op-c' as string]: f.etiqueta.color }}>
+            {f.etiqueta.texto}
+          </span>
+        )}
+      </span>
+      <span className="ritem-code">{f.id}</span>
+    </>
   )
 }
 
-/** Los textos por los que se encuentra una bolsa: su nombre, su cliente, su constructor y su ID. */
-const entradaBolsa = (b: BolsaPresupuesto) => ({
-  id: b.id,
-  nombre: b.nombre,
-  buscables: [b.cliente?.nombre ?? '', b.arquitecto?.nombre ?? '', b.idPresupuesto],
-})
-
 /**
- * Cargar otro presupuesto: buscar la bolsa abierta ("Solicitud de Presupuesto") por el cliente o el
- * constructor al que pertenece. Las abiertas son pocas: se leen todas una vez y el buscador sugiere
- * sobre ellas.
+ * Crear: UN buscador para el cliente y el constructor/arquitecto. Es el mismo buscador de la obra en
+ * Producción, sobre los dos índices juntos: mientras se escribe sugiere de los dos tableros, cada
+ * resultado con su pastilla («Cliente» o «Constructor/Arquitecto»), y el botón Buscar va a Monday a
+ * los dos. Lo elegido va a su card: el cliente a la del cliente, el constructor a la suya.
+ *
+ * Si ya había un cliente (o un constructor) elegido y se elige otro, se pregunta antes de reemplazarlo.
+ *
+ * Cargar otro presupuesto: busca SÓLO clientes (regla del usuario, 13/10/2026), en una sola card.
  */
-function BuscadorBolsa({ onError }: { onError: (accion: string) => void }) {
+function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   const { presupuesto } = useApp()
   const dispatch = useDispatch()
-  const [bolsas, setBolsas] = useState<BolsaPresupuesto[] | null>(null)
-  const [cargando, setCargando] = useState(false)
-  const [cerrada, setCerrada] = useState<string | null>(null)
+  const [listas, setListas] = useState<Record<TipoContacto, { id: string; nombre: string }[]>>({ Cliente: [], Constructor: [] })
+  /** De qué tablero es cada id que se vio (en el índice o en una búsqueda): decide a qué card va. */
+  const tipos = useRef(new Map<string, TipoContacto>())
+  /** Se está leyendo el elegido: el tipo, si se sabe (para el esqueleto de su card). */
+  const [leyendo, setLeyendo] = useState<TipoContacto | 'buscando' | null>(null)
+  const [noEncontrado, setNoEncontrado] = useState(false)
+  /** Se eligió otro con la card ya ocupada: se pregunta antes de reemplazar. */
+  const [reemplazo, setReemplazo] = useState<{ tipo: TipoContacto; nuevo: Contacto } | null>(null)
 
+  /** Cargar sobre uno existente: UN solo contacto, y sólo cliente. */
+  const unico = presupuesto.modo === 'cargar'
+  const tiposBusqueda: TipoContacto[] = unico ? ['Cliente'] : ['Cliente', 'Constructor']
+
+  /* Los índices llegan de a una página: cada una ya sirve para sugerir. */
   useEffect(() => {
-    let vivo = true
-    conTope(listarBolsasAbiertas())
-      .then((l) => vivo && setBolsas(l))
-      .catch(() => {
-        if (!vivo) return
-        setBolsas([])
-        onError('leer los presupuestos abiertos')
-      })
-    return () => {
-      vivo = false
-    }
-    // Una sola lectura al entrar: el aviso de error no la vuelve a disparar.
+    const dejar = tiposBusqueda.map((t) => cargarIndiceContactos(t, (lista) => setListas((l) => ({ ...l, [t]: lista }))))
+    return () => dejar.forEach((f) => f())
+    // Sólo cuando cambia el modo (y con él, qué se busca).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [unico])
 
-  const indice = bolsas ? indexar(bolsas.map(entradaBolsa)) : []
+  const marcar = (t: TipoContacto) => (c: { id: string; nombre: string }) => {
+    tipos.current.set(c.id, t)
+    return { ...c, etiqueta: { texto: TIPO[t].etiqueta, color: TIPO[t].color } }
+  }
 
-  /* Se relee la bolsa elegida: puede haber cambiado de estado desde que se listó. Los contactos se
-     leen de su tablero, para tener su e-mail y el celular vigente. */
+  const indice = useMemo(
+    () => indexar([...listas.Cliente.map(marcar('Cliente')), ...(unico ? [] : listas.Constructor.map(marcar('Constructor')))]),
+    [listas, unico],
+  )
+
+  const actual = (t: TipoContacto) =>
+    unico ? (presupuesto.cliente ?? presupuesto.arquitecto) : t === 'Cliente' ? presupuesto.cliente : presupuesto.arquitecto
+  /** De qué tipo es el contacto que hay (para nombrarlo al preguntar si se reemplaza). */
+  const tipoActual = (t: TipoContacto): TipoContacto => (unico ? (presupuesto.cliente ? 'Cliente' : 'Constructor') : t)
+
+  /**
+   * Deja (o saca) el contacto de su card. Otro cliente u otro constructor cambia a quién se manda: el
+   * envío que hubiera salido ya no vale.
+   */
+  const asignar = (t: TipoContacto, c: Contacto | null) =>
+    dispatch({
+      type: 'setPresupuesto',
+      cambios: {
+        ...(t === 'Cliente' ? { cliente: c } : { arquitecto: c }),
+        /* Con un solo contacto, el del otro tipo se va. */
+        ...(unico && c ? (t === 'Cliente' ? { arquitecto: null } : { cliente: null }) : {}),
+        envio: null,
+        /* Cargar sobre uno existente: otro cliente tiene otros presupuestos. */
+        ...(presupuesto.modo === 'cargar' ? { bolsa: null, enviados: [] } : {}),
+      },
+    })
+
   const abrir = async (id: string) => {
-    setCargando(true)
+    let tipo = tipos.current.get(id) ?? null
+    setLeyendo(tipo ?? 'buscando')
     try {
-      const b = await conTope(leerBolsa(id))
-      if (!b || b.estado !== ETIQUETA_PRES.solicitud) {
-        setCerrada(b?.nombre ?? 'El presupuesto')
+      let c: Contacto | null = null
+      if (tipo) c = await conTope(getContacto(tipo, id))
+      else {
+        /* Un id pegado que no está en los índices: se prueba en los tableros que se buscan. */
+        for (const t of tiposBusqueda) {
+          c = await conTope(getContacto(t, id))
+          if (c) {
+            tipo = t
+            break
+          }
+        }
+      }
+      if (!c || !tipo) {
+        setNoEncontrado(true)
         return
       }
-      const [cliente, arquitecto] = await Promise.all([
-        b.cliente ? conTope(getContacto('Cliente', b.cliente.id)) : Promise.resolve(null),
-        b.arquitecto ? conTope(getContacto('Constructor', b.arquitecto.id)) : Promise.resolve(null),
-      ])
-      dispatch({
-        type: 'setPresupuesto',
-        cambios: { bolsa: b, cliente: cliente ?? b.cliente, arquitecto: arquitecto ?? b.arquitecto, envio: null },
-      })
+      const previo = actual(tipo)
+      if (previo && previo.id !== c.id) setReemplazo({ tipo, nuevo: c })
+      else asignar(tipo, c)
+      b.limpiar()
     } catch {
-      onError('leer el presupuesto')
+      onError('leer los datos del contacto')
     } finally {
-      setCargando(false)
+      setLeyendo(null)
     }
   }
 
   const b = useBuscadorObras({
     indice,
-    /* Las abiertas ya están en memoria: el botón Buscar las vuelve a pedir, por si se abrió una
-       recién, y filtra por lo escrito. */
     buscarRemoto: async (texto) => {
       try {
-        const l = await conTope(listarBolsasAbiertas())
-        setBolsas(l)
-        const q = normalizar(texto)
-        return l
-          .filter((x) => [x.nombre, x.id, ...entradaBolsa(x).buscables].some((v) => normalizar(v).includes(q)))
-          .map((x) => ({ id: x.id, nombre: x.nombre }))
+        const [clientes, constructores] = await Promise.all([
+          conTope(buscarContactos('Cliente', texto)),
+          unico ? Promise.resolve([]) : conTope(buscarContactos('Constructor', texto)),
+        ])
+        return [...clientes.map(marcar('Cliente')), ...constructores.map(marcar('Constructor'))]
       } catch (e) {
-        onError('buscar el presupuesto')
+        onError(unico ? 'buscar el cliente' : 'buscar el cliente o el constructor/arquitecto')
         throw e
       }
     },
     abrir,
     onSinResultados: () => {},
-    pedidoVacio: 'Escribí el nombre del cliente o del constructor para buscar.',
+    pedidoVacio: unico ? 'Escribí el nombre del cliente para buscar.' : 'Escribí el nombre del cliente o del constructor/arquitecto para buscar.',
   })
-  const sinBolsa = !presupuesto.bolsa && !cargando
-  const ayudaBuscador = ayudaDe(b, indice.length > 0, !sinBolsa, 'Buscá y cargá el presupuesto abierto para continuar')
+  const listo = listas.Cliente.length > 0 || (!unico && listas.Constructor.length > 0)
+  const ayudaBuscador = ayudaDe(b, listo, true, '')
   const ayuda =
-    ayudaBuscador === SIN_RESULTADOS_BUSCADOR
-      ? b.error
-        ? ''
-        : 'No hay presupuestos abiertos de ese cliente o constructor. Probá con otro nombre.'
-      : bolsas && bolsas.length === 0 && sinBolsa
-        ? 'No hay presupuestos en «Solicitud de Presupuesto». Creá uno nuevo.'
-        : ayudaBuscador
+    ayudaBuscador === SIN_RESULTADOS_BUSCADOR ? (b.error ? '' : unico ? SIN_RESULTADOS_CLIENTE : SIN_RESULTADOS) : ayudaBuscador
 
   return (
     <>
       <BuscadorObras
         b={b}
-        placeholder={bolsas === null ? 'Leyendo los presupuestos abiertos…' : 'Buscar por cliente o constructor/arquitecto'}
+        placeholder={unico ? 'Buscar cliente por nombre' : 'Buscar cliente o constructor/arquitecto por nombre'}
         ayuda={ayuda}
-        ayudaEnRojo={sinBolsa && !b.termino}
-        deshabilitado={!mondayHabilitado() || bolsas === null}
-        ocupado={cargando}
-        tituloBuscar="Volver a leer los presupuestos abiertos en Monday y buscar en ellos"
+        ayudaEnRojo={false}
+        deshabilitado={!mondayHabilitado()}
+        ocupado={leyendo !== null}
+        tituloBuscar={unico ? 'Buscar directamente en Monday, en Clientes' : 'Buscar directamente en Monday, en Clientes y en Constructor/Arquitecto'}
+        renderFila={(f) => <FilaContacto f={f} />}
       />
-      <BolsaFicha bolsa={cargando ? null : presupuesto.bolsa} cargando={cargando} />
-      {cerrada && (
-        <AvisoModal titulo="El presupuesto ya no está abierto" onClose={() => setCerrada(null)}>
-          <strong>{cerrada}</strong> ya no está en «Solicitud de Presupuesto»: no se le pueden cargar más presupuestos.
-          Elegí otro o creá uno nuevo.
+      {unico ? (
+        <ContactoUnicoFicha
+          cliente={presupuesto.cliente}
+          leyendo={leyendo !== null}
+          onQuitar={() => asignar('Cliente', null)}
+        />
+      ) : (
+        <ContactosFichas
+          cliente={presupuesto.cliente}
+          arquitecto={presupuesto.arquitecto}
+          leyendo={leyendo === 'Cliente' || leyendo === 'Constructor' ? leyendo : null}
+          onQuitar={(t) => asignar(t, null)}
+        />
+      )}
+
+      {reemplazo && (
+        <Modal
+          title={`¿Reemplazar ${tipoActual(reemplazo.tipo) === 'Cliente' ? 'el cliente' : 'el constructor/arquitecto'}?`}
+          icon={<i className="fas fa-triangle-exclamation modal-icon--warn" />}
+          onClose={() => setReemplazo(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setReemplazo(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-marca"
+                onClick={() => {
+                  asignar(reemplazo.tipo, reemplazo.nuevo)
+                  setReemplazo(null)
+                }}
+              >
+                Aceptar
+              </button>
+            </>
+          }
+        >
+          Ya tenías {TIPO[tipoActual(reemplazo.tipo)].articulo} seleccionado: <strong>{actual(reemplazo.tipo)?.nombre}</strong>. ¿Querés
+          reemplazarlo por <strong>{reemplazo.nuevo.nombre}</strong>?
+        </Modal>
+      )}
+      {noEncontrado && (
+        <AvisoModal titulo="No se encontró" onClose={() => setNoEncontrado(false)}>
+          {unico
+            ? 'Lo que buscaste no está en el tablero de Clientes. Probá con parte del nombre o pegá el id del ítem.'
+            : 'Lo que buscaste no está en el tablero de Clientes ni en el de Constructor/Arquitecto. Probá con parte del nombre o pegá el id del ítem.'}
         </AvisoModal>
       )}
     </>
@@ -250,9 +240,10 @@ function BuscadorBolsa({ onError }: { onError: (accion: string) => void }) {
 /**
  * Crear y Cargar Presupuestos · Etapa 1: a quién es el presupuesto.
  *
- * Arriba, qué se va a hacer: crear un presupuesto nuevo —se elige el cliente y/o el constructor (no
- * todos los presupuestos llevan constructor)— o cargar otro en uno abierto, buscándolo por el cliente
- * o el constructor al que pertenece.
+ * Arriba, qué se va a hacer: crear un presupuesto nuevo o cargar otro sobre uno ya existente. Al crear
+ * se elige el cliente y/o el constructor (no todos los presupuestos llevan constructor). Al cargar
+ * sobre uno existente se elige SÓLO el cliente; sus presupuestos se buscan al continuar: los de sus
+ * bolsas que no están Ganadas ni Perdidas (ver `bolsaParaCargar`). Sin ninguna, se avisa y no se avanza.
  */
 export function PresupuestoDestinatarioView() {
   const dispatch = useDispatch()
@@ -260,8 +251,11 @@ export function PresupuestoDestinatarioView() {
   const { modo } = presupuesto
   const [errorMonday, setErrorMonday] = useState<string | null>(null)
   const [falta, setFalta] = useState<'modo' | 'destinatario' | null>(null)
+  const [buscando, setBuscando] = useState(false)
+  const [sinPresupuestos, setSinPresupuestos] = useState<string | null>(null)
 
-  const continuar = () => {
+  const continuar = async () => {
+    if (buscando) return
     if (!modo) {
       setFalta('modo')
       return
@@ -270,22 +264,40 @@ export function PresupuestoDestinatarioView() {
       setFalta('destinatario')
       return
     }
+    if (modo === 'cargar' && presupuesto.cliente) {
+      /* Los presupuestos del cliente se buscan recién ahora, al día: puede haber cambiado alguno. */
+      setBuscando(true)
+      try {
+        const r = bolsaParaCargar(await conTope(bolsasDeContacto('Cliente', presupuesto.cliente.id)))
+        if (!r) {
+          setSinPresupuestos(presupuesto.cliente.nombre)
+          return
+        }
+        dispatch({ type: 'setPresupuesto', cambios: { bolsa: r.bolsa, enviados: r.enviados, envio: null } })
+      } catch {
+        setErrorMonday('buscar los presupuestos del cliente')
+        return
+      } finally {
+        setBuscando(false)
+      }
+    }
     dispatch({ type: 'goto', paso: 'carga' })
   }
-
-  /* Otro cliente u otro constructor cambia a quién se manda: el envío que hubiera salido ya no vale. */
-  const elegir = (cambios: { cliente?: Contacto | null; arquitecto?: Contacto | null }) =>
-    dispatch({ type: 'setPresupuesto', cambios: { ...cambios, envio: null } })
 
   return (
     <section className="view paso-layout obras-v2 presupuesto-v2">
       <PasoHeader />
+
+      {/* La pregunta que decide el recorrido va ANTES del título de la etapa, como «¿A quién vas a
+          enviarle la orden?» en Producción: de ella depende qué se elige abajo. */}
+      <ModoSelect falta={falta === 'modo' && !modo} />
+
       <PasoTitulo
         titulo={etiquetaPaso('obra', null, null, 'presupuestos', modo)}
         descripcion={
           modo === 'cargar'
-            ? 'Buscá el presupuesto abierto del cliente o del constructor al que le vas a cargar otro presupuesto.'
-            : 'Elegí qué vas a hacer y a quién es el presupuesto: un cliente, un constructor/arquitecto o los dos.'
+            ? 'Buscá el cliente: al continuar se buscan sus presupuestos ya enviados para cargarle otro.'
+            : 'Elegí a quién es el presupuesto: un cliente, un constructor/arquitecto o los dos.'
         }
       />
 
@@ -296,26 +308,8 @@ export function PresupuestoDestinatarioView() {
         </Aviso>
       )}
 
-      <ModoSelect falta={falta === 'modo' && !modo} />
-
-      {modo === 'crear' && (
-        <div className="pres-contactos">
-          <BuscadorContacto
-            tipo="Cliente"
-            elegido={presupuesto.cliente}
-            onElegido={(c) => elegir({ cliente: c })}
-            onError={setErrorMonday}
-          />
-          <BuscadorContacto
-            tipo="Constructor"
-            elegido={presupuesto.arquitecto}
-            onElegido={(c) => elegir({ arquitecto: c })}
-            onError={setErrorMonday}
-          />
-        </div>
-      )}
-
-      {modo === 'cargar' && <BuscadorBolsa onError={setErrorMonday} />}
+      {/* Los dos modos usan el mismo buscador; al cargar sobre uno existente, sólo de clientes. */}
+      {modo && <BuscadorContactos key={modo} onError={setErrorMonday} />}
 
       <div className="actions-footer">
         <span className="paso-siguiente">
@@ -325,18 +319,26 @@ export function PresupuestoDestinatarioView() {
               {[presupuesto.cliente?.nombre, presupuesto.arquitecto?.nombre].filter(Boolean).join(' y ')}
             </>
           )}
-          {modo === 'cargar' && presupuesto.bolsa && (
+          {modo === 'cargar' && presupuesto.cliente && (
             <>
-              <i className="fas fa-file-invoice-dollar paso-siguiente-ic" /> {presupuesto.bolsa.presupuestos.length}{' '}
-              {presupuesto.bolsa.presupuestos.length === 1 ? 'presupuesto cargado' : 'presupuestos cargados'}
+              <i className="fas fa-file-invoice-dollar paso-siguiente-ic" /> Presupuestos de {presupuesto.cliente.nombre}
             </>
           )}
         </span>
-        <button type="button" className="btn btn-primary" onClick={continuar}>
+        <button type="button" className="btn btn-primary" disabled={buscando} onClick={() => void continuar()}>
           Continuar a {etiquetaPaso('carga', null, null, 'presupuestos', modo)} <i className="fas fa-arrow-right" />
         </button>
       </div>
 
+      {buscando && (
+        <ModalCargando titulo="Buscando los presupuestos del cliente..." detalle="Se leen sus presupuestos ya enviados. Esperá unos segundos." />
+      )}
+      {sinPresupuestos && (
+        <AvisoModal titulo="El cliente no tiene presupuestos para cargar" onClose={() => setSinPresupuestos(null)}>
+          <strong>{sinPresupuestos}</strong> no tiene presupuestos cargados (o los que tiene ya están Ganados o Perdidos). Para
+          enviarle uno, elegí «Crear nuevo presupuesto».
+        </AvisoModal>
+      )}
       {errorMonday && <ModalErrorConsulta accion={errorMonday} onClose={() => setErrorMonday(null)} />}
       {falta === 'modo' && (
         <AvisoModal titulo="Falta elegir qué vas a hacer" onClose={() => setFalta(null)}>
@@ -345,11 +347,11 @@ export function PresupuestoDestinatarioView() {
       )}
       {falta === 'destinatario' && (
         <AvisoModal
-          titulo={modo === 'cargar' ? 'Falta elegir el presupuesto' : 'Falta elegir a quién es el presupuesto'}
+          titulo={modo === 'cargar' ? 'Falta elegir el cliente' : 'Falta elegir a quién es el presupuesto'}
           onClose={() => setFalta(null)}
         >
           {modo === 'cargar'
-            ? 'Buscá y cargá el presupuesto abierto al que le vas a sumar otro presupuesto.'
+            ? 'Buscá y cargá el cliente al que le vas a sumar otro presupuesto.'
             : 'Buscá y cargá un cliente, un constructor/arquitecto o los dos. Al menos uno es obligatorio.'}
         </AvisoModal>
       )}

@@ -18,14 +18,26 @@
  *     así un doble clic o un enlace abierto dos veces no escriben dos veces.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { leerCodigo, leerEnlaceLargo, type EnlaceLeido } from './_confirmacion.js'
+import { waitUntil } from '@vercel/functions'
+import { leerCodigo, leerEnlaceLargo, type DocumentoConfirmacion, type EnlaceLeido } from './_confirmacion.js'
 import { buscarDocumento, leerRespuesta, registrarRespuesta, type Documento } from './_confirmarMonday.js'
-import { paginaAviso, paginaFormulario, paginaRespuesta, paginaVistaPrevia } from './_confirmarPaginas.js'
+import { conVistaPrevia, paginaAviso, paginaFormulario, paginaRespuesta, paginaVistaPrevia } from './_confirmarPaginas.js'
 
 type Pedido = IncomingMessage & { body?: unknown }
 
 /** Los bots que abren el enlace para armar la vista previa: no llegan a Monday. */
-const BOT = /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|skypeuripreview|googlebot|bingbot/i
+const BOT =
+  /whatsapp|facebookexternalhit|facebot|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|skypeuripreview|googlebot|bingbot|bot\b|crawler|spider|preview|embed|iframely/i
+
+/**
+ * Quién abre el enlace sólo para armar la vista previa. No son únicamente los bots que se presentan
+ * como tales: el envío por 360messenger es una sesión de WhatsApp Web, y la vista previa la arma el
+ * que manda, bajando la página con un cliente HTTP cualquiera (sin "Mozilla/") y esperando apenas unos
+ * segundos. Si recibe el formulario —que primero consulta Monday— no llega a tiempo y el mensaje
+ * queda con el dominio pelado. Todos los navegadores de verdad (también el de WhatsApp) mandan
+ * "Mozilla/": lo que no lo manda recibe al instante la vista previa, sin tocar Monday.
+ */
+const esVistaPrevia = (ua: string) => BOT.test(ua) || !/\bMozilla\//.test(ua)
 
 /** Un cuerpo de formulario no necesita más: el motivo (1000 caracteres), codificado. */
 const TOPE_CUERPO = 16 * 1024
@@ -52,7 +64,8 @@ function enlaceDe(url: URL): { enlace: EnlaceLeido; accion: string } | null {
 }
 
 /** El formulario de confirmación del documento (el de la OP o el del presupuesto). */
-const formulario = (doc: Documento, accion: string) => paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion })
+const formulario = (doc: Documento, accion: string) =>
+  paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion, coordinadores: doc.coordinadores })
 
 /**
  * Lo que se muestra de un documento que ya no espera respuesta: si ya se respondió, el agradecimiento
@@ -88,19 +101,25 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
   const url = new URL(req.url ?? '/', 'http://local')
   const leido = enlaceDe(url)
 
-  if (req.method !== 'POST' && BOT.test(String(req.headers['user-agent'] ?? ''))) {
+  if (req.method !== 'POST' && esVistaPrevia(String(req.headers['user-agent'] ?? ''))) {
     return html(res, 200, paginaVistaPrevia(leido?.enlace.documento ?? null))
   }
   if (!leido) return html(res, 400, enlaceInvalido())
   const { enlace, accion } = leido
+  /* Todas las páginas del enlace llevan la tarjeta de la vista previa de ESTE documento. */
+  const tarjeta = enlace.documento
   const que = enlace.documento === 'op' ? 'la orden' : 'el presupuesto'
 
   try {
     const doc = await buscarDocumento(enlace.documento, enlace.clave, enlace.rol, undefined, enlace.nombre)
+    /* Todavía no está en Monday: la OP o el presupuesto se registran al finalizar, DESPUÉS de mandar el
+       mensaje. Va con 200 (y con la tarjeta): quien arma la vista previa en ese momento descarta una
+       respuesta de error y el mensaje quedaba con el dominio pelado. */
     if (!doc) {
       return html(
         res,
-        404,
+        200,
+        tarjeta,
         paginaAviso(
           `No encontramos ${que}`,
           'Puede que todavía se esté registrando: probá de nuevo en unos minutos. Si sigue sin aparecer, respondé al mensaje de WhatsApp y te ayudamos.',
@@ -108,26 +127,35 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
       )
     }
 
+    /* El estado se lee de Monday en CADA pedido, antes de mostrar el formulario y antes de escribir:
+       si alguien ya la confirmó desde la app (o la respondió el otro destinatario), al cliente se le
+       muestra el agradecimiento de ya confirmada, nunca el formulario. */
     if (req.method !== 'POST') {
-      return html(res, 200, doc.situacion === 'pendiente' ? formulario(doc, accion) : paginaSinRespuesta(doc))
+      return html(res, 200, tarjeta, doc.situacion === 'pendiente' ? formulario(doc, accion) : paginaSinRespuesta(doc))
     }
 
     let campos: Record<string, string>
     try {
       campos = await leerCampos(req)
     } catch {
-      return html(res, 400, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
+      return html(res, 400, tarjeta, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
     }
-    if (doc.situacion !== 'pendiente') return html(res, 409, paginaSinRespuesta(doc))
-    const leida = leerRespuesta(enlace.documento, campos)
+    if (doc.situacion !== 'pendiente') return html(res, 409, tarjeta, paginaSinRespuesta(doc))
+    const leida = leerRespuesta(enlace.documento, campos, doc.coordinadores)
     /* Los formularios ya exigen cada campo antes de enviar: si igual falta algo, se vuelve a mostrar. */
-    if (!leida.ok) return html(res, 422, formulario(doc, accion))
+    if (!leida.ok) return html(res, 422, tarjeta, formulario(doc, accion))
 
-    await registrarRespuesta(doc, doc.nombre, leida.respuesta)
+    /* Quien confirma sólo espera su respuesta y los datos del presupuesto; la obra y la cuenta corriente
+       siguen después de responderle. En Vercel, `waitUntil` mantiene viva la función hasta que
+       terminan; en desarrollo (Vite) siguen corriendo solas. */
+    await registrarRespuesta(doc, doc.nombre, leida.respuesta, undefined, undefined, (tarea) => {
+      waitUntil(tarea)
+    })
     const r = leida.respuesta
     return html(
       res,
       200,
+      tarjeta,
       paginaRespuesta(doc.documento, doc.nombre, r.tipo === 'confirmar' ? 'confirmada' : 'rechazada', r.tipo === 'rechazar' ? r.motivo : ''),
     )
   } catch (e) {
@@ -135,6 +163,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
     return html(
       res,
       502,
+      tarjeta,
       paginaAviso(
         'No pudimos registrar tu respuesta',
         'Tuvimos un problema momentáneo. Volvé a abrir el enlace en unos minutos e intentá de nuevo; si sigue fallando, respondé al mensaje de WhatsApp.',
@@ -164,7 +193,12 @@ async function leerCampos(req: Pedido): Promise<Record<string, string>> {
   return {}
 }
 
-function html(res: ServerResponse, status: number, cuerpo: string): void {
+/**
+ * Responde una página. Con `documento`, le asegura las etiquetas de la tarjeta de WhatsApp (título,
+ * texto y logo), sea cual sea la página: el formulario, el agradecimiento o un aviso.
+ */
+function html(res: ServerResponse, status: number, ...args: [string] | [DocumentoConfirmacion, string]): void {
+  const cuerpo = args.length === 2 ? conVistaPrevia(args[1], args[0]) : args[0]
   res.statusCode = status
   res.setHeader('content-type', 'text/html; charset=utf-8')
   res.setHeader('cache-control', 'no-store')

@@ -8,6 +8,7 @@ import { PROCESOS, procesoDe } from '@/lib/procesos'
 import { etiquetasPasos, tipoDe } from '@/lib/pasos'
 import { comoUsuario } from '@/services/monday'
 import { presupuestoEnCurso } from '@/features/presupuesto/borrador'
+import { facturaEnCurso } from '@/features/facturacion/borrador'
 import { OPERACIONES, PASOS, areaVisible, conEtapas, indiceDe, operacionesDe } from '@/state/appState'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Operacion, Proceso, Rol } from '@/types'
@@ -81,13 +82,13 @@ export function TopSel({ label, children }: { label: string; children: ReactNode
  * de operación descarta lo cargado.
  */
 function OperacionSelector() {
-  const { proceso, operacion, obra, presupuesto, edicion, accionEnCurso, usuario } = useApp()
+  const { proceso, operacion, obra, presupuesto, edicion, factura, accionEnCurso, usuario } = useApp()
   const dispatch = useDispatch()
   const [pendiente, setPendiente] = useState<Operacion | null>(null)
   const actual = OPERACIONES.find((o) => o.id === operacion)
   /* Con trabajo cargado —una obra, una orden o lo elegido de un presupuesto— cambiar de operación lo
      descarta. (El turno nuevo de la Agenda se carga en su propia ventana, que tapa el encabezado.) */
-  const hayTrabajo = Boolean(obra || presupuestoEnCurso(presupuesto) || edicion.orden)
+  const hayTrabajo = Boolean(obra || presupuestoEnCurso(presupuesto) || edicion.orden || facturaEnCurso(factura))
 
   const elegir = (op: Operacion) => {
     if (op === operacion || accionEnCurso) return
@@ -165,7 +166,7 @@ const opcionesArea = (roles: readonly Rol[] | undefined): OpcionArea[] => [
  * tarjeta que se eligió en la pantalla inicial, y tocarla vuelve ahí.
  */
 export function SelectoresOperacion({ children }: { children?: ReactNode }) {
-  const { proceso, obra, presupuesto, accionEnCurso, usuario } = useApp()
+  const { proceso, obra, presupuesto, factura, accionEnCurso, usuario } = useApp()
   const dispatch = useDispatch()
   const seccion = procesoDe(proceso)
   /** Se eligió ir al inicio u otra área con una operación en curso: se pregunta antes. */
@@ -180,7 +181,7 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
   const elegirArea = (destino: OpcionArea) => {
     if (accionEnCurso) return
     if (destino !== INICIO && destino === proceso) return
-    if (obra || presupuestoEnCurso(presupuesto)) setSalir(destino)
+    if (obra || presupuestoEnCurso(presupuesto) || facturaEnCurso(factura)) setSalir(destino)
     else ir(destino)
   }
 

@@ -1,10 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "git": {
-    "deploymentEnabled": {
-      "dev": false
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
@@ -37,6 +32,12 @@
       "maxDuration": 300
     },
     "api/whatsapp-texto.ts": {
+      "maxDuration": 120
+    },
+    "api/confirmar.ts": {
+      "maxDuration": 120
+    },
+    "api/presupuesto-respuesta.ts": {
       "maxDuration": 120
     }
   },

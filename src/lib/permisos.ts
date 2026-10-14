@@ -48,19 +48,12 @@ const OPERACIONES_DEL_ROL: Record<Rol, readonly Operacion[] | 'todas'> = {
   produccion: ['consultar'],
   /* Todas las de Agenda. */
   administracion: ['calendario'],
-  /* Presupuesto está bloqueado en producción (ver `BLOQUEADAS`): Ventas no tiene operaciones. */
-  ventas: [],
+  /* Todas las de Presupuesto. */
+  ventas: ['presupuestos', 'gestionarPresupuestos'],
 }
-
-/**
- * Operaciones bloqueadas en producción (rama main) para TODOS los roles, admin incluido, mientras se
- * terminan de probar en dev: Presupuesto. Su área se ve apagada ("Próximamente", `lib/procesos`).
- */
-const BLOQUEADAS: readonly Operacion[] = ['presupuestos', 'gestionarPresupuestos']
 
 /** ¿Alguno de sus roles habilita la operación? Es la suma de lo que da cada team. */
 export function puedeOperar(roles: readonly Rol[] | null | undefined, operacion: Operacion): boolean {
-  if (BLOQUEADAS.includes(operacion)) return false
   return (roles ?? []).some((rol) => {
     const ops = OPERACIONES_DEL_ROL[rol]
     return ops === 'todas' || ops.includes(operacion)

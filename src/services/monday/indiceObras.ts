@@ -8,6 +8,14 @@ export interface ObraIndice {
   nombre: string
   /** Otros textos por los que se encuentra la obra, además del nombre (ver `indexar`). */
   buscables?: string[]
+  /** Una pastilla junto al nombre en el desplegable (p. ej. si es cliente o constructor). */
+  etiqueta?: EtiquetaResultado
+}
+
+/** La pastilla de un resultado del buscador: el texto y el color de la etiqueta. */
+export interface EtiquetaResultado {
+  texto: string
+  color: string
 }
 
 interface Pagina {

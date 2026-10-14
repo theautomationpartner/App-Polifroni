@@ -11,6 +11,7 @@
  */
 import { formasDeClave, type DocumentoConfirmacion, type RolConfirmacion } from './_confirmacion.js'
 import { mondayServidor } from './_mondayApi.js'
+import { archivosMonday, completarConfirmacion, type Archivos } from './_confirmarPresupuesto.js'
 
 /** Hace la consulta. Por defecto, Monday con el token del servidor; los tests pasan otra. */
 export type Consulta = <T>(query: string, variables: Record<string, unknown>, opciones?: { escritura?: boolean }) => Promise<T>
@@ -33,6 +34,8 @@ export const COL_OP = {
   nroPvc: 'numeric_mm7ep0eq',
   nroAluminio: 'text_mm7gjg24',
   obra: 'board_relation_mm7e604m',
+  /** 🤖Motivo por el que NO Confirmo (text): lo que escribió el cliente al no confirmar. */
+  motivoNoConfirmo: 'text_mm7zjn8y',
 } as const
 
 /** 🚫Confirmacion Op Cliente de la obra: la app la deja en "Pend de Confirmar" al enviar. */
@@ -57,8 +60,8 @@ export const ETIQUETAS = {
     pendiente: 'Pend de Confirmar',
     pendienteAnteriores: ['Generada y Enviada Pend Confirmar', 'Enviada Pend Confirmar', 'Enviada Pend de Confirmar'],
     confirmada: 'Confirmada',
-    /* No existe todavía en `🤖Estado OP`: se crea la primera vez (`create_labels_if_missing`), como
-       hace la app con "Enviada a Taller" y "Cancelada". */
+    /* Ya no se escribe (regla del usuario, 09/10/2026: "No confirmar" deja la OP Cancelada). Se sigue
+       leyendo por las OP que quedaron así de antes. */
     rechazada: 'NO Confirmado',
   },
   obra: { confirmada: 'CONFIRMADO OP', rechazada: 'NO CONFIRMADO' },
@@ -74,8 +77,9 @@ export const ETIQUETAS = {
  *  - `pendiente`: se muestra el formulario.
  *  - `confirmada`: ya se confirmó. En la OP también cuenta si ya siguió adelante con esa confirmación
  *    (enviada al taller, producción completada): se muestra la pantalla de "¡Confirmamos tu pedido!".
- *  - `rechazada`: ya se pidió una revisión; se muestra "Recibimos tu observación".
- *  - `cancelada`: la OP se canceló (en general, para emitir una corregida).
+ *  - `rechazada`: el cliente no confirmó; se muestra "Recibimos tu observación". En la OP es la
+ *    Cancelada que tiene el motivo del cliente (`🤖Motivo por el que NO Confirmo`).
+ *  - `cancelada`: la OP se canceló desde la app (en general, para emitir una corregida).
  *  - `sinEnviar`: la OP todavía no se envió a confirmar (no debería pasar con un enlace real).
  */
 export type SituacionRespuesta = 'pendiente' | 'confirmada' | 'rechazada' | 'cancelada' | 'sinEnviar'
@@ -106,10 +110,21 @@ export function situacionOp(etiqueta: string, indice: number | null = null): Sit
   return 'sinEnviar'
 }
 
-/** Un presupuesto se responde mientras `🤖 Estado de Confirmacion` esté vacío. */
-export function situacionPresupuesto(etiqueta: string): SituacionRespuesta {
+/**
+ * Los índices de `🤖 Estado de Confirmacion`. El 5 es el de "sin respuesta": desde el 13/10/2026 el
+ * tablero le puso nombre ("Pend de Confirmar"), así que el texto de un presupuesto sin responder ya no
+ * viene vacío. Por eso se decide por el índice.
+ */
+export const INDICE_CONFIRMACION = { rechazado: 0, confirmado: 1, error: 2, pendiente: 5 } as const
+
+/** Un presupuesto se responde mientras `🤖 Estado de Confirmacion` no tenga respuesta (vacío o índice 5). */
+export function situacionPresupuesto(etiqueta: string, indice: number | null = null): SituacionRespuesta {
+  if (indice !== null) {
+    if (indice === INDICE_CONFIRMACION.pendiente) return 'pendiente'
+    return indice === INDICE_CONFIRMACION.rechazado ? 'rechazada' : 'confirmada'
+  }
   const e = etiqueta.trim()
-  if (!e) return 'pendiente'
+  if (!e || e === 'Pend de Confirmar') return 'pendiente'
   if (e === ETIQUETAS.presupuesto.rechazada) return 'rechazada'
   return 'confirmada'
 }
@@ -126,18 +141,22 @@ const limpio = (v: unknown, multilinea = false): string =>
     .trim()
 
 /**
- * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar",
+ * Lo que mandó el formulario (los campos de los HTML: `estado_obra` = "Confirmar" | "No confirmar"
+ * —"Rechazar" en el presupuesto—,
  * `motivo` y, en el presupuesto, `ubicacion` y `coordinador`), validado.
  *  - "No confirmar" exige el motivo.
- *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario).
+ *  - Confirmar un presupuesto exige la ubicación y el coordinador (el paso 2 de su formulario). Si
+ *    el formulario ofreció opciones de coordinador (`coordinadores`), tiene que ser una de ellas.
  *  - Confirmar una OP no pide nada más.
  */
 export function leerRespuesta(
   documento: DocumentoConfirmacion,
   campos: Record<string, unknown>,
+  coordinadores: Coordinador[] = [],
 ): { ok: true; respuesta: Respuesta } | { ok: false; error: string } {
   const r = limpio(campos.estado_obra).toLowerCase()
-  if (r === 'no confirmar') {
+  /* El presupuesto lo llama "Rechazar" (regla del usuario, 13/10/2026); la OP, "No confirmar". */
+  if (r === 'no confirmar' || r === 'rechazar') {
     const motivo = limpio(campos.motivo, true)
     if (!motivo) return { ok: false, error: 'Falta el motivo.' }
     if (motivo.length > LIMITES.motivo) return { ok: false, error: `El motivo puede tener hasta ${LIMITES.motivo} caracteres.` }
@@ -150,6 +169,9 @@ export function leerRespuesta(
   if (!ubicacion || !coordinador) return { ok: false, error: 'Falta la ubicación o el coordinador de la obra.' }
   if (ubicacion.length > LIMITES.ubicacion || coordinador.length > LIMITES.coordinador) {
     return { ok: false, error: 'La ubicación o el coordinador son demasiado largos.' }
+  }
+  if (coordinadores.length && !coordinadores.some((o) => o.nombre === coordinador)) {
+    return { ok: false, error: 'El coordinador tiene que ser uno de los de la lista.' }
   }
   return { ok: true, respuesta: { tipo: 'confirmar', ubicacion, coordinador } }
 }
@@ -175,6 +197,16 @@ export interface Documento {
   nombre: string
   /** Presupuesto rechazado: el motivo que quedó escrito, para mostrarlo de nuevo. */
   motivo: string
+  /**
+   * Presupuesto: entre quiénes se elige el coordinador de la obra (el paso 2 del formulario). Son el
+   * cliente y el constructor/arquitecto de la bolsa; el comodín "SIN ARQUITECTO" no va. OP: vacío.
+   */
+  coordinadores: Coordinador[]
+}
+
+export interface Coordinador {
+  nombre: string
+  rol: 'Cliente' | 'Arquitecto'
 }
 
 interface CV {
@@ -218,6 +250,23 @@ const COL_OBRA_CONTACTO = { Cliente: 'board_relation_mkthtd70', Constructor: 'bo
 /** Las columnas de la bolsa del presupuesto con el cliente y el constructor/arquitecto. */
 const COL_BOLSA_CONTACTO = { Cliente: 'board_relation_mkvgt8r', Constructor: 'board_relation_mkvgk8yb' } as const
 
+/** El ítem comodín "SIN ARQUITECTO" de 👤 Constructor/Arquitecto: el tablero lo usa cuando no hay nadie. */
+const SIN_ARQUITECTO_ID = '10910009068'
+const esComodin = (c: CV | undefined, nombre: string) =>
+  (c?.linked_item_ids ?? []).map(String).includes(SIN_ARQUITECTO_ID) || /^sin\s+(arquitecto|constructor)\b/i.test(nombre)
+
+/** Las opciones de coordinador de la obra: el cliente y, si hay uno de verdad, el arquitecto. */
+function coordinadoresDe(bolsa: Record<string, CV | undefined>): Coordinador[] {
+  const cliente = vinculado(bolsa[COL_BOLSA_CONTACTO.Cliente])
+  const arquitecto = vinculado(bolsa[COL_BOLSA_CONTACTO.Constructor])
+  const lista: Coordinador[] = []
+  if (cliente) lista.push({ nombre: cliente, rol: 'Cliente' })
+  if (arquitecto && !esComodin(bolsa[COL_BOLSA_CONTACTO.Constructor], arquitecto) && arquitecto !== cliente) {
+    lista.push({ nombre: arquitecto, rol: 'Arquitecto' })
+  }
+  return lista
+}
+
 async function porClave(consulta: Consulta, board: number, columna: string, clave: string, columnas: string[], padre: string[] | null) {
   /* La clave puede estar guardada con guiones (UUID) o sin ellos (navegadores viejos). */
   const formas = formasDeClave(clave)
@@ -259,6 +308,8 @@ export async function buscarDocumento(
     const numero = txt(c[COL_OP.nroAluminio]) || txt(c[COL_OP.nroPvc])
     const etiqueta = txt(c[COL_OP.estado])
     const obraId = String(c[COL_OP.obra]?.linked_item_ids?.[0] ?? '')
+    const motivo = txt(c[COL_OP.motivoNoConfirmo])
+    const situacion = situacionOp(etiqueta, indiceDe(c[COL_OP.estado]))
     return {
       documento,
       id: String(i.id),
@@ -266,9 +317,11 @@ export async function buscarDocumento(
       titulo: ['Orden de Producción', numero ? `N° ${numero}` : '', tipo ? `· ${tipo}` : ''].filter(Boolean).join(' '),
       detalle: (c[COL_OP.obra]?.display_value ?? '').trim(),
       etiqueta,
-      situacion: situacionOp(etiqueta, indiceDe(c[COL_OP.estado])),
+      /* Cancelada con el motivo del cliente: la canceló su "No confirmar", y se le muestra eso. */
+      situacion: situacion === 'cancelada' && motivo ? 'rechazada' : situacion,
       nombre: nombreDelEnlace ?? (await nombreEnObra(consulta, obraId, rol)),
-      motivo: '',
+      motivo,
+      coordinadores: [],
     }
   }
   const i = await porClave(
@@ -279,21 +332,48 @@ export async function buscarDocumento(
     Object.values(COL_SUB_PRES),
     Object.values(COL_BOLSA_CONTACTO),
   )
-  if (!i) return null
+  return i ? documentoPresupuesto(i, rol, nombreDelEnlace) : null
+}
+
+/**
+ * El presupuesto (subelemento) por su id: lo que usa la app desde "Consultar y Gestionar" para
+ * confirmarlo o rechazarlo por el mismo camino que el enlace. A quien se nombra: el cliente de la bolsa
+ * (o el constructor, si no tiene cliente).
+ */
+export async function buscarPresupuestoPorId(subId: string, consulta: Consulta = consultaMonday): Promise<Documento | null> {
+  const d = await consulta<{ items: (ItemLeido & { board?: { id: string } })[] }>(
+    `query ($ids: [ID!], $cols: [String!], $colsPadre: [String!]) {
+      items(ids: $ids) {
+        id name state board { id }
+        parent_item { id name column_values(ids: $colsPadre) { ${CAMPOS_CV} } }
+        column_values(ids: $cols) { ${CAMPOS_CV} }
+      }
+    }`,
+    { ids: [subId], cols: Object.values(COL_SUB_PRES), colsPadre: Object.values(COL_BOLSA_CONTACTO) },
+  )
+  const i = d.items[0]
+  if (!i || !vigente(i) || String(i.board?.id ?? BOARD_SUB_PRESUPUESTOS) !== String(BOARD_SUB_PRESUPUESTOS)) return null
+  const bolsa = porId(i.parent_item?.column_values)
+  const rol: RolConfirmacion = vinculado(bolsa[COL_BOLSA_CONTACTO.Cliente]) ? 'Cliente' : 'Constructor'
+  return documentoPresupuesto(i, rol, null)
+}
+
+function documentoPresupuesto(i: ItemLeido, rol: RolConfirmacion, nombreDelEnlace: string | null): Documento {
   const c = porId(i.column_values)
   const etiqueta = txt(c[COL_SUB_PRES.confirmacion])
   const carpinteria = [txt(c[COL_SUB_PRES.tipo]), txt(c[COL_SUB_PRES.color])].filter(Boolean).join(' · ')
   const bolsa = porId(i.parent_item?.column_values)
   return {
-    documento,
+    documento: 'presupuesto',
     id: String(i.id),
     padreId: String(i.parent_item?.id ?? ''),
     titulo: `Presupuesto ${i.name}`.trim(),
     detalle: carpinteria,
     etiqueta,
-    situacion: situacionPresupuesto(etiqueta),
+    situacion: situacionPresupuesto(etiqueta, indiceDe(c[COL_SUB_PRES.confirmacion])),
     nombre: nombreDelEnlace ?? vinculado(bolsa[COL_BOLSA_CONTACTO[rol]]),
     motivo: txt(c[COL_SUB_PRES.motivo]),
+    coordinadores: coordinadoresDe(bolsa),
   }
 }
 
@@ -330,17 +410,31 @@ const fechaAr = (d: Date) =>
     minute: '2-digit',
   }).format(d)
 
-/** El update que queda en el ítem: quién respondió, cuándo y lo que escribió. */
-export function textoUpdate(doc: Documento, nombre: string, r: Respuesta, cuando: Date = new Date()): string {
+/**
+ * El update que queda en el ítem: quién respondió, cuándo y lo que escribió. `desdeApp`: lo registró
+ * un usuario desde la app (Consultar y Gestionar Presupuestos), con su nombre; `null`, el enlace.
+ */
+export function textoUpdate(
+  doc: Documento,
+  nombre: string,
+  r: Respuesta,
+  cuando: Date = new Date(),
+  desdeApp: string | null = null,
+): string {
   const que = doc.documento === 'op' ? 'la Orden de Producción' : 'el presupuesto'
+  const rechazo = doc.documento === 'op' ? '❌ No confirmó' : '❌ Rechazó'
   const renglones = [
-    `<p><b>${r.tipo === 'confirmar' ? '✅ Confirmó' : '❌ No confirmó'} ${que}:</b> ${escaparHtml(nombre || 'el destinatario')}</p>`,
+    `<p><b>${r.tipo === 'confirmar' ? '✅ Confirmó' : rechazo} ${que}:</b> ${escaparHtml(nombre || 'el destinatario')}</p>`,
     `<p><b>Fecha:</b> ${fechaAr(cuando)} hs</p>`,
   ]
-  if (r.tipo === 'rechazar') renglones.push(`<p><b>Motivo:</b> ${escaparHtml(r.motivo).replace(/\n/g, '<br>')}</p>`)
+  if (r.tipo === 'rechazar' && r.motivo) renglones.push(`<p><b>Motivo:</b> ${escaparHtml(r.motivo).replace(/\n/g, '<br>')}</p>`)
   if (r.tipo === 'confirmar' && r.ubicacion) renglones.push(`<p><b>Ubicación de la obra:</b> ${escaparHtml(r.ubicacion)}</p>`)
   if (r.tipo === 'confirmar' && r.coordinador) renglones.push(`<p><b>Coordinador de la obra:</b> ${escaparHtml(r.coordinador)}</p>`)
-  renglones.push('<p><i>Respondido desde el enlace de confirmación de WhatsApp.</i></p>')
+  renglones.push(
+    desdeApp === null
+      ? '<p><i>Respondido desde el enlace de confirmación de WhatsApp.</i></p>'
+      : `<p><i>Registrado desde la app${desdeApp ? ` por ${escaparHtml(desdeApp)}` : ''} (Consultar y Gestionar Presupuestos).</i></p>`,
+  )
   return renglones.join('')
 }
 
@@ -352,23 +446,40 @@ const mutacionColumnas = `mutation ($board: ID!, $id: ID!, $valores: JSON!) {
  * Deja la respuesta en Monday. Lo que decide —el estado de la OP o del presupuesto— tiene que
  * escribirse; si falla, falla todo y el cliente puede volver a intentar con el mismo enlace. Lo demás
  * (la obra, el update) es constancia: si falla, se registra en el log y la respuesta queda igual.
+ *
+ * Un presupuesto CONFIRMADO no deja update en el subelemento: lo mismo va como actividad en el cliente,
+ * y después pasa sus datos al ítem y crea la obra (ver `completarConfirmacion`, regla del usuario,
+ * 13/10/2026).
  */
 export async function registrarRespuesta(
   doc: Documento,
   nombre: string,
   r: Respuesta,
   consulta: Consulta = consultaMonday,
+  archivos: Archivos = archivosMonday(consulta),
+  /** Dónde sigue lo que no espera quien confirma (en Vercel, `waitUntil`). Sin él, se espera todo. */
+  enSegundoPlano?: (tarea: Promise<void>) => void,
+  /** Lo registra un usuario desde la app (su nombre); sin esto, es la respuesta del enlace. */
+  desdeApp: string | null = null,
 ): Promise<void> {
   const escribir = (board: number, id: string, valores: Record<string, unknown>) =>
     consulta(mutacionColumnas, { board: String(board), id, valores: JSON.stringify(valores) }, { escritura: true })
   const confirma = r.tipo === 'confirmar'
 
   if (doc.documento === 'op') {
-    await escribir(BOARD_ORDENES, doc.id, {
-      /* "Confirmada" por índice (su nombre puede cambiar en el tablero). "NO Confirmado" no tiene
-         índice: va por nombre y se crea la primera vez. */
-      [COL_OP.estado]: confirma ? { index: INDICE_OP.confirmada } : { label: ETIQUETAS.op.rechazada },
-    })
+    /* Confirmar: "Confirmada". No confirmar: la OP queda "Cancelada" con el motivo del cliente en
+       `🤖Motivo por el que NO Confirmo` (regla del usuario, 09/10/2026): un cambio es otra OP. Las
+       etiquetas van por índice, porque su nombre puede cambiar en el tablero. */
+    await escribir(
+      BOARD_ORDENES,
+      doc.id,
+      confirma
+        ? { [COL_OP.estado]: { index: INDICE_OP.confirmada } }
+        : {
+            [COL_OP.estado]: { index: INDICE_OP.cancelada },
+            [COL_OP.motivoNoConfirmo]: r.motivo.replace(/\s*\n\s*/g, ' ').slice(0, LIMITES.motivo),
+          },
+    )
     if (doc.padreId) {
       await escribir(BOARD_OBRAS, doc.padreId, {
         [COL_OBRA_CONFIRMACION]: { label: confirma ? ETIQUETAS.obra.confirmada : ETIQUETAS.obra.rechazada },
@@ -381,9 +492,27 @@ export async function registrarRespuesta(
     })
   }
 
+  if (doc.documento === 'presupuesto' && confirma) {
+    await completarConfirmacion(
+      {
+        subId: doc.id,
+        titulo: `Confirmación de ${doc.titulo}`,
+        contenido: textoUpdate(doc, nombre, r, new Date(), desdeApp),
+        ubicacion: r.ubicacion ?? '',
+        /* El coordinador se eligió de la lista: su rol dice qué etiqueta va en ✋Coordinar Entrega. */
+        coordinador: doc.coordinadores.find((c) => c.nombre === r.coordinador)?.rol ?? null,
+      },
+      consulta,
+      archivos,
+      undefined,
+      enSegundoPlano,
+    ).catch((e) => console.warn('[confirmar] no se pudo completar la confirmación del presupuesto', e))
+    return
+  }
+
   await consulta(
     `mutation ($id: ID!, $cuerpo: String!) { create_update(item_id: $id, body: $cuerpo) { id } }`,
-    { id: doc.id, cuerpo: textoUpdate(doc, nombre, r) },
+    { id: doc.id, cuerpo: textoUpdate(doc, nombre, r, new Date(), desdeApp) },
     { escritura: true },
   ).catch((e) => console.warn('[confirmar] no se pudo dejar el update de la respuesta', e))
 }

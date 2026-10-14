@@ -14,13 +14,26 @@ export interface ProcesoDef {
 
 /**
  * Catálogo de secciones, fuera de la vista que las dibuja: agregar una es agregar una entrada acá.
- * Las que todavía no están construidas (hoy, Obras) se listan apagadas a propósito, porque verlas
+ * Las que todavía no están construidas (`id: null`) se listan apagadas a propósito, porque verlas
  * dice que existen y que todavía no están.
  */
 export const PROCESOS: ProcesoDef[] = [
-  /* Bloqueada en producción (rama main) hasta terminar de probarla en dev: se ve, apagada. */
-  { id: null, icono: 'fa-file-invoice-dollar', titulo: 'Presupuesto', detalle: 'Próximamente' },
-  { id: null, icono: 'fa-helmet-safety', titulo: 'Obras', detalle: 'Próximamente' },
+  {
+    id: 'presupuesto',
+    icono: 'fa-file-invoice-dollar',
+    titulo: 'Presupuesto',
+    descripcion:
+      'Crea presupuestos para tus clientes y constructores, envíaselos por WhatsApp, y gana o pierde cada uno: el ganado se registra como obra.',
+    detalle: '2 operaciones',
+  },
+  {
+    id: 'gestionObras',
+    icono: 'fa-person-digging',
+    titulo: 'Obras',
+    descripcion:
+      'Factura las obras de tus clientes según lo pendiente de facturar de cada una, emite el comprobante en ARCA y envíalo por WhatsApp.',
+    detalle: '1 operación',
+  },
   {
     id: 'obras',
     icono: 'fa-industry',
@@ -35,7 +48,7 @@ export const PROCESOS: ProcesoDef[] = [
     titulo: 'Agenda',
     descripcion:
       'Registra turnos de colocación, reparación, entrega y medición con tus clientes, avísales por WhatsApp y gestiona cada turno hasta que se cumpla.',
-    detalle: '1 operación',
+    detalle: '2 operaciones',
   },
 ]
 

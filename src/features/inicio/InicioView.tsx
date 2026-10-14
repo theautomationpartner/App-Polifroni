@@ -158,10 +158,12 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   /* Una sola pantalla: la tabla de las órdenes enviadas al taller. */
   /* El calendario es una sola pantalla: el turno nuevo y su gestión se abren en ventanas. */
   calendario: { icono: 'fa-calendar-days', titulo: 'Agenda de Turnos', etapas: 1 },
-  /* Dos etapas: a quién es el presupuesto, y el presupuesto con su envío. */
-  presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear y Cargar Presupuestos', etapas: 2 },
+  /* Tres etapas: a quién es, los presupuestos a enviar y su envío. */
+  presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear y Cargar Presupuestos', etapas: 3 },
   /* Una sola pantalla, como la consulta de órdenes y la de turnos. */
   gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar y Gestionar Presupuestos', etapas: 1 },
+  /* El cliente y su cuenta, las obras a facturar, y la emisión con su envío. */
+  facturar: { icono: 'fa-file-invoice', titulo: 'Facturar una Obra', etapas: 3 },
 }
 
 /** El pie de la tarjeta de un área: cuántas operaciones tiene PARA ESTE USUARIO. */

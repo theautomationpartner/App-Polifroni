@@ -152,14 +152,14 @@ export function FinalizarOperacion({
       {registrando && (
         <ModalCargando
           titulo={
-            textos?.registrando ?? (enviado ? 'Registrando orden y envío en el sistema...' : 'Registrando orden en el sistema...')
+            textos?.registrando ?? 'Guardando en el sistema...'
           }
           detalle={
             textos
               ? textos.registrandoDetalle
               : enviado
-              ? 'Guardamos la orden de producción en Monday con su PDF y dejamos constancia del envío. Esperá unos segundos.'
-              : 'Guardamos la orden de producción en Monday con su PDF. Esperá unos segundos.'
+              ? 'Guardamos la orden de producción con su PDF y dejamos constancia del envío. Esperá unos segundos.'
+              : 'Guardamos la orden de producción con su PDF. Esperá unos segundos.'
           }
         />
       )}
