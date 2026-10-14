@@ -4,7 +4,8 @@ import { PieEtapa } from '@/features/shared/PieEtapa'
 import { nombreComprobante } from '@/lib/facturacion'
 import { etiquetaPaso } from '@/lib/pasos'
 import { marcarComprobanteEnviado, registrarFacturaEnObra } from '@/services/monday'
-import { useApp } from '@/state/hooks'
+import { useApp, useDispatch } from '@/state/hooks'
+import { guardarEnDrive } from './emitir'
 import { EnviarFactura } from './EnviarFactura'
 import { ResumenFactura } from './ResumenFactura'
 
@@ -32,6 +33,7 @@ const TEXTOS_FINALIZAR: TextosFinalizar = {
  */
 export function FacturarEmitirView() {
   const { factura, enviado } = useApp()
+  const dispatch = useDispatch()
 
   return (
     <section className="view paso-layout obras-v2 facturar-v2">
@@ -56,6 +58,14 @@ export function FacturarEmitirView() {
           registrar={
             enviado
               ? async () => {
+                  /* Lo que no se pudo guardar en el Drive al emitir, se reintenta ahora. No frena el registro:
+                     la factura ya está emitida y enviada. */
+                  await guardarEnDrive({
+                    comprobantes: factura.comprobantes,
+                    avanzar: (l) => dispatch({ type: 'setFactura', cambios: { comprobantes: l } }),
+                  })
+                    .then((d) => d.errores.forEach((e) => console.warn('[factura-drive]', e)))
+                    .catch((e) => console.warn('[factura-drive]', e))
                   /* Por comprobante: el movimiento en la obra (con el comprobante vinculado) y la constancia
                      del envío. Las dos cosas se pueden repetir sin duplicar: un reintento sigue de largo. */
                   for (const c of factura.comprobantes) {

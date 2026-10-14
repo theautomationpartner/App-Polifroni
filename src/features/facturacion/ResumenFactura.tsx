@@ -22,7 +22,7 @@ import {
 import { comoUsuario, getUrlArchivo } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { emisionIniciada, todosEmitidos, type BorradorFactura } from './borrador'
-import { comprobantesDe, emitirComprobantes } from './emitir'
+import { comprobantesDe, emitirComprobantes, guardarEnDrive } from './emitir'
 
 /** "2026-11-12" → "12/11/2026". */
 const fecha = (iso: string) => iso.split('-').reverse().join('/')
@@ -109,10 +109,24 @@ export function ResumenFactura() {
         onPaso: (texto, i) => setCorriendo({ texto, i }),
       })
       const err = final.find((c) => c.fase === 'error' || c.fase === 'emitiendo')
-      if (err?.error)
+      if (err?.error) {
         setAviso({
           titulo: err.fase === 'error' ? `ARCA no emitió ${nom.articulo}` : `${nom.titulo} sigue emitiéndose`,
           texto: err.error,
+        })
+        return
+      }
+      /* Emitido: el PDF va al Drive de Polifroni (<año> / Facturas Obras / <fecha>). Si no se puede,
+         no frena nada: se avisa y se reintenta al finalizar. */
+      setCorriendo({ texto: 'Guardando el comprobante en el Drive de Polifroni', i: 0 })
+      const d = await guardarEnDrive({
+        comprobantes: final,
+        avanzar: (l) => dispatch({ type: 'setFactura', cambios: { comprobantes: l } }),
+      })
+      if (d.errores.length)
+        setAviso({
+          titulo: `${nom.titulo} emitida, pero no se guardó en Drive`,
+          texto: `${d.errores[0]} Podés enviarla igual: al finalizar la operación se vuelve a intentar guardarla.`,
         })
     } catch (e) {
       console.warn('[facturar] no se pudo emitir', e)
@@ -237,6 +251,17 @@ export function ResumenFactura() {
             <span className="rvalue-txt">
               {comp.leido?.numero || '—'} · CAE {comp.leido?.cae || '—'}
             </span>
+          </Fila>
+        )}
+        {comp?.fase === 'emitido' && (
+          <Fila label="Guardada en Drive" requerido={false}>
+            {comp.drive ? (
+              <a className="rvalue-txt" href={comp.drive.webViewLink} target="_blank" rel="noopener noreferrer" title={comp.drive.ruta}>
+                {comp.drive.ruta}
+              </a>
+            ) : (
+              ''
+            )}
           </Fila>
         )}
       </div>

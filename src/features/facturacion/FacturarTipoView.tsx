@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Aviso } from '@/components/ui/Aviso'
 import { AvisoModal } from '@/components/ui/AvisoModal'
-import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { ModalErrorConsulta, conTope } from '@/features/agenda/ModalErrorConsulta'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
@@ -20,9 +19,7 @@ import { facturasDeObra, type FacturaEmitida } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import { emisionIniciada, type BorradorFactura } from './borrador'
 import { MontoComprobante } from './MontoComprobante'
-
-/** "2026-10-07" → "07/10/2026". */
-const fecha = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
+import { TablaFacturasNc } from './TablaFacturasNc'
 
 /**
  * Facturar una Obra · Etapa 2: qué se factura de la obra, y por cuánto.
@@ -78,9 +75,6 @@ export function FacturarTipoView() {
       .then((lista) => {
         if (!vivo) return
         setFacturas(lista)
-        /* Con una sola que admite anular, va elegida (y su monto precargado). */
-        const conSaldo = lista.filter((f) => f.disponible > 0)
-        if (!asociada && conSaldo.length === 1 && !bloqueada) elegirAsociada(conSaldo[0])
       })
       .catch(() => vivo && setErrorMonday('leer las facturas de la obra'))
       .finally(() => vivo && setLeyendoFacturas(false))
@@ -118,8 +112,16 @@ export function FacturarTipoView() {
       setAviso({ titulo: 'No hay saldo para facturar', texto: 'La obra no tiene saldo pendiente de facturar.' })
       return
     }
+    if (nc && facturas !== null && facturas.length === 0) {
+      setAviso({
+        titulo: 'No se puede emitir una nota de crédito',
+        texto: 'La obra no tiene facturas emitidas: una nota de crédito necesita al menos una factura que anular.',
+      })
+      return
+    }
+    if (nc && (leyendoFacturas || facturas === null)) return
     if (nc && !asociada) {
-      setAviso({ titulo: 'Falta la factura a anular', texto: 'Elegí la factura de la obra que anula la nota de crédito.' })
+      setAviso({ titulo: 'Falta la factura a anular', texto: 'Tildá en la tabla la factura de la obra que anula la nota de crédito.' })
       return
     }
     if (problema || !elegida) {
@@ -141,11 +143,16 @@ export function FacturarTipoView() {
   )
 
   return (
-    <section className="view paso-layout obras-v2 facturar-v2">
+    <section className="view paso-layout obras-v2 anticipos-v2 agenda-v2 presupuesto-v2 facturar-v2">
       <PasoHeader />
       <PasoTitulo
         titulo={etiquetaPaso('carga', null, null, 'facturar')}
-        descripcion={`Elegí qué vas a facturar de ${obra?.nombre ?? 'la obra'}${obra?.idObra ? ` (${obra.idObra})` : ''} y por cuánto.`}
+        descripcion={
+          <>
+            Elegí qué vas a facturar de <strong>{obra?.nombre ?? 'la obra'}</strong>
+            {obra?.idObra ? ` (${obra.idObra})` : ''} y por cuánto.
+          </>
+        }
       />
 
       {bloqueada && <Aviso tono="info">El comprobante ya empezó a emitirse en el sistema: lo que se factura no se puede cambiar.</Aviso>}
@@ -211,48 +218,24 @@ export function FacturarTipoView() {
               <i className="fas fa-circle-notch spin" /> Leyendo las facturas emitidas de la obra...
             </Aviso>
           ) : facturas.length === 0 ? (
-            <Aviso tono="info">La obra no tiene facturas emitidas: no hay nada que anular con una nota de crédito.</Aviso>
+            <Aviso tono="err">
+              La obra no tiene facturas emitidas: no se puede emitir una nota de crédito sin al menos una factura.
+            </Aviso>
           ) : (
             <>
-              <div className="carga-grid fac-asociada">
-                <div className="med-campo">
-                  <label className="med-l" htmlFor="fac-asociada">
-                    Factura que anula *
-                  </label>
-                  <SelectBuscable
-                    id="fac-asociada"
-                    valor={asociada?.id ?? ''}
-                    opciones={facturas.map((f) => ({
-                      valor: f.id,
-                      texto: `${f.nombre} · ${fecha(f.fecha)} · ${pesos(f.monto)}${
-                        f.acreditado ? ` (queda por anular ${pesos(f.disponible)})` : ''
-                      }`,
-                    }))}
-                    placeholder="Elegí la factura..."
-                    disabled={bloqueada}
-                    onElegir={(v) => {
-                      const f = facturas.find((x) => x.id === v)
-                      if (f) elegirAsociada(f)
-                    }}
-                  />
-                </div>
-              </div>
-              {asociada &&
-                (disponibleNc > 0 ? (
-                  <MontoComprobante
-                    id="fac-monto-nc"
-                    rotulo="Monto de la nota de crédito"
-                    valor={elegida?.monto ?? ''}
-                    problema={problema}
-                    bloqueado={bloqueada}
-                    aclaracion={`Arranca con lo que la factura todavía admite anular (${pesos(disponibleNc)}): podés bajarlo, nunca superarlo. Se registra en la obra en negativo.`}
-                    tipo="notaCredito"
-                    obra={{ facturado, pendiente: pend }}
-                    onCambio={cambiarMonto}
-                  />
-                ) : (
-                  <Aviso tono="info">Esa factura ya está anulada por completo con notas de crédito.</Aviso>
-                ))}
+              <p className="cobro-card-desc fac-nc-ayuda">
+                Tildá la factura que anula la nota de crédito: su fila se despliega con el monto, que arranca con lo
+                que la factura todavía admite anular. Se registra en la obra en negativo.
+              </p>
+              <TablaFacturasNc
+                facturas={facturas}
+                elegida={asociada}
+                monto={elegida?.monto ?? ''}
+                pendienteObra={pend}
+                bloqueada={bloqueada}
+                onElegir={(f) => (f ? elegirAsociada(f) : fijar({ asociada: null, elegidas: [] }))}
+                onMonto={cambiarMonto}
+              />
             </>
           )}
         </div>
