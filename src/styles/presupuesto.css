@@ -621,3 +621,60 @@
   padding: 6px 12px;
   font-size: 13px;
 }
+
+/* ── Editar el contacto desde su card (regla del usuario, 14/10/2026) ── */
+/* El botón es sólo el lápiz: cuadrado, del alto de "Quitar". */
+.presupuesto-v2 .pres-ficha-btn--lapiz {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+.presupuesto-v2 .pres-ficha-btn--lapiz.is-on {
+  box-shadow: 0 0 0 3px rgba(87, 155, 252, 0.28);
+}
+/* El formulario se despliega dentro de la card, debajo de sus datos. */
+.presupuesto-v2 .pres-ficha-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #eef0f3;
+  animation: ant-reenvio-abre 0.2s;
+}
+.presupuesto-v2 .pres-ficha-form--leyendo {
+  color: #64748b;
+  font-size: 13.5px;
+}
+.presupuesto-v2 .pres-ficha-form-campos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+.presupuesto-v2 .pres-ficha-form-campos .med-campo:first-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 760px) {
+  .presupuesto-v2 .pres-ficha-form-campos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.presupuesto-v2 .pres-ficha-form-acc {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .presupuesto-v2 .pres-ficha-form {
+    animation: none;
+  }
+}
+/* `carga-grid` acá sólo pone los campos en bordó: el formulario no es la grilla de la carga. */
+.presupuesto-v2 .pres-ficha-form.carga-grid {
+  display: block;
+  grid-template-columns: none;
+}
+/* La card es un flex que no estira a sus hijos: el formulario ocupa todo su ancho. */
+.presupuesto-v2 .pres-ficha .pres-ficha-form {
+  align-self: stretch;
+  width: 100%;
+}

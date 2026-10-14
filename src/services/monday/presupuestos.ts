@@ -12,7 +12,9 @@
  *  - El tipo de carpintería, el color, el PDF y la fecha de envío son de cada SUBELEMENTO.
  */
 import type { ArchivoObra } from '@/types'
+import { normalizarCelular } from '@/lib/destinatario'
 import { indiceDeValor } from '@/lib/estadosOp'
+import { CAMPOS_FICHA, valoresMonday } from '@/lib/fichaContacto'
 import { memoGlobal } from './cache'
 import { archivosDeColumna, subirArchivo } from './obras'
 import { byId, valor, type CV } from './parse'
@@ -207,6 +209,89 @@ export async function actualizarCelularContacto(tipo: TipoContacto, id: string, 
       valores: JSON.stringify({ [COL_CONTACTO.celular]: { phone: celular, countryShortName: 'AR' } }),
     },
   )
+}
+
+/** Lo que muestra el formulario de edición de un contacto: sus valores y las opciones de cada estado. */
+export interface FichaContacto {
+  /** Por columna (`name` = el nombre). El celular, en dígitos. */
+  valores: Record<string, string>
+  /** Las etiquetas vigentes de cada columna de estado, en el orden del tablero. */
+  opciones: Record<string, string[]>
+}
+
+/** Las etiquetas de un status, en el orden del tablero (las desactivadas no se ofrecen). */
+function etiquetasEstado(settings: string): string[] {
+  try {
+    const s = JSON.parse(settings || '{}') as {
+      labels?: Record<string, string>
+      labels_positions_v2?: Record<string, number>
+      deactivated_labels?: number[]
+    }
+    const fuera = new Set((s.deactivated_labels ?? []).map(String))
+    return Object.entries(s.labels ?? {})
+      .filter(([i, t]) => t.trim() && !fuera.has(i))
+      .sort(([a], [b]) => (s.labels_positions_v2?.[a] ?? 0) - (s.labels_positions_v2?.[b] ?? 0))
+      .map(([, t]) => t)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Los datos de un cliente o de un constructor/arquitecto, recién leídos de Monday, para editarlos
+ * (regla del usuario, 14/10/2026). Ver `CAMPOS_FICHA`.
+ */
+export async function leerFichaContacto(tipo: TipoContacto, id: string): Promise<FichaContacto> {
+  const campos = CAMPOS_FICHA[tipo]
+  const columnas = campos.filter((c) => c.id !== 'name').map((c) => c.id)
+  const estados = campos.filter((c) => c.tipo === 'estado').map((c) => c.id)
+  const d = await mondayApi<{
+    items: { name: string; column_values: CV[] }[]
+    boards: { columns: { id: string; settings_str: string }[] }[]
+  }>(
+    `query ($ids: [ID!], $cols: [String!], $estados: [String!]) {
+      items(ids: $ids) { name column_values(ids: $cols) { id text } }
+      boards(ids: [${BOARD_CONTACTO[tipo]}]) { columns(ids: $estados) { id settings_str } }
+    }`,
+    { ids: [id], cols: columnas, estados },
+  )
+  const i = d.items[0]
+  if (!i) throw new Error('El contacto ya no está en el tablero.')
+  const c = byId(i)
+  const valores: Record<string, string> = {}
+  for (const campo of campos) {
+    const v = campo.id === 'name' ? i.name : valor(c[campo.id])
+    valores[campo.id] = campo.tipo === 'celular' ? v.replace(/\D/g, '') : v.trim()
+  }
+  const opciones = Object.fromEntries((d.boards[0]?.columns ?? []).map((col) => [col.id, etiquetasEstado(col.settings_str)]))
+  return { valores, opciones }
+}
+
+/**
+ * Guarda lo que se editó del contacto, en UNA mutation y sólo con lo que cambió (`valoresMonday`).
+ * Devuelve el contacto como queda, para la card.
+ */
+export async function guardarFichaContacto(
+  tipo: TipoContacto,
+  id: string,
+  antes: Record<string, string>,
+  despues: Record<string, string>,
+): Promise<Contacto> {
+  const valores = valoresMonday(CAMPOS_FICHA[tipo], antes, despues)
+  if (Object.keys(valores).length) {
+    await mondayApi(
+      `mutation ($board: ID!, $id: ID!, $valores: JSON!) {
+        change_multiple_column_values(board_id: $board, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
+      }`,
+      { board: String(BOARD_CONTACTO[tipo]), id, valores: JSON.stringify(valores) },
+    )
+  }
+  return {
+    id,
+    nombre: (despues.name ?? '').trim(),
+    celular: normalizarCelular(despues[COL_CONTACTO.celular] ?? ''),
+    email: (despues[COL_CONTACTO.email] ?? '').trim(),
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────

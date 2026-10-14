@@ -19,6 +19,7 @@ import assert from 'node:assert/strict'
 import { marcaPresupuesto as marcaPresupuestoServidor, textoPresupuestoDestino } from '../api/_whatsappHttp'
 import { destinoDe, faltantesDestino } from '../src/lib/destinatario'
 import { etiquetasPasos } from '../src/lib/pasos'
+import { CAMPOS_FICHA, erroresFicha, valoresMonday } from '../src/lib/fichaContacto'
 import {
   datosContacto,
   nuevaClave,
@@ -218,5 +219,33 @@ assert.ok(esSinArquitecto({ id: '1', nombre: '0000 - Sin Constructor' }), 'con c
 assert.ok(!esSinArquitecto({ id: '55', nombre: 'ARQ. GOMEZ' }))
 assert.ok(!esSinArquitecto({ id: '55', nombre: 'Sinatra Juan' }), 'un apellido que empieza con "Sin" no')
 assert.ok(!esSinArquitecto(null))
+
+/* Editar el contacto desde su card (14/10/2026) */
+{
+  const campos = CAMPOS_FICHA.Cliente
+  const antes = { name: 'PEREZ JUAN', phone_mksydcv6: '5492494014611', email_mksynch6: '', text_mkwzq9z4: '20123456789', color_mkszaw8z: 'Persona Física', color_mkszas2x: '' }
+  assert.deepEqual(erroresFicha(campos, antes), {}, 'lo que ya está, vale')
+  assert.ok(erroresFicha(campos, { ...antes, name: '  ' }).name, 'el nombre es obligatorio')
+  assert.ok(erroresFicha(campos, { ...antes, phone_mksydcv6: '12345' }).phone_mksydcv6, 'celular incompleto')
+  assert.ok(!erroresFicha(campos, { ...antes, phone_mksydcv6: '249 436-9123' }).phone_mksydcv6, 'con característica y número')
+  assert.ok(erroresFicha(campos, { ...antes, email_mksynch6: 'juan@' }).email_mksynch6)
+  assert.ok(erroresFicha(campos, { ...antes, text_mkwzq9z4: 'abc' }).text_mkwzq9z4)
+  assert.ok(erroresFicha(CAMPOS_FICHA.Constructor, { name: 'X', numeric_mksy21gb: '20-1234' }).numeric_mksy21gb === undefined, 'el CUIT puede venir con guiones')
+
+  assert.deepEqual(valoresMonday(campos, antes, antes), {}, 'sin cambios, nada se escribe')
+  assert.deepEqual(valoresMonday(campos, antes, { ...antes, phone_mksydcv6: '+54 9 249 401-4611' }), {}, 'el mismo celular, escrito distinto')
+  assert.deepEqual(
+    valoresMonday(campos, antes, { ...antes, name: 'PEREZ JUAN CARLOS', phone_mksydcv6: '249 555-0000', email_mksynch6: 'juan@x.com', color_mkszas2x: 'Consumidor Final' }),
+    {
+      name: 'PEREZ JUAN CARLOS',
+      phone_mksydcv6: { phone: '5492495550000', countryShortName: 'AR' },
+      email_mksynch6: { email: 'juan@x.com', text: 'juan@x.com' },
+      color_mkszas2x: { label: 'Consumidor Final' },
+    },
+    'sólo lo que cambió, en el formato de cada columna',
+  )
+  assert.deepEqual(valoresMonday(campos, antes, { ...antes, color_mkszaw8z: '' }), { color_mkszaw8z: '' }, 'vaciar un dato lo borra')
+  assert.deepEqual(valoresMonday(CAMPOS_FICHA.Constructor, { numeric_mksy21gb: '' }, { numeric_mksy21gb: '20-12345678-9' }), { numeric_mksy21gb: '20123456789' })
+}
 
 console.log('presupuesto: todas las reglas pasan')
