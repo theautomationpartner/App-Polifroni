@@ -7,275 +7,16 @@
   max-width: 460px;
   margin: 0;
 }
-/* Los datos del cliente: rótulo arriba y valor abajo, en una grilla que se acomoda al ancho. */
-.facturar-v2 .fac-datos {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px 20px;
-  margin: 0;
-}
-.facturar-v2 .fac-datos--2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.facturar-v2 .fac-datos--3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.facturar-v2 .fac-dato {
-  min-width: 0;
-}
-.facturar-v2 .fac-dato dt {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-gray);
-  margin-bottom: 3px;
-}
-.facturar-v2 .fac-dato dd {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-dark);
-  overflow-wrap: anywhere;
-}
-.facturar-v2 .fac-dato dd.fac-dato--falta {
-  color: #c0273c;
-}
-@media (max-width: 640px) {
-
-  .facturar-v2 .fac-datos--2,
-  .facturar-v2 .fac-datos--3 {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.facturar-v2 .fac-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-dark);
-}
-.facturar-v2 .fac-sub > i {
-  color: var(--marca);
-}
-
-.facturar-v2 .fac-fuerte {
-  font-weight: 800;
-}
-/* ── Etapa 2: las obras ── */
-.facturar-v2 .fac-obra-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.facturar-v2 .fac-detalle-err {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  color: #c0273c;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.facturar-v2 .fac-detalle-err i {
-  margin-top: 2px;
-}
 .obras-v2 .carga-grid .fac-monto--falta .med-input,
 .obras-v2 .carga-grid .fac-monto--falta .med-input:hover:not(:disabled) {
   border-color: #d83a52;
   box-shadow: 0 0 0 1px #d83a52;
 }
-/* ── Etapa 3: el resumen y el envío ── */
-.facturar-v2 .fac-resumen {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.facturar-v2 .fac-resumen .resumen-title {
-  margin-bottom: 0;
-}
-.facturar-v2 .fac-doc dd {
-  margin: 0;
-}
-/* `carga-grid` va sólo por los tokens bordó de los campos: su grilla de 500px no aplica acá. */
-.facturar-v2 .fac-doc dd.carga-grid {
-  display: block;
-}
-.facturar-v2 .fac-doc .med-input {
-  width: 100%;
-  min-width: 0;
-}
-.facturar-v2 .fac-x {
-  margin-left: 4px;
-  color: var(--text-gray);
-}
-.facturar-v2 .fac-estado-comp {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 6px;
-}
-.facturar-v2 .fac-totales {
-  display: flex;
-  justify-content: flex-end;
-  align-items: baseline;
-  gap: 8px 24px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: var(--text-gray);
-}
-.facturar-v2 .fac-totales strong {
-  margin-left: 6px;
-  color: var(--text-dark);
-}
-.facturar-v2 .fac-totales-total {
-  font-size: 15px;
-  color: var(--text-dark);
-}
-.facturar-v2 .fac-totales-total strong {
-  font-size: 18px;
-}
-.facturar-v2 .fac-acciones {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: stretch;
-  margin-top: auto;
-  padding-top: 8px;
-}
-.facturar-v2 .fac-emitir {
-  margin: 0;
-}
-@media (max-width: 520px) {
-
-  .facturar-v2 .fac-acciones {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* El envío espera a la factura emitida: se ve, pero apagado. */
 .facturar-v2 .fac-enviar--espera .selc,
 .facturar-v2 .fac-enviar--espera .igp {
   opacity: 0.75;
 }
-
-/* ── "Ver factura" ── */
-.modal-box.fac-modal-vista {
-  width: 760px;
-  max-width: calc(100vw - 32px);
-}
-.fac-modal-vista .fac-visor {
-  max-height: 65vh;
-  overflow: auto;
-}
-.fac-borrador {
-  position: relative;
-  padding: 18px 20px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #fff;
-  text-align: left;
-  font-size: 13px;
-  color: var(--text-dark);
-}
-.fac-borrador-marca {
-  display: inline-block;
-  margin-bottom: 12px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #fff6d6;
-  color: #8a6a00;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-.fac-borrador-cab {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-.fac-borrador-cab > div:not(.fac-borrador-letra) {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.fac-borrador-emisor {
-  font-size: 16px;
-}
-.fac-borrador-num {
-  text-align: right;
-}
-.fac-borrador-letra {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border: 2px solid var(--text-dark);
-  border-radius: 6px;
-  font-size: 26px;
-  font-weight: 800;
-}
-.fac-borrador-receptor {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 20px;
-  margin: 14px 0;
-}
-.fac-borrador-receptor dt {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-gray);
-}
-.fac-borrador-receptor dd {
-  margin: 0;
-  font-weight: 600;
-}
-.fac-borrador-tabla {
-  width: 100%;
-  border-collapse: collapse;
-}
-.fac-borrador-tabla th,
-.fac-borrador-tabla td {
-  padding: 8px 6px;
-  border-bottom: 1px solid var(--border-suave);
-  text-align: right;
-}
-.fac-borrador-tabla th:nth-child(2),
-.fac-borrador-tabla td:nth-child(2) {
-  text-align: left;
-}
-.fac-borrador-tabla th {
-  font-size: 11.5px;
-  color: var(--text-gray);
-  background: var(--tint-neutral);
-}
-.fac-borrador-totales {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-  margin: 12px 0 8px;
-}
-.fac-borrador-totales strong {
-  font-size: 16px;
-}
-@media (max-width: 640px) {
-
-  .fac-borrador-cab,
-  .fac-borrador-receptor {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .fac-borrador-num {
-    text-align: left;
-  }
-}
-
 
 /* ── Etapa 2: el saldo pendiente de facturar (o la nota de crédito) ── */
 .facturar-v2 .fac-saldo {
@@ -287,6 +28,7 @@
   margin-bottom: 0;
 }
 @media (max-width: 760px) {
+
   .facturar-v2 .fac-saldo .kpi-grid--3 {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -471,4 +213,24 @@
   display: block;
   max-width: 640px;
   margin: 0;
+}
+
+/* La ventana para corregir el CUIT/DNI a facturar (desde el resumen). */
+.facturar-v2 .fac-doc-modal,
+.modal-box .fac-doc-modal {
+  display: block;
+  margin: 0 0 8px;
+  text-align: left;
+}
+.modal-box .fac-doc-modal .med-input {
+  width: 100%;
+}
+
+/* Etapa 3: el resumen y el envío miden lo mismo (regla del usuario, 14/10/2026). La grilla estira las dos
+   columnas al alto de la más alta; el resumen ocupa toda su columna. Apiladas, cada una vuelve a su alto. */
+.facturar-v2 .emision-grid {
+  align-items: stretch;
+}
+.facturar-v2 .emision-col > .resumen-emision {
+  flex: 1 1 auto;
 }

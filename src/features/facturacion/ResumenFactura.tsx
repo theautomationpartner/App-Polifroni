@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
-import { VisorPdf } from '@/components/ui/VisorPdf'
+import { Avatar } from '@/components/ui/Avatar'
+import { Fila } from '@/features/shared/FilaResumen'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import {
   ALICUOTA_IVA,
@@ -17,10 +18,10 @@ import {
   nombreComprobante,
   pesos,
   problemaDocumento,
-  type FaseComprobante,
 } from '@/lib/facturacion'
+import { comoUsuario, getUrlArchivo } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
-import { emisionIniciada, todosEmitidos, type BorradorFactura, type ComprobanteEnCurso } from './borrador'
+import { emisionIniciada, todosEmitidos, type BorradorFactura } from './borrador'
 import { comprobantesDe, emitirComprobantes } from './emitir'
 
 /** "2026-11-12" → "12/11/2026". */
@@ -36,166 +37,6 @@ function renglones(f: BorradorFactura) {
   })
 }
 
-const FASE: Record<FaseComprobante, { texto: string; color: string; icono: string }> = {
-  sinEmitir: { texto: 'Sin emitir', color: '#676879', icono: 'fa-file' },
-  emitiendo: { texto: 'Emitiendo en ARCA', color: '#fdab3d', icono: 'fa-circle-notch spin' },
-  emitido: { texto: 'Emitida', color: '#00c875', icono: 'fa-check' },
-  error: { texto: 'Error de emisión', color: '#e2445c', icono: 'fa-xmark' },
-}
-
-function EstadoComprobante({ c }: { c: ComprobanteEnCurso | null }) {
-  const f = FASE[c?.fase ?? 'sinEmitir']
-  return (
-    <span className="op-estado op-estado--sm" style={{ ['--op-c' as string]: f.color }}>
-      <i className={`fas ${f.icono}`} aria-hidden="true" /> {c?.fase === 'emitido' && c.leido?.numero ? `${f.texto} · N° ${c.leido.numero}` : f.texto}
-    </span>
-  )
-}
-
-/**
- * "Ver factura". Emitida, el PDF que devolvió ARCA (con varias, una pestaña por comprobante). Antes de
- * emitir, una vista previa armada con los datos del resumen: es un BORRADOR, sin número ni CAE.
- */
-function VistaFactura({ onClose }: { onClose: () => void }) {
-  const { factura } = useApp()
-  const filas = renglones(factura)
-  const [viendo, setViendo] = useState(0)
-  const actual = filas[viendo] ?? filas[0]
-  const pdf = actual?.comp?.fase === 'emitido' ? (actual.comp.leido?.pdf ?? null) : null
-  const cl = factura.cuenta?.cliente ?? null
-  const letra = actual?.comp?.leido?.letra || letraEsperada(cl?.condicionFiscal ?? '')
-  const f = fechasComprobante(new Date())
-  const nom = nombreComprobante(factura.tipo)
-
-  return (
-    <Modal
-      title={pdf ? `${nom.titulo} emitida` : `Vista previa de ${nom.articulo}`}
-      icon={<i className="fas fa-file-invoice-dollar" />}
-      onClose={onClose}
-      className="fac-modal-vista"
-      actions={
-        <button type="button" className="btn btn-primary" onClick={onClose}>
-          Cerrar
-        </button>
-      }
-    >
-      {filas.length > 1 && (
-        <div className="msj-quien" role="tablist" aria-label="Ver la factura de">
-          {filas.map((r, i) => (
-            <button
-              key={r.obraId}
-              type="button"
-              role="tab"
-              aria-selected={viendo === i}
-              className={`msj-quien-op ${viendo === i ? 'msj-quien-op--on' : ''}`}
-              onClick={() => setViendo(i)}
-            >
-              {r.obra?.idObra || r.obra?.nombre || `Obra ${i + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {pdf ? (
-        <div className="fac-visor">
-          <VisorPdf archivo={pdf} vacio={`${nom.titulo} no tiene PDF.`} />
-        </div>
-      ) : actual ? (
-        <div className="fac-borrador" aria-label={`Borrador de ${nom.articulo}`}>
-          <span className="fac-borrador-marca">BORRADOR · SIN VALIDEZ FISCAL</span>
-          <div className="fac-borrador-cab">
-            <div>
-              <strong className="fac-borrador-emisor">Polifroni Aberturas</strong>
-              <span>Condición de venta: Cuenta Corriente</span>
-              <span>Moneda: Pesos</span>
-            </div>
-            <div className="fac-borrador-letra" title="La letra la asigna ARCA según la condición frente al IVA del cliente">
-              {letra ?? '?'}
-            </div>
-            <div className="fac-borrador-num">
-              <strong>{nom.titulo.toUpperCase()}</strong>
-              <span>N° — (lo asigna ARCA)</span>
-              <span>Fecha de emisión: {fecha(f.emision)}</span>
-              <span>Vto. del pago: {fecha(f.vencimiento)}</span>
-            </div>
-          </div>
-          <dl className="fac-borrador-receptor">
-            <div>
-              <dt>Cliente</dt>
-              <dd>{factura.cuenta?.nombre || '—'}</dd>
-            </div>
-            <div>
-              <dt>CUIT / DNI</dt>
-              <dd>{documentoFiscal(factura.documento) || 'Sin documento (Consumidor Final)'}</dd>
-            </div>
-            <div>
-              <dt>Condición frente al IVA</dt>
-              <dd>{cl?.condicionFiscal || 'Sin informar'}</dd>
-            </div>
-            <div>
-              <dt>Domicilio</dt>
-              <dd>{cl?.direccion || '—'}</dd>
-            </div>
-            <div>
-              <dt>Período del servicio</dt>
-              <dd>
-                {fecha(f.desde)} al {fecha(f.hasta)}
-              </dd>
-            </div>
-            <div>
-              <dt>Obra</dt>
-              <dd>
-                {actual.obra?.nombre} {actual.obra?.idObra ? `(${actual.obra.idObra})` : ''}
-              </dd>
-            </div>
-            {factura.asociada && (
-              <div>
-                <dt>Comprobante asociado</dt>
-                <dd>
-                  {factura.asociada.nombre} (CAE {factura.asociada.cae})
-                </dd>
-              </div>
-            )}
-          </dl>
-          <table className="fac-borrador-tabla">
-            <thead>
-              <tr>
-                <th>Cant.</th>
-                <th>Descripción</th>
-                <th>Precio unit. s/IVA</th>
-                <th>IVA</th>
-                <th>Subtotal c/IVA</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>1</td>
-                <td>{CONCEPTO_FACTURA}</td>
-                <td>{pesos(actual.neto)}</td>
-                <td>{ALICUOTA_IVA} %</td>
-                <td>{pesos(actual.total)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div className="fac-borrador-totales">
-            <span>Neto gravado: {pesos(actual.neto)}</span>
-            <span>
-              IVA {ALICUOTA_IVA} %: {pesos(actual.iva)}
-            </span>
-            <strong>Total: {pesos(actual.total)}</strong>
-          </div>
-          <p className="modal-nota">
-            {letra === 'A'
-              ? `A un Responsable Inscripto, el IVA se discrimina en ${nom.articulo} A.`
-              : `En ${nom.articulo} B el IVA va incluido en el total.`}{' '}
-            El número, la letra definitiva y el CAE los asigna ARCA al emitir.
-          </p>
-        </div>
-      ) : null}
-    </Modal>
-  )
-}
-
 /**
  * El resumen de la facturación, a la izquierda de la etapa 3: a quién se factura (con el CUIT/DNI, que
  * se puede corregir antes de emitir), los datos del comprobante y lo que se factura de cada obra, con su
@@ -205,7 +46,7 @@ function VistaFactura({ onClose }: { onClose: () => void }) {
  * se puede salir. Un comprobante con error se puede reintentar: sigue con el mismo, no crea otro.
  */
 export function ResumenFactura() {
-  const { factura, enviado } = useApp()
+  const { factura, enviado, usuario, usuarios, responsableId } = useApp()
   const dispatch = useDispatch()
   const { cuenta, documento } = factura
   const cl = cuenta?.cliente ?? null
@@ -221,10 +62,11 @@ export function ResumenFactura() {
   const pendienteArca = factura.comprobantes.some((c) => c.fase === 'emitiendo')
   const nom = nombreComprobante(factura.tipo)
 
-  const [ver, setVer] = useState(false)
   const [confirmar, setConfirmar] = useState(false)
   const [corriendo, setCorriendo] = useState<{ texto: string; i: number } | null>(null)
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
+  /** Editando el CUIT/DNI a facturar (el texto mientras se escribe). */
+  const [editarDoc, setEditarDoc] = useState<string | null>(null)
 
   useAccionEnCurso(`Esperá a que termine la emisión de ${nom.articulo}.`, !!corriendo)
 
@@ -285,188 +127,225 @@ export function ResumenFactura() {
   }
 
   const n = filas.length
+  const r = filas[0] ?? null
+  const comp = r?.comp ?? null
+  /** El PDF que devolvió ARCA: existe recién con el ítem creado y el comprobante emitido. */
+  const pdfEmitido = comp?.fase === 'emitido' ? (comp.leido?.pdf ?? null) : null
+
+  /**
+   * Abre el comprobante emitido en otra pestaña. La pestaña se abre ANTES de pedir a Monday la dirección
+   * firmada (vence en una hora, por eso se pide en el momento): abrirla después de esperar la frena el
+   * bloqueador de ventanas. Es el mismo camino que "Ver Presup" de Presupuesto.
+   */
+  const verComprobante = async () => {
+    if (!pdfEmitido) return
+    const w = window.open('', '_blank')
+    try {
+      const url = await getUrlArchivo(pdfEmitido.assetId)
+      if (w) w.location.href = url
+      else window.open(url, '_blank')
+    } catch {
+      w?.close()
+      setAviso({
+        titulo: `No se pudo abrir ${nom.articulo}`,
+        texto: 'Monday no devolvió el PDF del comprobante. Probá de nuevo en unos segundos.',
+      })
+    }
+  }
+  const emisor = usuarios.find((u) => u.id === responsableId) ?? (usuario ? comoUsuario(usuario.id, usuario.name) : null)
+  const errorEmision = factura.comprobantes.find((c) => c.error)?.error ?? null
+  const montoDistinto =
+    comp?.fase === 'emitido' && comp.leido?.monto != null && r && Math.abs(comp.leido.monto - r.monto) >= 0.01 ? comp.leido.monto : null
 
   return (
-    <div className="card card--neutral card--flush card-pad fac-resumen">
+    <div className="card card--flush resumen-emision">
       <h3 className="resumen-title">Resumen de la facturación</h3>
 
-      <h4 className="fac-sub">
-        <i className="fas fa-user" aria-hidden="true" /> Se factura a
-      </h4>
-      <dl className="fac-datos fac-datos--2">
-        <div className="fac-dato">
-          <dt>Cliente (cuenta corriente)</dt>
-          <dd>{cuenta?.nombre ?? '—'}</dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Condición frente al IVA</dt>
-          <dd className={cl?.condicionFiscal ? '' : 'fac-dato--falta'}>{cl?.condicionFiscal || 'Sin informar'}</dd>
-        </div>
-        <div className="fac-dato fac-doc">
-          <dt>
-            <label htmlFor="fac-doc">CUIT / CUIL / DNI a facturar</label>
-          </dt>
-          <dd className="carga-grid">
-            <div className={`med-conic ${problemaDoc ? 'fac-monto--falta' : ''}`}>
-              <i className="fas fa-id-card" aria-hidden="true" />
-              <input
-                id="fac-doc"
-                className="med-input"
-                inputMode="numeric"
-                placeholder="Sin documento: Consumidor Final"
-                value={documento}
-                disabled={iniciada}
-                onChange={(e) => dispatch({ type: 'setFactura', cambios: { documento: e.target.value } })}
-              />
-            </div>
-          </dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Domicilio</dt>
-          <dd className={cl?.direccion ? '' : 'fac-dato--falta'}>{cl?.direccion || 'Sin cargar'}</dd>
-        </div>
-      </dl>
-
-      <h4 className="fac-sub">
-        <i className="fas fa-file-invoice" aria-hidden="true" /> Comprobante
-      </h4>
-      <dl className="fac-datos fac-datos--3">
-        <div className="fac-dato">
-          <dt>Tipo</dt>
-          <dd>
-            {nom.titulo}
-            {letra ? ` ${letra}` : ''} {n > 1 && <span className="fac-x">× {n}</span>}
-          </dd>
-        </div>
-        {factura.asociada && (
-          <div className="fac-dato">
-            <dt>Comprobante asociado</dt>
-            <dd>
-              {factura.asociada.nombre} · CAE {factura.asociada.cae}
-            </dd>
-          </div>
-        )}
-        <div className="fac-dato">
-          <dt>Moneda</dt>
-          <dd>Pesos</dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Condición de venta</dt>
-          <dd>Cuenta Corriente</dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Fecha de emisión</dt>
-          <dd>{fechaCorta(new Date())}</dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Período del servicio</dt>
-          <dd>{fecha(f.desde)}</dd>
-        </div>
-        <div className="fac-dato">
-          <dt>Vencimiento del pago</dt>
-          <dd>{fecha(f.vencimiento)}</dd>
-        </div>
-      </dl>
-
-      <h4 className="fac-sub">
-        <i className="fas fa-person-digging" aria-hidden="true" /> Detalle {n > 1 ? `(un comprobante por obra)` : ''}
-      </h4>
-      <div className="ant-tabla-wrap">
-        <table className="ant-tabla fac-tabla-resumen">
-          <thead>
-            <tr>
-              <th>Obra</th>
-              <th className="ant-col-cen">Neto</th>
-              <th className="ant-col-cen">IVA {ALICUOTA_IVA} %</th>
-              <th className="ant-col-cen">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filas.map((r) => (
-              <tr key={r.obraId} className="ant-row">
-                <td>
-                  <span className="ant-nro">{r.obra?.nombre ?? r.obraId}</span>
-                  <span className="ant-detalle fac-obra-sub">
-                    {r.obra?.idObra} · {CONCEPTO_FACTURA}
-                  </span>
-                  <span className="fac-estado-comp">
-                    <EstadoComprobante c={r.comp} />
-                    {r.comp?.fase === 'emitido' && r.comp.leido?.cae && <span className="ritem-code">CAE {r.comp.leido.cae}</span>}
-                  </span>
-                  {r.comp?.fase === 'emitido' && r.comp.leido?.monto !== null && r.comp.leido?.monto !== undefined && Math.abs(r.comp.leido.monto - r.monto) >= 0.01 && (
-                    <span className="fac-detalle-err">
-                      <i className="fas fa-triangle-exclamation" aria-hidden="true" /> Se emitió por {pesos(r.comp.leido.monto)}, no por{' '}
-                      {pesos(r.monto)}: revisalo en el sistema.
-                    </span>
-                  )}
-                  {r.comp?.error && (
-                    <span className="fac-detalle-err">
-                      <i className="fas fa-circle-exclamation" aria-hidden="true" /> {r.comp.error}
-                    </span>
-                  )}
-                </td>
-                <td className="ant-col-cen">
-                  <span className="ant-num">{pesos(r.neto)}</span>
-                </td>
-                <td className="ant-col-cen">
-                  <span className="ant-num">{pesos(r.iva)}</span>
-                </td>
-                <td className="ant-col-cen">
-                  <span className="ant-num fac-fuerte">{pesos(r.total)}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="fac-totales">
-        <span>
-          Neto gravado <strong>{pesos(neto)}</strong>
-        </span>
-        <span>
-          IVA {ALICUOTA_IVA} % <strong>{pesos(iva)}</strong>
-        </span>
-        <span className="fac-totales-total">
-          {factura.tipo === 'notaCredito' ? 'Total de la nota de crédito' : 'Total a facturar'} <strong>{pesos(total)}</strong>
-        </span>
-      </div>
-
-      <div className="fac-acciones">
-        <button type="button" className="btn btn-out" onClick={() => setVer(true)}>
-          <i className="fas fa-eye" /> Ver {nom.titulo.toLowerCase()}
-        </button>
-        <button
-          type="button"
-          className="btn-block btn-mayus fac-emitir"
-          style={{ background: listos ? 'var(--green)' : conError ? 'var(--red)' : 'var(--primary-blue)', ...(listos ? { opacity: 1 } : {}) }}
-          disabled={listos || !!corriendo || enviado || n === 0}
-          onClick={pedirConfirmacion}
-        >
-          {listos ? (
+      {/* A quién se factura. */}
+      <div className="rgroup">
+        <Fila label="Usuario emisor">
+          {emisor && (
             <>
-              <i className="fas fa-check" /> {nom.titulo} emitida
-            </>
-          ) : corriendo ? (
-            <>
-              <i className="fas fa-circle-notch spin" /> Emitiendo...
-            </>
-          ) : conError ? (
-            <>
-              <i className="fas fa-rotate-right" /> Reintentar emisión
-            </>
-          ) : pendienteArca ? (
-            <>
-              <i className="fas fa-rotate-right" /> Volver a consultar
-            </>
-          ) : (
-            <>
-              <i className="fas fa-file-circle-check" /> Confirmar y emitir {nom.titulo.toLowerCase()}
+              <Avatar ini={emisor.ini} color={emisor.color} size="sm" /> {emisor.name}
             </>
           )}
-        </button>
+        </Fila>
+        <Fila label="Cliente (cuenta corriente)">
+          <span className="rvalue-txt" title={cuenta?.nombre}>
+            {cuenta?.nombre ?? ''}
+          </span>
+        </Fila>
+        <Fila label="Condición frente al IVA" requerido={false}>
+          {cl?.condicionFiscal ?? ''}
+        </Fila>
+        <Fila label="CUIT / CUIL / DNI" requerido={false}>
+          <span className="rvalue-txt">
+            {docDigitos || 'Consumidor Final'}{' '}
+            {!iniciada && (
+              <button type="button" className="citem-editar" onClick={() => setEditarDoc(documento)}>
+                Editar
+              </button>
+            )}
+          </span>
+        </Fila>
+        <Fila label="Domicilio" requerido={false}>
+          <span className="rvalue-txt" title={cl?.direccion}>
+            {cl?.direccion ?? ''}
+          </span>
+        </Fila>
       </div>
 
-      {ver && <VistaFactura onClose={() => setVer(false)} />}
+      <hr className="rsep" />
+
+      {/* El comprobante. */}
+      <div className="rgroup">
+        <Fila label="Obra">
+          <span className="rvalue-txt" title={r?.obra?.nombre}>
+            {r?.obra ? `${r.obra.nombre}${r.obra.idObra ? ` (${r.obra.idObra})` : ''}` : ''}
+          </span>
+        </Fila>
+        <Fila label="Tipo de comprobante">{`${nom.titulo}${letra ? ` ${letra}` : ''}`}</Fila>
+        {factura.asociada && (
+          <Fila label="Comprobante asociado">
+            <span className="rvalue-txt" title={`CAE ${factura.asociada.cae}`}>
+              {factura.asociada.nombre}
+            </span>
+          </Fila>
+        )}
+        <Fila label="Condición de venta">Cuenta Corriente</Fila>
+        <Fila label="Moneda">Pesos</Fila>
+        <Fila label="Fecha de emisión">{fechaCorta(new Date())}</Fila>
+        <Fila label="Vencimiento del pago">{fecha(f.vencimiento)}</Fila>
+      </div>
+
+      <hr className="rsep" />
+
+      {/* Lo que se factura. */}
+      <div className="rgroup">
+        <Fila label="Concepto" requerido={false}>
+          <span className="rvalue-txt" title={CONCEPTO_FACTURA}>
+            {CONCEPTO_FACTURA}
+          </span>
+        </Fila>
+        <Fila label="Neto gravado">{pesos(neto)}</Fila>
+        <Fila label={`IVA ${ALICUOTA_IVA} %`}>{pesos(iva)}</Fila>
+        <Fila label={factura.tipo === 'notaCredito' ? 'Total de la nota de crédito' : 'Total a facturar'}>
+          <strong>{pesos(total)}</strong>
+        </Fila>
+        {comp?.fase === 'emitido' && (
+          <Fila label="N° y CAE" requerido={false}>
+            <span className="rvalue-txt">
+              {comp.leido?.numero || '—'} · CAE {comp.leido?.cae || '—'}
+            </span>
+          </Fila>
+        )}
+      </div>
+
+      {/* El botón de la acción: el mismo "Generar OP final" del resumen de la OP. */}
+      <button
+        type="button"
+        className="btn-generar btn-mayus"
+        onClick={pedirConfirmacion}
+        disabled={listos || !!corriendo || enviado || n === 0}
+        aria-busy={!!corriendo}
+        title={listos ? `${nom.titulo} ya emitida en ARCA.` : conError ? 'Tocá para reintentar la emisión' : undefined}
+        style={
+          listos
+            ? { backgroundColor: 'var(--green)', color: '#fff' }
+            : conError && !corriendo
+              ? { backgroundColor: 'var(--red)', color: '#fff' }
+              : undefined
+        }
+      >
+        {corriendo ? (
+          <>
+            <i className="fas fa-circle-notch spin" /> Emitiendo {nom.titulo.toLowerCase()}...
+          </>
+        ) : listos ? (
+          <>
+            <i className="fas fa-check" /> {nom.titulo} emitida
+          </>
+        ) : conError ? (
+          <>
+            <i className="fas fa-xmark" /> Error de emisión · Reintentar
+          </>
+        ) : pendienteArca ? (
+          <>
+            <i className="fas fa-rotate-right" /> Volver a consultar
+          </>
+        ) : (
+          <>
+            <i className="fas fa-file-circle-check" /> Confirmar y emitir {nom.titulo.toLowerCase()}
+          </>
+        )}
+      </button>
+
+      <div className="pres-pdf">
+        <button
+          type="button"
+          className="btn btn-out pres-pdf-btn"
+          disabled={!pdfEmitido}
+          title={
+            pdfEmitido
+              ? `Abrir el PDF de ${nom.articulo} en otra pestaña`
+              : `Se habilita cuando ${nom.articulo} está emitida: confirmala y emitila primero`
+          }
+          onClick={() => void verComprobante()}
+        >
+          <i className="fas fa-eye" /> Ver {nom.titulo}
+        </button>
+      </div>
+      {(errorEmision || montoDistinto !== null) && (
+        <div className="pres-pdf-aviso" role="alert">
+          <i className="fas fa-circle-exclamation" />{' '}
+          {errorEmision ?? `Se emitió por ${pesos(montoDistinto ?? 0)}, no por ${pesos(r?.monto ?? 0)}: revisalo en el sistema.`}
+        </div>
+      )}
+
+      {editarDoc !== null && (
+        <Modal
+          title="CUIT / CUIL / DNI a facturar"
+          icon={<i className="fas fa-id-card" />}
+          onClose={() => setEditarDoc(null)}
+          actions={
+            <>
+              <button type="button" className="btn btn-out" onClick={() => setEditarDoc(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-marca"
+                disabled={!!problemaDocumento(editarDoc)}
+                onClick={() => {
+                  dispatch({ type: 'setFactura', cambios: { documento: documentoFiscal(editarDoc) } })
+                  setEditarDoc(null)
+                }}
+              >
+                Guardar
+              </button>
+            </>
+          }
+        >
+          <div className="carga-grid fac-doc-modal">
+            <div className="med-campo">
+              <div className={`med-conic ${problemaDocumento(editarDoc) ? 'fac-monto--falta' : ''}`}>
+                <i className="fas fa-id-card" aria-hidden="true" />
+                <input
+                  className="med-input"
+                  inputMode="numeric"
+                  placeholder="Vacío: Consumidor Final"
+                  aria-label="CUIT / CUIL / DNI a facturar"
+                  value={editarDoc}
+                  autoFocus
+                  onChange={(e) => setEditarDoc(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <p className="modal-nota">{problemaDocumento(editarDoc) ?? 'Se usa sólo en esta factura: no cambia la ficha del cliente.'}</p>
+        </Modal>
+      )}
+
 
       {confirmar && (
         <Modal

@@ -129,19 +129,13 @@ export function FacturarTipoView() {
     dispatch({ type: 'goto', paso: 'envio' })
   }
 
+  /* Sólo lo facturado: el total pactado y lo pendiente ya están en la ficha de la etapa 1, y lo que queda
+     pendiente se ve debajo del monto (regla del usuario, 14/10/2026). */
   const kpis = obra && (
     <div className="kpi-grid kpi-grid--3">
       <div className="kpi-card">
-        <span className="kpi-label">Total de la obra{obra.diferencia ? ' (con diferencias)' : ''}</span>
-        <span className="kpi-value">{pesos(obra.total + obra.diferencia)}</span>
-      </div>
-      <div className="kpi-card">
         <span className="kpi-label">Facturado</span>
         <span className="kpi-value">{pesos(facturado)}</span>
-      </div>
-      <div className="kpi-card">
-        <span className="kpi-label">Saldo pendiente de facturar</span>
-        <span className={`kpi-value ${pend > 0 ? 'v-red' : 'v-green'}`}>{pesos(pend)}</span>
       </div>
     </div>
   )

@@ -34,15 +34,18 @@ export function FacturarEmitirView() {
   const { factura, enviado } = useApp()
 
   return (
-    <section className="view paso-layout obras-v2 anticipos-v2 agenda-v2 presupuesto-v2 facturar-v2">
+    <section className="view paso-layout obras-v2 facturar-v2">
       <PasoHeader />
       <PasoTitulo
         titulo={etiquetaPaso('envio', null, null, 'facturar')}
         descripcion={`Revisá el resumen, emití ${nombreComprobante(factura.tipo).articulo} en ARCA y enviala por WhatsApp.`}
       />
 
-      <div className="emision-grid emision-grid--mitades pres-etapa fac-etapa">
-        <ResumenFactura />
+      {/* El mismo armado de "Emitir y Enviar OP" (PVC): el resumen a la izquierda, el envío a la derecha. */}
+      <div className="emision-grid">
+        <div className="emision-col">
+          <ResumenFactura />
+        </div>
         <EnviarFactura key={factura.cuenta?.id ?? ''} />
       </div>
 

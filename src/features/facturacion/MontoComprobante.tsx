@@ -11,7 +11,7 @@ const Req = () => <span className="cobro-req"> *</span>
  * mientras se tipea ("30409" → "30.409"; la coma agrega centavos).
  *
  * Debajo, cómo queda la obra con ese monto (las métricas de la cabecera del cobro): lo que se cancela (o
- * se anula) de lo pendiente, el nuevo total facturado y lo que queda pendiente de facturar.
+ * se anula) de lo pendiente y lo que queda pendiente de facturar.
  */
 export function MontoComprobante({
   id,
@@ -101,10 +101,10 @@ export function MontoComprobante({
             rotulo={nc ? 'Se anula de lo facturado' : 'Se cancela del pend. de facturar'}
             valor={pesos(problema ? 0 : p.monto)}
           />
-          <Metrica icono="fa-receipt" tono="verde" rotulo="Nuevo total facturado" valor={pesos(problema ? obra.facturado : p.nuevoFacturado)} />
+          {/* Lo que queda pendiente va siempre en rojo (regla del usuario, 14/10/2026). */}
           <Metrica
             icono="fa-hourglass-half"
-            tono={(problema ? obra.pendiente : p.quedaPendiente) > 0 ? 'rojo' : 'verde'}
+            tono="rojo"
             rotulo="Quedará pend. de facturar"
             valor={pesos(problema ? obra.pendiente : p.quedaPendiente)}
           />
