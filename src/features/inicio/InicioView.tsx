@@ -153,7 +153,7 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   /* La consulta es una sola pantalla: una etapa. */
   consultar: { icono: 'fa-table-list', titulo: 'Consultar Órdenes de Producción', etapas: 1 },
   /* La orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
-  editar: { icono: 'fa-pen-ruler', titulo: 'Editar Órdenes de Producción', etapas: PASOS.length },
+  editar: { icono: 'fa-pen-ruler', titulo: 'Editar Órdenes de Producción PVC', etapas: PASOS.length },
   vidrios: { icono: 'fa-border-all', titulo: 'Solicitud de Cortes de Vidrio', etapas: PASOS.length },
   /* Una sola pantalla: la tabla de las órdenes enviadas al taller. */
   /* El calendario es una sola pantalla: el turno nuevo y su gestión se abren en ventanas. */
