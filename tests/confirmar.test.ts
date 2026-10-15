@@ -42,7 +42,10 @@ import {
   COL_OBRA,
   COL_SUB,
   INDICE,
+  NoSeGana,
   completarConfirmacion,
+  ganarPresupuesto,
+  rolCoordinador,
   saldoInicialNuevo,
   tipoObraDe,
   type Archivos,
@@ -603,17 +606,26 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.ok(op.includes('https://app-polifroni-git-dev-tap.vercel.app/c/'), 'el texto de la OP usa el origen del envío')
 }
 
-/* ── Lo que sigue a la confirmación del presupuesto: actividad, ítem y obra ───────────────────── */
+/* ── Confirmar (actividad e ítem "Pend de Cerrar") y Ganar (total, obra y cuenta corriente) ────── */
 {
   const subConDatos = (
-    cambios: { tipo?: string; color?: string; total?: string; pdf?: boolean; obra?: boolean; cliente?: boolean; arquitecto?: string } = {},
+    cambios: {
+      tipo?: string
+      color?: string
+      pdf?: boolean
+      obra?: boolean
+      cliente?: boolean
+      arquitecto?: string
+      estado?: number | null
+      ubicacion?: string
+      coordinador?: string
+    } = {},
   ) => ({
     id: '701',
     name: 'IDPDF-1221',
     column_values: [
       { id: COL_SUB.tipo, text: cambios.tipo ?? 'Aluminio A30New' },
       { id: COL_SUB.color, text: cambios.color ?? 'Blanco' },
-      { id: COL_SUB.total, text: cambios.total ?? '1297684' },
       { id: COL_SUB.pdf, text: '', value: cambios.pdf === false ? '{"files":[]}' : '{"files":[{"assetId":555,"name":"Pres.pdf"}]}' },
     ],
     parent_item: {
@@ -625,6 +637,13 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
         { id: COL_BOLSA.idPresupuesto, text: 'IDPRES-90' },
         { id: COL_BOLSA.obras, text: '', linked_item_ids: cambios.obra ? ['9'] : [] },
         { id: COL_BOLSA.creadoPor, text: 'Ana', value: '{"personsAndTeams":[{"id":4321,"kind":"person"}]}' },
+        {
+          id: COL_BOLSA.estado,
+          text: '',
+          value: cambios.estado === null ? null : JSON.stringify({ index: cambios.estado ?? INDICE.pendDeCerrar }),
+        },
+        { id: COL_BOLSA.ubicacionObra, text: cambios.ubicacion ?? 'Pujol 1147' },
+        { id: COL_BOLSA.coordinadorObra, text: cambios.coordinador ?? 'PEREZ JUAN (Cliente)' },
       ],
     },
   })
@@ -681,10 +700,17 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     const valores = (l: Llamada) => JSON.parse(String(l.variables.valores ?? '{}'))
     return { consulta, archivos, llamadas, subidas, escrituras, valores }
   }
+  const CLIENTE = { nombre: 'PEREZ JUAN', rol: 'Cliente' as const }
   const geocodificados: { texto: string; cerca: unknown }[] = []
-  const correr = (
+  const geo =
+    (punto?: { lat: string; lng: string } | null) =>
+    async (texto: string, cerca: unknown) => {
+      geocodificados.push({ texto, cerca })
+      return punto === undefined ? { lat: '-37.2941852', lng: '-59.1423517' } : punto
+    }
+  const confirmar = (
     m: ReturnType<typeof montar>,
-    f: { ubicacion?: string; coordinador?: 'Cliente' | 'Arquitecto' | null; punto?: { lat: string; lng: string } | null } = {},
+    f: { ubicacion?: string; coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null; total?: number | null } = {},
   ) =>
     completarConfirmacion(
       {
@@ -692,38 +718,102 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
         titulo: 'Confirmación',
         contenido: '<p>✅ Confirmó</p>',
         ubicacion: f.ubicacion ?? 'Pujol 1147',
-        coordinador: f.coordinador === undefined ? 'Cliente' : f.coordinador,
+        coordinador: f.coordinador === undefined ? CLIENTE : f.coordinador,
+        total: f.total ?? null,
         cuando: new Date('2026-10-13T15:43:00Z'),
       },
       m.consulta,
       m.archivos,
-      async (texto, cerca) => {
-        geocodificados.push({ texto, cerca })
-        return f.punto === undefined ? { lat: '-37.2941852', lng: '-59.1423517' } : f.punto
-      },
+      geo(),
     )
+  const ganar = (
+    m: ReturnType<typeof montar>,
+    f: {
+      total?: number
+      ubicacion?: string
+      coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null
+      punto?: { lat: string; lng: string } | null
+    } = {},
+  ) =>
+    ganarPresupuesto(
+      {
+        subId: '701',
+        total: f.total ?? 1297684,
+        ubicacion: f.ubicacion,
+        coordinador: f.coordinador,
+        cuando: new Date('2026-10-13T15:43:00Z'),
+      },
+      m.consulta,
+      m.archivos,
+      geo(f.punto),
+    )
+  const creaObra = (m: ReturnType<typeof montar>) => m.escrituras().some((l) => l.query.includes('create_item'))
 
   {
+    /* CONFIRMAR: la constancia y los datos en el ítem, "Confirmado - Pend de Cerrar". Ni total ni obra. */
     const m = montar(subConDatos())
-    await correr(m)
-    const [item, actividad, obra, vinculo] = m.escrituras()
-    assert.ok(actividad.query.includes('create_timeline_item'), '1. la actividad')
+    await confirmar(m)
+    const [item, actividad] = m.escrituras()
+    assert.ok(actividad.query.includes('create_timeline_item'), 'la actividad')
     assert.equal(actividad.variables.item, '1', 'en el cliente')
     assert.equal(actividad.variables.actividad, ACTIVIDAD_CONFIRMACION_PRESUPUESTO, '"Confirmacion Presupuesto Obra"')
     assert.equal(actividad.variables.content, '<p>✅ Confirmó</p>', 'con lo que decía el update')
     assert.ok(!m.escrituras().some((l) => l.query.includes('create_update')), 'sin updates: ni en el subelemento ni de error')
 
-    assert.equal(item.variables.id, '700', '2. el ítem')
+    assert.equal(item.variables.id, '700', 'el ítem')
     assert.deepEqual(m.valores(item), {
       [COL_BOLSA.tipo]: { labels: ['Aluminio A30New'] },
       [COL_BOLSA.color]: { labels: ['Blanco'] },
-      [COL_BOLSA.total]: '1297684',
-      [COL_BOLSA.estado]: { index: INDICE.ganado },
+      [COL_BOLSA.estado]: { index: INDICE.pendDeCerrar },
       [COL_BOLSA.pdf]: { clear_all: true },
+      [COL_BOLSA.ubicacionObra]: 'Pujol 1147',
+      [COL_BOLSA.coordinadorObra]: 'PEREZ JUAN (Cliente)',
     })
     assert.equal(item.variables.crear, true, 'las etiquetas que falten en el ítem se crean')
+    assert.equal(m.escrituras().length, 2, 'nada más')
+    assert.ok(!creaObra(m), 'la obra espera a Ganar')
+    assert.deepEqual(m.subidas, [{ itemId: '700', columna: COL_BOLSA.pdf, nombre: 'pdf-555.pdf' }], 'el PDF, sólo al ítem')
+  }
+  {
+    /* Sin PDF: nada en el ítem; el subelemento "Error de Confirmacion" con su update. */
+    const m = montar(subConDatos({ pdf: false }))
+    await confirmar(m)
+    const e = m.escrituras()
+    assert.equal(e[0].variables.id, '701')
+    assert.deepEqual(m.valores(e[0]), { [COL_SUB.confirmacion]: { index: INDICE.errorConfirmacion } })
+    const u = String(e[1].variables.cuerpo)
+    assert.ok(e[1].query.includes('create_update') && e[1].variables.id === '701', 'el update, en el subelemento')
+    assert.ok(e[2].query.includes('create_timeline_item'), 'la actividad va igual')
+    assert.ok(u.includes('❌ Presupuesto pdf') && u.includes('✅ Color') && !u.includes('Total'), u)
+    assert.equal(e.length, 3)
+    assert.ok(!creaObra(m) && m.subidas.length === 0, 'ni obra ni archivos')
+  }
+  {
+    /* Confirmar desde la app: con el total, se gana en el mismo paso. */
+    const m = montar(subConDatos({ estado: 5 }))
+    await confirmar(m, { total: 1297684 })
+    const e = m.escrituras()
+    assert.deepEqual(m.valores(e[0])[COL_BOLSA.estado], { index: INDICE.pendDeCerrar }, 'primero, confirmado')
+    const gano = e.find((l) => m.valores(l)[COL_BOLSA.estado]?.index === INDICE.ganado)
+    assert.deepEqual(m.valores(gano!), { [COL_BOLSA.total]: '1297684', [COL_BOLSA.estado]: { index: INDICE.ganado } }, 'después, Ganado con el total')
+    assert.ok(creaObra(m) && e.some((l) => l.query.includes('create_subitem')), 'la obra y el movimiento')
+  }
+  {
+    /* Confirmar desde la app con datos faltantes: no se gana. */
+    const m = montar(subConDatos({ pdf: false }))
+    await confirmar(m, { total: 1297684 })
+    assert.ok(!m.escrituras().some((l) => m.valores(l)[COL_BOLSA.estado]?.index === INDICE.ganado) && !creaObra(m))
+  }
 
-    assert.ok(obra.query.includes('create_item') && obra.query.includes('9617181553'), '3. la obra')
+  {
+    /* GANAR: el total y "Ganado"; la obra con lo que dejó la confirmación; la cuenta corriente. */
+    const m = montar(subConDatos())
+    await ganar(m)
+    const [item, obra, vinculo] = m.escrituras()
+    assert.equal(item.variables.id, '700')
+    assert.deepEqual(m.valores(item), { [COL_BOLSA.total]: '1297684', [COL_BOLSA.estado]: { index: INDICE.ganado } })
+
+    assert.ok(obra.query.includes('create_item') && obra.query.includes('9617181553'), 'la obra')
     assert.equal(obra.variables.nombre, 'PEREZ JUAN')
     const v = m.valores(obra)
     assert.deepEqual(v[COL_OBRA.ctaCte], { item_ids: [45] }, 'la cuenta corriente ACTIVA del cliente')
@@ -734,15 +824,15 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     assert.deepEqual(v[COL_OBRA.aceptacion], { date: '2026-10-13' })
     assert.deepEqual(v[COL_OBRA.presupuestos], { item_ids: [700] })
     assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492494014611', countryShortName: 'AR' }, 'coordina el cliente: su celular')
-    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Cliente' }, 'quién coordina, del formulario')
+    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Cliente' }, 'quién coordina, de la confirmación')
     assert.deepEqual(
       v[COL_OBRA.ubicacion],
       { lat: '-37.2941852', lng: '-59.1423517', address: 'Pujol 1147' },
-      'la dirección que escribió quien confirmó, ubicada en el mapa',
+      'la dirección que dejó la confirmación, ubicada en el mapa',
     )
-    assert.deepEqual(v[COL_OBRA.asignado], { personsAndTeams: [{ id: 4321, kind: 'person' }] }, 'asignado: quien creó la bolsa')
+    assert.deepEqual(v[COL_OBRA.asignado], { personsAndTeams: [{ id: 4321, kind: 'person' }] }, 'asignado: quien creó el presupuesto')
 
-    /* 4. La cuenta corriente, en UNA mutation: el movimiento y la obra registrada. */
+    /* La cuenta corriente, en UNA mutation: el movimiento y la obra registrada. */
     const cta = m.escrituras().filter((l) => l.query.includes('create_subitem'))
     assert.equal(cta.length, 1)
     assert.ok(cta[0].query.includes('change_multiple_column_values'), 'la obra, en la misma mutation')
@@ -760,61 +850,70 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
       [COL_OBRA.validacionCtaCte]: { label: 'Registrado en Cta Cte' },
       [COL_OBRA.aceptacion]: { date: '2026-10-13' },
     })
-    assert.ok(m.subidas.some((x) => x.itemId === '900' && x.columna === COL_MOV.pdf), 'el PDF, en el movimiento')
     assert.deepEqual(geocodificados.at(-1), { texto: 'Pujol 1147', cerca: { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' } }, 'se busca cerca del cliente')
 
     assert.equal(vinculo.variables.id, '700')
     assert.deepEqual(m.valores(vinculo), { [COL_BOLSA.creacionObra]: { index: INDICE.creado } }, 'sólo "Creado": el vínculo lo deja la obra (dos vías)')
     assert.deepEqual(m.subidas, [
-      { itemId: '700', columna: COL_BOLSA.pdf, nombre: 'pdf-555.pdf' },
       { itemId: '800', columna: COL_OBRA.presupuestoAceptado, nombre: 'pdf-555.pdf' },
       { itemId: '900', columna: COL_MOV.pdf, nombre: 'pdf-555.pdf' },
-    ], 'el PDF, al ítem, a la obra y al movimiento de la cuenta corriente')
+    ], 'el PDF, a la obra y al movimiento (el ítem ya lo tiene de la confirmación)')
   }
   {
-    /* Sin total ni PDF: nada en el ítem; el subelemento "Error de Confirmacion" y la obra no se crea. */
-    const m = montar(subConDatos({ total: '', pdf: false }))
-    await correr(m)
-    const e = m.escrituras()
-    assert.equal(e[0].variables.id, '701')
-    assert.deepEqual(m.valores(e[0]), { [COL_SUB.confirmacion]: { index: INDICE.errorConfirmacion } })
-    const u = String(e[1].variables.cuerpo)
-    assert.ok(e[1].query.includes('create_update') && e[1].variables.id === '701', 'el update, en el subelemento')
-    assert.ok(e[2].query.includes('create_timeline_item'), 'la actividad va igual')
-    assert.ok(u.includes('❌ Total Pactado') && u.includes('❌ Presupuesto pdf') && u.includes('✅ Color'), u)
-    assert.deepEqual(m.valores(e[3]), { [COL_BOLSA.creacionObra]: { index: INDICE.errorCreacion } }, 'Error Creacion')
-    assert.ok(e[4].query.includes('create_update') && e[4].variables.id === '700', 'con su update en el presupuesto')
-    assert.ok(!e.some((l) => l.query.includes('create_item')) && m.subidas.length === 0, 'ni obra ni archivos')
+    /* Sólo se gana uno "Confirmado - Pend de Cerrar", con un total mayor a cero. Si no, nada se escribe. */
+    for (const [estado, msj] of [[INDICE.ganado, 'ya está Ganado'], [1, 'todavía no está confirmado'], [null, 'todavía no está confirmado']] as const) {
+      const m = montar(subConDatos({ estado }))
+      await assert.rejects(ganar(m), (e: Error) => e instanceof NoSeGana && e.message.includes(msj), String(estado))
+      assert.equal(m.escrituras().length, 0)
+    }
+    const m = montar(subConDatos())
+    await assert.rejects(ganar(m, { total: 0 }), NoSeGana)
+    assert.equal(m.llamadas.length, 0, 'sin total, ni se lee')
+  }
+  {
+    /* Dirección y coordinador corregidos al ganar: van a la bolsa y a la obra. Coordina el arquitecto: su celular. */
+    const m = montar(subConDatos({ arquitecto: '55' }))
+    await ganar(m, { ubicacion: 'Rodríguez 500', coordinador: { nombre: 'ESTUDIO X', rol: 'Arquitecto' } })
+    const [item, obra] = m.escrituras()
+    assert.deepEqual(m.valores(item), {
+      [COL_BOLSA.total]: '1297684',
+      [COL_BOLSA.estado]: { index: INDICE.ganado },
+      [COL_BOLSA.ubicacionObra]: 'Rodríguez 500',
+      [COL_BOLSA.coordinadorObra]: 'ESTUDIO X (Arquitecto)',
+    })
+    const v = m.valores(obra)
+    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Arquitecto' })
+    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492495550000', countryShortName: 'AR' })
+    assert.deepEqual(v[COL_OBRA.arquitecto], { item_ids: [55] })
+    assert.equal(v[COL_OBRA.ubicacion].address, 'Rodríguez 500')
+  }
+  {
+    /* El coordinador que dejó la confirmación, si es el arquitecto, sin corregirlo. */
+    const m = montar(subConDatos({ arquitecto: '55', coordinador: 'ESTUDIO X (Arquitecto)' }))
+    await ganar(m, { ubicacion: 'Pujol 1147' })
+    assert.equal(Object.keys(m.valores(m.escrituras()[0])).length, 2, 'misma dirección: la bolsa no se reescribe')
+    assert.deepEqual(m.valores(m.escrituras()[1])[COL_OBRA.coordinarEntrega], { label: 'Arquitecto' })
   }
   {
     /* Sin cliente: la obra no se crea (no hay cuenta corriente). */
     const m = montar(subConDatos({ cliente: false }))
-    await correr(m)
-    assert.ok(!m.escrituras().some((l) => l.query.includes('create_item')))
+    await ganar(m)
+    assert.ok(!creaObra(m))
     const u = m.escrituras().find((l) => l.query.includes('create_update'))
     assert.ok(String(u?.variables.cuerpo).includes('❌ Cliente') && String(u?.variables.cuerpo).includes('❌ Cuenta corriente del cliente'))
   }
   {
     /* La bolsa ya tenía obra: no se crea otra. */
     const m = montar(subConDatos({ obra: true }))
-    await correr(m)
-    assert.ok(!m.escrituras().some((l) => l.query.includes('create_item')))
+    await ganar(m)
+    assert.ok(!creaObra(m))
     const u = m.escrituras().find((l) => l.query.includes('create_update'))
     assert.ok(String(u?.variables.cuerpo).includes('Ya se creó una obra para el presupuesto <b>IDPRES-90</b>'))
   }
   {
-    /* Coordina el arquitecto: su etiqueta y SU celular. */
-    const m = montar(subConDatos({ arquitecto: '55' }))
-    await correr(m, { coordinador: 'Arquitecto' })
-    const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
-    assert.deepEqual(v[COL_OBRA.coordinarEntrega], { label: 'Arquitecto' })
-    assert.deepEqual(v[COL_OBRA.celCoordinar], { phone: '5492495550000', countryShortName: 'AR' })
-    assert.deepEqual(v[COL_OBRA.arquitecto], { item_ids: [55] })
-  }
-  {
     /* La dirección no se encuentra en el mapa: la obra va sin ubicación y con un update que la dice. */
-    const m = montar(subConDatos())
-    await correr(m, { ubicacion: 'Calle Inventada 99', punto: null })
+    const m = montar(subConDatos({ ubicacion: 'Calle Inventada 99' }))
+    await ganar(m, { punto: null })
     const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
     assert.equal(v[COL_OBRA.ubicacion], undefined, 'nunca la del cliente en su lugar: es otra dirección')
     const u = m.escrituras().find((l) => l.query.includes('create_update'))
@@ -822,9 +921,9 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
     assert.ok(String(u?.variables.cuerpo).includes('Calle Inventada 99'))
   }
   {
-    /* Un enlace viejo, sin dirección: la ubicación del cliente. */
-    const m = montar(subConDatos())
-    await correr(m, { ubicacion: '', coordinador: null })
+    /* Una confirmación sin dirección ni coordinador (enlace viejo): la ubicación del cliente. */
+    const m = montar(subConDatos({ ubicacion: '', coordinador: '' }))
+    await ganar(m)
     const v = m.valores(m.escrituras().find((l) => l.query.includes('create_item'))!)
     assert.deepEqual(v[COL_OBRA.ubicacion], { lat: '-37.3', lng: '-59.1', address: 'Pujol 1147' })
     assert.equal(v[COL_OBRA.coordinarEntrega], undefined)
@@ -832,7 +931,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   {
     /* Monday responde con error al crear la obra, pero la obra SÍ quedó (y vinculada): se sigue con ella. */
     const m = montar(subConDatos(), { falla: true, obraTrasFalla: true })
-    await correr(m)
+    await ganar(m)
     const vinculo = m.escrituras().find((l) => String(l.variables.valores ?? '').includes(COL_BOLSA.creacionObra))
     assert.deepEqual(m.valores(vinculo!), { [COL_BOLSA.creacionObra]: { index: INDICE.creado } })
     assert.ok(m.subidas.some((x) => x.itemId === '801' && x.columna === COL_OBRA.presupuestoAceptado), 'el PDF, a esa obra')
@@ -840,7 +939,7 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   {
     /* Monday responde con error y la obra NO quedó: "Error Creacion" con su update, y el error sigue de largo. */
     const m = montar(subConDatos(), { falla: true })
-    await assert.rejects(correr(m))
+    await assert.rejects(ganar(m))
     const e = m.escrituras()
     assert.ok(e.some((l) => m.valores(l)[COL_BOLSA.creacionObra]?.index === INDICE.errorCreacion))
     assert.ok(e.some((l) => l.query.includes('create_update') && String(l.variables.cuerpo).includes('Monday no respondió')))
@@ -848,15 +947,29 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   {
     /* La obra ya estaba registrada (un reintento): no se crea otro movimiento. */
     const m = montar(subConDatos(), { registrada: true })
-    await correr(m)
+    await ganar(m)
     assert.ok(!m.escrituras().some((l) => l.query.includes('create_subitem')))
   }
   {
-    /* Quien confirma sólo espera el ítem: la constancia, la obra y la cuenta corriente van en segundo plano. */
+    /* Quien gana sólo espera el ítem: la obra y la cuenta corriente van en segundo plano. */
+    const m = montar(subConDatos())
+    let tarea: Promise<void> | null = null
+    await ganarPresupuesto({ subId: '701', total: 1297684, cuando: new Date('2026-10-13T15:43:00Z') }, m.consulta, m.archivos, async () => null, (t) => {
+      tarea = t
+    })
+    const antes = m.escrituras().map((l) => l.query)
+    assert.ok(tarea, 'lo que sigue quedó en segundo plano')
+    assert.equal(antes.length, 1, 'el ítem ya está escrito al volver')
+    await tarea
+    const despues = m.escrituras().map((l) => l.query)
+    assert.ok(despues.some((q) => q.includes('create_item')) && despues.some((q) => q.includes('create_subitem')), 'después, la obra y el movimiento')
+  }
+  {
+    /* Quien confirma sólo espera el ítem: la constancia va en segundo plano. */
     const m = montar(subConDatos())
     let tarea: Promise<void> | null = null
     await completarConfirmacion(
-      { subId: '701', titulo: 'C', contenido: '<p>c</p>', ubicacion: '', coordinador: 'Cliente', cuando: new Date('2026-10-13T15:43:00Z') },
+      { subId: '701', titulo: 'C', contenido: '<p>c</p>', ubicacion: '', coordinador: CLIENTE, cuando: new Date('2026-10-13T15:43:00Z') },
       m.consulta,
       m.archivos,
       async () => null,
@@ -864,24 +977,25 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
         tarea = t
       },
     )
-    const antes = m.escrituras().map((l) => l.query)
-    assert.ok(tarea, 'lo que sigue quedó en segundo plano')
-    assert.ok(antes.some((q) => q.includes('change_multiple_column_values')), 'el ítem ya está escrito al volver')
-    assert.ok(!antes.some((q) => q.includes('create_item') || q.includes('create_subitem')), 'ni la obra ni la cuenta corriente al volver')
+    assert.ok(tarea, 'la constancia quedó en segundo plano')
     await tarea
-    const despues = m.escrituras().map((l) => l.query)
-    assert.ok(despues.some((q) => q.includes('create_item')) && despues.some((q) => q.includes('create_subitem')), 'después, la obra y el movimiento')
+    assert.ok(m.escrituras().some((l) => l.query.includes('create_timeline_item')))
   }
   assert.equal(saldoInicialNuevo([]), 0, 'el primer movimiento de la cuenta')
   assert.equal(saldoInicialNuevo([{ saldoInicial: 100, ventas: 50, cobros: 30 }]), 120)
   assert.equal(tipoObraDe('PVC'), 'PVC')
   assert.equal(tipoObraDe('Alumino'), 'Aluminio')
+  assert.equal(rolCoordinador('PEREZ JUAN (Cliente)'), 'Cliente')
+  assert.equal(rolCoordinador('ESTUDIO (X) (Arquitecto)'), 'Arquitecto')
+  assert.equal(rolCoordinador(''), null)
 }
 
 /* ── Confirmar y Perdido desde la app: el mismo camino que el enlace (13/10/2026) ──────────────── */
 {
   const escritas: { query: string; variables: Record<string, unknown> }[] = []
   let confirmacion = ''
+  /** El índice de 🤖Estado Presupuesto de la bolsa (`null`: sin estado). */
+  let estadoBolsa: number | null = null
   globalThis.fetch = (async (_url: string, init: { body: string }) => {
     const { query, variables } = JSON.parse(init.body) as { query: string; variables: Record<string, unknown> }
     if (query.trim().startsWith('mutation')) {
@@ -897,7 +1011,10 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
       parent_item: {
         id: '700',
         name: 'PEREZ JUAN',
-        column_values: [{ id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', display_value: '1111 - PEREZ JUAN', linked_item_ids: ['1'] }],
+        column_values: [
+          { id: 'board_relation_mkvgt8r', text: 'PEREZ JUAN', display_value: '1111 - PEREZ JUAN', linked_item_ids: ['1'] },
+          { id: 'color_mkvg6w7v', text: '', value: estadoBolsa === null ? null : JSON.stringify({ index: estadoBolsa }) },
+        ],
       },
       column_values: [
         { id: COL_SUB_PRES.clave, text: '' },
@@ -944,12 +1061,40 @@ assert.equal((await pedir('GET', '/c/')).status, 400, 'sin código')
   assert.equal((await llamar({ subId: '701', tipo: 'rechazar' })).status, 200)
   assert.ok(!String(escritas.find((e) => e.query.includes('create_update'))?.variables.cuerpo).includes('Motivo'))
 
-  /* Confirmar exige lo mismo que el formulario del enlace. */
+  /* Confirmar exige lo mismo que el formulario del enlace, y el total pactado (se gana en el mismo paso). */
   escritas.length = 0
-  const sinCoord = await llamar({ subId: '701', tipo: 'confirmar', ubicacion: 'Pujol 1147', coordinador: '' })
+  const conf = { subId: '701', tipo: 'confirmar', ubicacion: 'Pujol 1147', coordinador: 'PEREZ JUAN', total: 1000 }
+  const sinCoord = await llamar({ ...conf, coordinador: '' })
   assert.equal(sinCoord.status, 422)
-  assert.equal((await llamar({ subId: '701', tipo: 'confirmar', ubicacion: 'Pujol 1147', coordinador: 'OTRO' })).status, 422, 'fuera de la lista')
+  assert.equal((await llamar({ ...conf, coordinador: 'OTRO' })).status, 422, 'fuera de la lista')
+  const sinTotal = await llamar({ ...conf, total: undefined })
+  assert.equal(sinTotal.status, 422)
+  assert.ok(sinTotal.cuerpo.error?.includes('total pactado'))
+  assert.equal((await llamar({ ...conf, total: -5 })).status, 422, 'total negativo')
   assert.equal(escritas.length, 0, 'nada se escribió')
+
+  /* Ganar: con el total, sólo uno "Confirmado - Pend de Cerrar". */
+  assert.equal((await llamar({ subId: '701', tipo: 'ganar' })).status, 422, 'sin total')
+  assert.equal((await llamar({ subId: '701', tipo: 'ganar', total: 1000, coordinador: 'OTRO' })).status, 422, 'coordinador fuera de la lista')
+  const noPend = await llamar({ subId: '701', tipo: 'ganar', total: 1000 })
+  assert.equal(noPend.status, 409, 'la bolsa no está "Confirmado - Pend de Cerrar"')
+  assert.ok(noPend.cuerpo.error?.includes('todavía no está confirmado'), noPend.cuerpo.error)
+  assert.equal(escritas.length, 0, 'nada se escribió')
+
+  /* Gana uno solo (15/10/2026): con otro presupuesto de la bolsa confirmado, éste no se confirma; sí se pierde. */
+  for (const indice of [0, 7]) {
+    estadoBolsa = indice
+    const otro = await llamar(conf)
+    assert.equal(otro.status, 409, `bolsa en el índice ${indice}`)
+    assert.ok(otro.cuerpo.error?.includes('gana uno solo'), otro.cuerpo.error)
+    assert.equal(escritas.length, 0, 'nada se escribió')
+    assert.equal((await buscarPresupuestoPorId('701'))?.otroConfirmado, true)
+  }
+  assert.equal((await llamar({ subId: '701', tipo: 'rechazar' })).status, 200, 'darlo por perdido, sí')
+  escritas.length = 0
+  estadoBolsa = 1
+  assert.equal((await buscarPresupuestoPorId('701'))?.otroConfirmado, false, 'Presupuesto Enviado: se puede confirmar')
+  estadoBolsa = null
 
   /* Ya respondido (por el enlace o por otro usuario): 409, sin escribir. */
   confirmacion = 'Confirmado'

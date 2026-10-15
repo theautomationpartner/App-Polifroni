@@ -12,13 +12,13 @@ import { EnvioPresupuestos } from './EnvioPresupuestos'
 export function EnviarPresupuesto({ onAConfirmar }: { onAConfirmar?: (ids: string[]) => void }) {
   const { presupuesto, enviado } = useApp()
   const dispatch = useDispatch()
-  const { cliente, arquitecto, bolsa, presupuestos } = presupuesto
+  const { cliente, arquitecto, presupuestos } = presupuesto
 
   return (
     <EnvioPresupuestos
       cliente={cliente}
       arquitecto={arquitecto}
-      enviarA={bolsa?.enviarA ?? ''}
+      enviarA=""
       presupuestos={presupuestos}
       enviado={enviado}
       onAConfirmar={onAConfirmar}

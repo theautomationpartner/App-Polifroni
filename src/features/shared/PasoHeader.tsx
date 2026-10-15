@@ -299,10 +299,10 @@ export function SelectoresOperacion({ children }: { children?: ReactNode }) {
  * hacia adelante sin perder lo cargado. Las futuras quedan bloqueadas.
  */
 export function PasoHeader({ children }: { children?: ReactNode }) {
-  const { operacion, destino, obra, paso, pasoMax, accionEnCurso, presupuesto } = useApp()
+  const { operacion, destino, obra, paso, pasoMax, accionEnCurso } = useApp()
   const dispatch = useDispatch()
   const conPasos = conEtapas(operacion)
-  const etapas = etiquetasPasos(destino, tipoDe(obra), operacion, presupuesto.modo)
+  const etapas = etiquetasPasos(destino, tipoDe(obra), operacion)
 
   return (
     <header className="paso-header">

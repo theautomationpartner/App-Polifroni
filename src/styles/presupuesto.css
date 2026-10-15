@@ -552,17 +552,14 @@
 .presupuesto-v2 .pres-tabla--subs col.pres-w-color {
   width: 132px;
 }
-.presupuesto-v2 .pres-tabla--subs col.pres-w-total {
-  width: 118px;
-}
 .presupuesto-v2 .pres-tabla--subs col.pres-w-pdf {
   width: 92px;
 }
 .presupuesto-v2 .pres-tabla--subs col.pres-w-estado {
-  width: 160px;
+  width: 220px;
 }
 .presupuesto-v2 .pres-tabla--subs col.pres-w-acc {
-  width: 330px;
+  width: 300px;
 }
 .presupuesto-v2 .pres-tabla--subs .ant-col-der,
 .presupuesto-v2 .pres-tabla--subs thead th.ant-col-der {
@@ -677,4 +674,78 @@
 .presupuesto-v2 .pres-ficha .pres-ficha-form {
   align-self: stretch;
   width: 100%;
+}
+
+/* ── Consultar y Gestionar: una fila por bolsa, sus presupuestos al abrirla (regla del usuario, 15/10/2026) ── */
+.presupuesto-v2 .pres-tabla--bolsas col.pres-w-constr {
+  width: 26%;
+}
+.presupuesto-v2 .pres-tabla--bolsas col.pres-w-estado {
+  width: 230px;
+}
+.presupuesto-v2 .pres-tabla--bolsas col.pres-w-total {
+  width: 150px;
+}
+.presupuesto-v2 .pres-tabla--bolsas col.pres-w-acc {
+  width: 140px;
+}
+.presupuesto-v2 .pres-tabla--bolsas .ant-col-der,
+.presupuesto-v2 .pres-tabla--bolsas thead th.ant-col-der {
+  text-align: right;
+}
+.presupuesto-v2 .pres-chev {
+  font-size: 11px;
+  color: var(--gray-text, #676879);
+  transition: transform 0.15s ease;
+}
+.presupuesto-v2 .pres-chev--on {
+  transform: rotate(90deg);
+}
+.presupuesto-v2 tr.pres-bolsa--abierta > td {
+  background: #f7f9fc;
+}
+/* "+ Nuevo": azul, del tamaño de las acciones de la fila (el botón de Reenviar). */
+.presupuesto-v2 .pres-tabla .pres-nuevo {
+  white-space: nowrap;
+}
+/* Los presupuestos de la bolsa: una tabla adentro de la fila, con las mismas filas. */
+.presupuesto-v2 .ant-tabla--fija tr.pres-subs-fila > td {
+  padding: 4px 0 14px 28px;
+  overflow: visible;
+  white-space: normal;
+  background: #f7f9fc;
+  animation: ant-reenvio-abre 0.2s ease-out;
+}
+.presupuesto-v2 .pres-subs {
+  border-left: 3px solid var(--marca, #89263c);
+  border-radius: 6px;
+  background: #fff;
+}
+/* La tabla de adentro: el ID PDF angosto, las acciones con el resto (en una línea). */
+.presupuesto-v2 .pres-subs .pres-tabla--subs col.pres-w-idpdf {
+  width: 130px;
+}
+.presupuesto-v2 .pres-subs .pres-tabla--subs col.pres-w-acc {
+  width: auto;
+}
+.presupuesto-v2 .pres-subs .pres-tabla--subs .ag-acciones {
+  flex-wrap: nowrap;
+}
+
+/* La ventana de «+ Nuevo»: los datos del presupuesto y, a su derecha, el envío. */
+.modal-box.pres-modal-nuevo {
+  max-width: min(1240px, 96vw);
+  width: 100%;
+  max-height: 94vh;
+  overflow-y: auto;
+}
+.modal-box.pres-modal-nuevo .pres-nuevo-grid {
+  margin-top: 12px;
+  text-align: left;
+}
+.modal-box.pres-modal-nuevo .pres-nuevo-grid > .card {
+  margin: 0;
+}
+.modal-box.pres-modal-nuevo .pres-nuevo-estado {
+  margin-top: 14px;
 }

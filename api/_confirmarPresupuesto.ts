@@ -1,31 +1,22 @@
 /**
- * Lo que sigue a la confirmación de un presupuesto por el enlace de WhatsApp (regla del usuario,
- * 13/10/2026). Reemplaza a dos escenarios de Make:
- *  - "[TAP] Cuando el estado de un subelemento cambia a Confirmado -> Asignar tipo, color, presupuesto
- *    y total padre al item".
- *  - "[TAP] Cuando Se Crea Obra -> Crear Nuevo Item En Tablero "Obras"" (el botón ✋Crear Obra).
+ * Lo que sigue a la confirmación de un presupuesto (por el enlace de WhatsApp o desde la app) y su
+ * cierre como Ganado (regla del usuario, 15/10/2026: el total pactado ya no se carga con el presupuesto;
+ * se ingresa al ganarlo).
  *
- * Quien confirma sólo espera el paso 2 (el ítem); la constancia, la obra y la cuenta corriente siguen
- * en segundo plano (`enSegundoPlano`). En orden:
- *  1. La constancia: una actividad "Confirmacion Presupuesto Obra" en Emails & Activities del cliente
- *     (o del constructor, si la bolsa no tiene cliente), con lo mismo que decía el update.
- *  2. El ítem (la bolsa): tipo de carpintería, color, PDF y Total Pactado del presupuesto confirmado, y
- *     "Ganado". Si al subelemento le falta alguno, no se escribe nada en el ítem: el subelemento queda
- *     "Error de Confirmacion" con un update que dice qué falta.
- *  3. La obra, con los datos del ítem: cuenta corriente del cliente, constructor (o "SIN ARQUITECTO"),
- *     total, tipo, "Ganado/Aceptado/Anticipo" y el PDF; el ítem queda vinculado a ella y "Creado". Si
- *     falta un dato básico, o el ítem ya tenía una obra, no se crea: el ítem queda "Error Creacion" con
- *     un update que dice por qué. Del formulario del enlace (regla del usuario, 13/10/2026) toma:
- *     quién coordina (✋Coordinar Entrega, y su celular en ✋Cel a Coordinar) y la dirección de la obra
- *     (✋Ubicación Obra, ubicada en el mapa con `geocodificarNominatim`). ✋Asignado a: es quien creó la
- *     bolsa en la app (🤖Creado por).
- *  4. El registro de la obra en la cuenta corriente del cliente: lo que hacía la rama "Si aun no se
- *     registro" del escenario "[TAP] Cuando el estado cambia a Ganado -> Enviar A Cliente", en UNA
- *     mutation: el movimiento "Venta-Sin Fact" (con el saldo que dejó el último movimiento de la cuenta)
- *     y la obra "Registrado en Cta Cte". Después, el PDF del presupuesto en el movimiento.
+ * CONFIRMAR (`completarConfirmacion`) — quien confirma sólo espera esto:
+ *  - El ítem (la bolsa): tipo de carpintería, color y PDF del presupuesto confirmado, la dirección de la
+ *    obra y quién la coordina (los del formulario), y "Confirmado - Pend de Cerrar". Si al subelemento
+ *    le falta algo, el ítem no se toca: el subelemento queda "Error de Confirmacion" con un update.
+ *  - En segundo plano, la constancia: la actividad "Confirmacion Presupuesto Obra" en el cliente (o en
+ *    el constructor, si no hay cliente).
  *
- * Todo esto es posterior a la respuesta, que ya quedó escrita: si algo falla se registra en el log y
- * la confirmación del cliente vale igual.
+ * GANAR (`ganarPresupuesto`) — con el total pactado:
+ *  - El ítem: el total y "Ganado".
+ *  - En segundo plano, la obra (lo que hacía el escenario de Make del botón ✋Crear Obra) y su registro
+ *    en la cuenta corriente del cliente (la rama "Si aun no se registro" de "[TAP] Cuando el estado
+ *    cambia a Ganado -> Enviar A Cliente"), con el PDF en la obra y en el movimiento.
+ *
+ * "Confirmar" desde la app pide también el total y hace las dos cosas seguidas.
  */
 import type { Consulta } from './_confirmarMonday.js'
 
@@ -46,7 +37,6 @@ export const ACTIVIDAD_CONFIRMACION_PRESUPUESTO = '2d7f3b88-04ca-410d-922c-33326
 export const COL_SUB = {
   tipo: 'dropdown_mkvgn9kx',
   color: 'dropdown_mkvgvy84',
-  total: 'numeric_mm836j1t',
   pdf: 'file_mkvg4p64',
   /** 🤖 Estado de Confirmacion. */
   confirmacion: 'color_mm0dsv6p',
@@ -68,6 +58,10 @@ export const COL_BOLSA = {
   obras: 'board_relation_mm1z59qx',
   /** 🤖Creado por: el usuario de la app que creó la bolsa (la completa la app). */
   creadoPor: 'multiple_person_mm83jvyr',
+  /** 🤖Ubicación de la obra: la dirección que indicó quien confirmó (columnas del 15/10/2026). */
+  ubicacionObra: 'text_mm85trcv',
+  /** 🤖Coordinador de la obra: "Nombre (Cliente)" o "Nombre (Arquitecto)". */
+  coordinadorObra: 'text_mm85ye3y',
 } as const
 
 const COL_CLIENTE = { cuentas: 'board_relation_mkt5f7n4', celular: 'phone_mksydcv6', ubicacion: 'location_mkt9ewya' } as const
@@ -109,8 +103,9 @@ export const COL_MOV = {
 
 /** Las etiquetas, por índice (su nombre puede cambiar en el tablero). */
 export const INDICE = {
-  /** 🤖Estado Presupuesto: Ganado. */
+  /** 🤖Estado Presupuesto: Ganado | Confirmado - Pend de Cerrar. */
   ganado: 0,
+  pendDeCerrar: 7,
   /** 🤖 Estado de Confirmacion: Error de Confirmacion. */
   errorConfirmacion: 2,
   /** 🤖Estado Creacion de la Obra: Error Creacion | Creado. */
@@ -255,7 +250,6 @@ export interface Confirmado {
   subNombre: string
   tipo: string
   color: string
-  total: number | null
   pdfs: string[]
   bolsaId: string
   bolsaNombre: string
@@ -266,6 +260,11 @@ export interface Confirmado {
   obraPrevia: boolean
   /** 🤖Creado por de la bolsa: personas y equipos, tal cual. */
   creadoPor: { id: number; kind: string }[]
+  /** El índice de 🤖Estado Presupuesto de la bolsa (`null`: sin estado). */
+  estadoIndice: number | null
+  /** Lo que dejó la confirmación en la bolsa: la dirección de la obra y quién la coordina. */
+  ubicacionObra: string
+  coordinadorObra: string
 }
 
 export async function leerConfirmado(consulta: Consulta, subId: string): Promise<Confirmado | null> {
@@ -280,8 +279,17 @@ export async function leerConfirmado(consulta: Consulta, subId: string): Promise
     }`,
     {
       ids: [subId],
-      cols: [COL_SUB.tipo, COL_SUB.color, COL_SUB.total, COL_SUB.pdf],
-      colsPadre: [COL_BOLSA.cliente, COL_BOLSA.arquitecto, COL_BOLSA.idPresupuesto, COL_BOLSA.obras, COL_BOLSA.creadoPor],
+      cols: [COL_SUB.tipo, COL_SUB.color, COL_SUB.pdf],
+      colsPadre: [
+        COL_BOLSA.cliente,
+        COL_BOLSA.arquitecto,
+        COL_BOLSA.idPresupuesto,
+        COL_BOLSA.obras,
+        COL_BOLSA.creadoPor,
+        COL_BOLSA.estado,
+        COL_BOLSA.ubicacionObra,
+        COL_BOLSA.coordinadorObra,
+      ],
     },
   )
   const i = d.items[0]
@@ -293,7 +301,6 @@ export async function leerConfirmado(consulta: Consulta, subId: string): Promise
     subNombre: i.name,
     tipo: txt(c[COL_SUB.tipo]),
     color: txt(c[COL_SUB.color]),
-    total: numeroDe(c[COL_SUB.total]),
     pdfs: archivosDe(c[COL_SUB.pdf]),
     bolsaId: String(i.parent_item.id),
     bolsaNombre: i.parent_item.name,
@@ -302,6 +309,19 @@ export async function leerConfirmado(consulta: Consulta, subId: string): Promise
     arquitectoId: vinculados(b[COL_BOLSA.arquitecto])[0] ?? '',
     obraPrevia: vinculados(b[COL_BOLSA.obras]).length > 0,
     creadoPor: personasDe(b[COL_BOLSA.creadoPor]),
+    estadoIndice: indiceDe(b[COL_BOLSA.estado]),
+    ubicacionObra: txt(b[COL_BOLSA.ubicacionObra]),
+    coordinadorObra: txt(b[COL_BOLSA.coordinadorObra]),
+  }
+}
+
+/** El índice de un status, de su `value` JSON. `null` si no tiene. */
+function indiceDe(c?: CV): number | null {
+  try {
+    const i = (JSON.parse(c?.value ?? 'null') as { index?: unknown } | null)?.index
+    return typeof i === 'number' && Number.isInteger(i) ? i : null
+  } catch {
+    return null
   }
 }
 
@@ -396,14 +416,14 @@ export function datosConfirmacion(p: Confirmado): { nombre: string; ok: boolean 
     { nombre: 'Tipo de Carpintería', ok: !!p.tipo },
     { nombre: 'Color', ok: !!p.color },
     { nombre: 'Presupuesto pdf', ok: p.pdfs.length > 0 },
-    { nombre: 'Total Pactado', ok: p.total !== null && p.total > 0 },
   ]
 }
 
-/** Lo básico para crear la obra: los datos del ítem, el cliente y su cuenta corriente. */
-export function datosObra(p: Confirmado, cuentaId: string): { nombre: string; ok: boolean }[] {
+/** Lo básico para crear la obra: los datos del ítem, el total, el cliente y su cuenta corriente. */
+export function datosObra(p: Confirmado, total: number, cuentaId: string): { nombre: string; ok: boolean }[] {
   return [
     ...datosConfirmacion(p).map((d) => (d.nombre === 'Presupuesto pdf' ? { ...d, nombre: 'Presup Final pdf' } : d)),
+    { nombre: 'Total Pactado', ok: total > 0 },
     { nombre: 'Cliente', ok: !!p.clienteId },
     { nombre: 'Cuenta corriente del cliente', ok: !!cuentaId },
   ]
@@ -418,6 +438,15 @@ export const saldoInicialNuevo = (movs: { saldoInicial: number; ventas: number; 
   return u ? u.saldoInicial + u.ventas - u.cobros : 0
 }
 
+/** Quién coordina, como queda en la bolsa: "PEREZ JUAN (Cliente)". */
+export const textoCoordinador = (c: { nombre: string; rol: 'Cliente' | 'Arquitecto' }) => `${c.nombre} (${c.rol})`
+
+/** El rol de quien coordina, de lo que quedó en la bolsa. `null` si no se sabe. */
+export function rolCoordinador(texto: string): 'Cliente' | 'Arquitecto' | null {
+  const m = /\((Cliente|Arquitecto)\)\s*$/.exec(texto.trim())
+  return m ? (m[1] as 'Cliente' | 'Arquitecto') : null
+}
+
 /** El ✋Tipo de la obra: PVC o Aluminio (los aluminios del tablero son varios: "Alumino", "Aluminio A30New"...). */
 export const tipoObraDe = (tipo: string): string => (!tipo.trim() ? '' : /pvc/i.test(tipo) ? 'PVC' : 'Aluminio')
 
@@ -425,7 +454,7 @@ const lista = (datos: { nombre: string; ok: boolean }[]) => datos.map((d) => `${
 
 export const textoErrorConfirmacion = (p: Confirmado, datos: { nombre: string; ok: boolean }[]) =>
   `<p>⚠️ <b>Error al confirmar el presupuesto</b> ⚠️</p>` +
-  `<p>El presupuesto ${p.subNombre} se confirmó, pero sus datos no se pasaron al presupuesto (ni se marcó Ganado) porque le falta lo marcado con ❌:</p>` +
+  `<p>El presupuesto ${p.subNombre} se confirmó, pero sus datos no se pasaron al presupuesto porque le falta lo marcado con ❌:</p>` +
   `<p>${lista(datos)}</p>`
 
 export const textoErrorObra = (datos: { nombre: string; ok: boolean }[]) =>
@@ -454,42 +483,18 @@ const hoyAr = (d: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d)
 
 /* ────────────────────────────────────────────────────────────────────────────────
- * Los tres pasos
+ * Confirmar y Ganar
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 const mutacionColumnas = `mutation ($board: ID!, $id: ID!, $valores: JSON!, $crear: Boolean) {
   change_multiple_column_values(board_id: $board, item_id: $id, column_values: $valores, create_labels_if_missing: $crear) { id }
 }`
 
-export async function completarConfirmacion(
-  {
-    subId,
-    titulo,
-    contenido,
-    ubicacion = '',
-    coordinador = null,
-    cuando = new Date(),
-  }: {
-    subId: string
-    /** El título de la actividad. */
-    titulo: string
-    /** El HTML de la actividad: el mismo que tenía el update. */
-    contenido: string
-    /** La dirección de la obra que escribió quien confirmó. */
-    ubicacion?: string
-    /** Quién coordina la obra, según el formulario. */
-    coordinador?: 'Cliente' | 'Arquitecto' | null
-    cuando?: Date
-  },
-  consulta: Consulta,
-  archivos: Archivos = archivosMonday(consulta),
-  geocodificar: Geocodificar = geocodificarNominatim,
-  /**
-   * Dónde corre lo que sigue a los datos del ítem (constancia, obra, cuenta corriente). Con él, esta
-   * función vuelve apenas el ítem quedó completo; sin él, espera todo (los tests).
-   */
-  enSegundoPlano?: (tarea: Promise<void>) => void,
-): Promise<void> {
+/** No se puede ganar: el texto es para el usuario. */
+export class NoSeGana extends Error {}
+
+/** Lo de escribir en Monday que comparten Confirmar y Ganar. */
+function escritor(consulta: Consulta) {
   const escribir = (board: number, id: string, valores: Record<string, unknown>, crear = false) =>
     consulta(mutacionColumnas, { board: String(board), id, valores: JSON.stringify(valores), crear }, { escritura: true })
   const update = (id: string, cuerpo: string) =>
@@ -505,11 +510,50 @@ export async function completarConfirmacion(
       }
     }
   }
+  return { escribir, update, intentar }
+}
 
+/**
+ * CONFIRMAR: el presupuesto confirmado pasa sus datos a la bolsa y la deja "Confirmado - Pend de
+ * Cerrar" (falta el total). Vuelve con la bolsa escrita; la constancia sigue en segundo plano. Con
+ * `total` (Confirmar desde la app), sigue con `ganarPresupuesto`.
+ */
+export async function completarConfirmacion(
+  {
+    subId,
+    titulo,
+    contenido,
+    ubicacion = '',
+    coordinador = null,
+    total = null,
+    cuando = new Date(),
+  }: {
+    subId: string
+    /** El título de la actividad. */
+    titulo: string
+    /** El HTML de la actividad: el mismo que tenía el update. */
+    contenido: string
+    /** La dirección de la obra que escribió quien confirmó. */
+    ubicacion?: string
+    /** Quién coordina la obra, según el formulario. */
+    coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null
+    /** Confirmar desde la app: el total pactado, para ganarlo en el mismo paso. */
+    total?: number | null
+    cuando?: Date
+  },
+  consulta: Consulta,
+  archivos: Archivos = archivosMonday(consulta),
+  geocodificar: Geocodificar = geocodificarNominatim,
+  /**
+   * Dónde corre lo que no espera quien confirma (la constancia; y al ganar, la obra y la cuenta
+   * corriente). Sin él, se espera todo (los tests).
+   */
+  enSegundoPlano?: (tarea: Promise<void>) => void,
+): Promise<void> {
+  const { escribir, update } = escritor(consulta)
   const p = await leerConfirmado(consulta, subId)
   if (!p) throw new Error(`no se encontró el presupuesto ${subId} ni su ítem en el tablero`)
 
-  /* 2. El ítem, con los datos del presupuesto confirmado. */
   const datos = datosConfirmacion(p)
   const completo = datos.every((d) => d.ok)
   /* Los PDF se bajan antes de escribir nada: si no se pueden bajar, el ítem queda como estaba. */
@@ -520,82 +564,134 @@ export async function completarConfirmacion(
   } else {
     /* Los dropdowns del ítem tienen etiquetas propias: si la del subelemento no está, se crea (como el
        escenario de Make). */
-    await escribir(
-      BOARD_PRESUPUESTOS,
-      p.bolsaId,
+    const v: Record<string, unknown> = {
+      [COL_BOLSA.tipo]: { labels: [p.tipo] },
+      [COL_BOLSA.color]: { labels: [p.color] },
+      [COL_BOLSA.estado]: { index: INDICE.pendDeCerrar },
+      [COL_BOLSA.pdf]: { clear_all: true },
+    }
+    if (ubicacion.trim()) v[COL_BOLSA.ubicacionObra] = ubicacion.trim()
+    if (coordinador) v[COL_BOLSA.coordinadorObra] = textoCoordinador(coordinador)
+    await escribir(BOARD_PRESUPUESTOS, p.bolsaId, v, true)
+    for (const pdf of pdfs) await archivos.subir(p.bolsaId, COL_BOLSA.pdf, pdf)
+  }
+
+  /* La constancia en el cliente (o en el constructor): no la espera quien confirmó. */
+  const contactoId = p.clienteId || p.arquitectoId
+  const constancia = async (): Promise<void> => {
+    if (!contactoId) return
+    await consulta(
+      `mutation ($item: ID!, $actividad: String!, $titulo: String!, $content: String, $cuando: ISO8601DateTime!) {
+        create_timeline_item(item_id: $item, custom_activity_id: $actividad, title: $titulo, content: $content, timestamp: $cuando) { id }
+      }`,
       {
-        [COL_BOLSA.tipo]: { labels: [p.tipo] },
-        [COL_BOLSA.color]: { labels: [p.color] },
-        [COL_BOLSA.total]: String(p.total),
-        [COL_BOLSA.estado]: { index: INDICE.ganado },
-        [COL_BOLSA.pdf]: { clear_all: true },
+        item: contactoId,
+        actividad: ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
+        titulo,
+        content: contenido,
+        cuando: cuando.toISOString().replace(/\.\d{3}Z$/, 'Z'),
       },
-      true,
+      { escritura: true },
+    ).catch((e) => console.warn('[confirmar] no se pudo registrar la actividad de la confirmación', e))
+  }
+  if (enSegundoPlano) enSegundoPlano(constancia())
+  else await constancia()
+
+  /* Confirmar desde la app: con el total, se gana en el mismo paso. */
+  if (completo && total !== null) {
+    await ganarPresupuesto({ subId, total, cuando, confirmadoRecien: true }, consulta, archivos, geocodificar, enSegundoPlano)
+  }
+}
+
+/**
+ * GANAR: con el total pactado, la bolsa queda "Ganado" y —en segundo plano— se crea la obra y su
+ * movimiento en la cuenta corriente. Sólo una bolsa "Confirmado - Pend de Cerrar" (o la que se acaba de
+ * confirmar desde la app). La dirección y el coordinador son los que dejó la confirmación, salvo que se
+ * corrijan al ganar.
+ */
+export async function ganarPresupuesto(
+  {
+    subId,
+    total,
+    ubicacion,
+    coordinador,
+    cuando = new Date(),
+    confirmadoRecien = false,
+  }: {
+    subId: string
+    total: number
+    /** Corregidos al ganar (si no, los de la bolsa). */
+    ubicacion?: string
+    coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null
+    cuando?: Date
+    /** Recién confirmado en el mismo pedido: la bolsa ya se sabe "Pend de Cerrar". */
+    confirmadoRecien?: boolean
+  },
+  consulta: Consulta,
+  archivos: Archivos = archivosMonday(consulta),
+  geocodificar: Geocodificar = geocodificarNominatim,
+  enSegundoPlano?: (tarea: Promise<void>) => void,
+): Promise<void> {
+  const { escribir, update, intentar } = escritor(consulta)
+  if (!(total > 0)) throw new NoSeGana('Ingresá el total pactado (un importe mayor a cero).')
+  const p = await leerConfirmado(consulta, subId)
+  if (!p) throw new NoSeGana('El presupuesto ya no está en el tablero.')
+  if (!confirmadoRecien && p.estadoIndice !== INDICE.pendDeCerrar) {
+    throw new NoSeGana(
+      p.estadoIndice === INDICE.ganado ? 'El presupuesto ya está Ganado.' : 'El presupuesto todavía no está confirmado («Confirmado - Pend de Cerrar»).',
     )
   }
-  for (const pdf of pdfs) await archivos.subir(p.bolsaId, COL_BOLSA.pdf, pdf)
+  const direccion = (ubicacion ?? p.ubicacionObra).trim()
+  const coord = coordinador ?? null
+  const rol = coord?.rol ?? rolCoordinador(p.coordinadorObra)
 
-  /* Lo de acá en adelante NO lo espera quien confirmó (regla del usuario, 13/10/2026): la constancia,
-     la obra y la cuenta corriente siguen después de responderle (`enSegundoPlano`). */
-  const despues = async (): Promise<void> => {
-    /* La constancia en el cliente (o en el constructor). */
-    const contactoId = p.clienteId || p.arquitectoId
-    if (contactoId) {
-      await consulta(
-        `mutation ($item: ID!, $actividad: String!, $titulo: String!, $content: String, $cuando: ISO8601DateTime!) {
-          create_timeline_item(item_id: $item, custom_activity_id: $actividad, title: $titulo, content: $content, timestamp: $cuando) { id }
-        }`,
-        {
-          item: contactoId,
-          actividad: ACTIVIDAD_CONFIRMACION_PRESUPUESTO,
-          titulo,
-          content: contenido,
-          cuando: cuando.toISOString().replace(/\.\d{3}Z$/, 'Z'),
-        },
-        { escritura: true },
-      ).catch((e) => console.warn('[confirmar] no se pudo registrar la actividad de la confirmación', e))
-    }
+  /* La bolsa: el total y "Ganado" (y lo que se haya corregido al ganar). */
+  const v: Record<string, unknown> = { [COL_BOLSA.total]: String(total), [COL_BOLSA.estado]: { index: INDICE.ganado } }
+  if (ubicacion !== undefined && direccion !== p.ubicacionObra) v[COL_BOLSA.ubicacionObra] = direccion
+  if (coord) v[COL_BOLSA.coordinadorObra] = textoCoordinador(coord)
+  await escribir(BOARD_PRESUPUESTOS, p.bolsaId, v)
 
-    /* 3. La obra. */
+  /* La obra y la cuenta corriente: no las espera quien gana. */
+  const obraYCuenta = async (): Promise<void> => {
     if (p.obraPrevia) {
       await escribir(BOARD_PRESUPUESTOS, p.bolsaId, { [COL_BOLSA.creacionObra]: { index: INDICE.errorCreacion } })
       await update(p.bolsaId, textoObraPrevia(p))
       return
     }
     const cliente = p.clienteId ? await leerCliente(consulta, p.clienteId) : { cuentaId: '', celular: '', ubicacion: null }
-    const basicos = datosObra(p, cliente.cuentaId)
+    const basicos = datosObra(p, total, cliente.cuentaId)
     if (basicos.some((d) => !d.ok)) {
       await escribir(BOARD_PRESUPUESTOS, p.bolsaId, { [COL_BOLSA.creacionObra]: { index: INDICE.errorCreacion } })
       await update(p.bolsaId, textoErrorObra(basicos))
       return
     }
+    const pdfs = await Promise.all(p.pdfs.map((id) => archivos.bajar(id)))
 
-    const v: Record<string, unknown> = {
+    const o: Record<string, unknown> = {
       [COL_OBRA.ctaCte]: { item_ids: [Number(cliente.cuentaId)] },
       [COL_OBRA.arquitecto]: { item_ids: [Number(p.arquitectoId || SIN_ARQUITECTO_ID)] },
       [COL_OBRA.etapaVenta]: { index: INDICE.obraGanada },
       [COL_OBRA.etapaProduccion]: { label: 'A Medir' },
-      [COL_OBRA.total]: String(p.total),
+      [COL_OBRA.total]: String(total),
       [COL_OBRA.aceptacion]: { date: hoyAr(cuando) },
       [COL_OBRA.presupuestos]: { item_ids: [Number(p.bolsaId)] },
       [COL_OBRA.tipo]: { label: tipoObraDe(p.tipo) },
     }
     /* Quién coordina, y su celular: el del arquitecto si lo eligieron a él (y es uno de verdad). */
-    const coordinaArquitecto = coordinador === 'Arquitecto' && !!p.arquitectoId && p.arquitectoId !== SIN_ARQUITECTO_ID
-    if (coordinador) v[COL_OBRA.coordinarEntrega] = { label: coordinador }
+    const coordinaArquitecto = rol === 'Arquitecto' && !!p.arquitectoId && p.arquitectoId !== SIN_ARQUITECTO_ID
+    if (rol) o[COL_OBRA.coordinarEntrega] = { label: rol }
     const celular = coordinaArquitecto ? await celularDe(consulta, p.arquitectoId).catch(() => '') : cliente.celular
-    if (celular) v[COL_OBRA.celCoordinar] = { phone: celular, countryShortName: 'AR' }
-    /* La dirección que escribió quien confirmó, en el mapa. Sin dirección (un enlace viejo), la del cliente. */
-    const direccion = ubicacion.trim()
+    if (celular) o[COL_OBRA.celCoordinar] = { phone: celular, countryShortName: 'AR' }
+    /* La dirección de la obra, en el mapa. Sin dirección, la del cliente. */
     const punto = direccion
       ? await geocodificar(direccion, cliente.ubicacion).catch((e) => {
           console.warn('[confirmar] no se pudo ubicar la dirección de la obra', e)
           return null
         })
       : null
-    if (p.creadoPor.length) v[COL_OBRA.asignado] = { personsAndTeams: p.creadoPor }
-    if (punto) v[COL_OBRA.ubicacion] = { ...punto, address: direccion }
-    else if (!direccion && cliente.ubicacion) v[COL_OBRA.ubicacion] = cliente.ubicacion
+    if (p.creadoPor.length) o[COL_OBRA.asignado] = { personsAndTeams: p.creadoPor }
+    if (punto) o[COL_OBRA.ubicacion] = { ...punto, address: direccion }
+    else if (!direccion && cliente.ubicacion) o[COL_OBRA.ubicacion] = cliente.ubicacion
 
     let obraId: string
     try {
@@ -603,7 +699,7 @@ export async function completarConfirmacion(
         `mutation ($nombre: String!, $valores: JSON!) {
           create_item(board_id: ${BOARD_OBRAS}, group_id: "${GRUPO_OBRAS}", item_name: $nombre, column_values: $valores, create_labels_if_missing: false) { id }
         }`,
-        { nombre: p.bolsaNombre, valores: JSON.stringify(v) },
+        { nombre: p.bolsaNombre, valores: JSON.stringify(o) },
         { escritura: true },
       )
       obraId = String(d.create_item.id)
@@ -620,7 +716,7 @@ export async function completarConfirmacion(
     }
 
     /* Cada cosa por su lado: que falle una no frena las otras. El vínculo bolsa → obra NO se escribe: la
-       relación es de dos vías y de un solo ítem; la obra ya lo dejó al nacer (✋🤖Presupuestos), y
+       relación es de dos vías y de un solo ítem; la obra ya lo dejó al nacer (🤖Presupuestos), y
        volver a escribirlo desde la bolsa Monday lo rechaza (ColumnValueException) y se perdía "Creado". */
     await intentar('marcar la obra como creada', () =>
       escribir(BOARD_PRESUPUESTOS, p.bolsaId, { [COL_BOLSA.creacionObra]: { index: INDICE.creado } }),
@@ -628,7 +724,7 @@ export async function completarConfirmacion(
     for (const pdf of pdfs) await intentar('subir el PDF a la obra', () => archivos.subir(obraId, COL_OBRA.presupuestoAceptado, pdf))
     if (direccion && !punto) await intentar('avisar la ubicación sin cargar', () => update(obraId, textoSinUbicacion(direccion)))
 
-    /* 4. El registro en la cuenta corriente. Sin reintento: si Monday falla a mitad, repetirlo podría
+    /* El registro en la cuenta corriente. Sin reintento: si Monday falla a mitad, repetirlo podría
        duplicar el movimiento; queda un update en la obra para revisarlo. */
     try {
       const obra = await leerObra(consulta, obraId)
@@ -647,7 +743,7 @@ export async function completarConfirmacion(
           mov: JSON.stringify({
             [COL_MOV.movimiento]: { label: 'Venta-Sin Fact' },
             [COL_MOV.saldoInicial]: String(saldoInicialNuevo(await movimientosDe(consulta, cliente.cuentaId))),
-            [COL_MOV.ventas]: String(p.total),
+            [COL_MOV.ventas]: String(total),
             [COL_MOV.estado]: { label: 'Boton' },
             /* De dos vías: la obra queda vinculada a su movimiento sin otra escritura. */
             [COL_MOV.obras]: { item_ids: [Number(obraId)] },
@@ -669,6 +765,6 @@ export async function completarConfirmacion(
     }
   }
 
-  if (enSegundoPlano) enSegundoPlano(despues().catch((e) => console.warn('[confirmar] falló lo que sigue a la confirmación', e)))
-  else await despues()
+  if (enSegundoPlano) enSegundoPlano(obraYCuenta().catch((e) => console.warn('[confirmar] falló la obra o la cuenta corriente', e)))
+  else await obraYCuenta()
 }

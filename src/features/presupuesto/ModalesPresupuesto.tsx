@@ -2,7 +2,16 @@ import { useId, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { sinCodigo } from '@/lib/destinatario'
-import { accionesPresupuesto, esSinArquitecto, formatoImporte, situacionDe, yaEnviado, type SituacionPresupuesto } from '@/lib/presupuesto'
+import {
+  ETIQUETA_PEND_CERRAR,
+  accionesPresupuesto,
+  esSinArquitecto,
+  formatoImporte,
+  importeDe,
+  situacionDe,
+  yaEnviado,
+  type SituacionPresupuesto,
+} from '@/lib/presupuesto'
 import type { PresupuestoEnviado, PresupuestoGestion } from '@/services/monday'
 import { Etiquetas, verPdfMonday } from './TablaPresupuestos'
 
@@ -16,15 +25,17 @@ export interface FilaGestion {
 export const fechaCorta = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
 
 /** Cómo se ve la respuesta de un presupuesto: el texto y el color de su pastilla. */
-export function rotuloSituacion(s: SituacionPresupuesto, enviado: boolean): { texto: string; color: string } {
+export function rotuloSituacion(s: SituacionPresupuesto, enviado: boolean, pendCerrar = false): { texto: string; color: string } {
+  /* Confirmado por WhatsApp, falta el total pactado (regla del usuario, 15/10/2026). */
+  if (s === 'confirmado' && pendCerrar) return { texto: 'Confirmado · Pend. de cerrar', color: '#9d50dd' }
   if (s === 'confirmado') return { texto: 'Confirmado', color: '#00c875' }
   if (s === 'rechazado') return { texto: 'Rechazado', color: '#df2f4a' }
   if (s === 'error') return { texto: 'Error de Confirmación', color: '#fdab3d' }
   return enviado ? { texto: 'Pend. de confirmar', color: '#579bfc' } : { texto: 'Sin enviar', color: '#c4c4c4' }
 }
 
-export function SituacionChip({ p }: { p: PresupuestoEnviado }) {
-  const r = rotuloSituacion(situacionDe(p.confirmacion), yaEnviado(p.estadoEnvio))
+export function SituacionChip({ p, estadoBolsa = '' }: { p: PresupuestoEnviado; estadoBolsa?: string }) {
+  const r = rotuloSituacion(situacionDe(p.confirmacion), yaEnviado(p.estadoEnvio), estadoBolsa.trim() === ETIQUETA_PEND_CERRAR)
   return (
     <span className="op-estado op-estado--sm" style={{ ['--op-c' as string]: r.color }}>
       {r.texto}
@@ -64,11 +75,137 @@ export function coordinadoresDe(b: PresupuestoGestion): { nombre: string; rol: '
   return lista
 }
 
+/** El coordinador que dejó la confirmación ("Nombre (Cliente)") → el nombre, si sigue en la lista. */
+function coordinadorPrevio(texto: string, opciones: { nombre: string }[]): string {
+  const nombre = texto.replace(/\s*\((Cliente|Arquitecto)\)\s*$/, '').trim()
+  return opciones.find((o) => o.nombre === nombre)?.nombre ?? (opciones.length === 1 ? opciones[0].nombre : '')
+}
+
+/** El Total Pactado: obligatorio al confirmar desde la app y al ganar (regla del usuario, 15/10/2026). */
+function CampoTotal({ id, valor, falta, onCambiar }: { id: string; valor: string; falta: boolean; onCambiar: (v: string) => void }) {
+  return (
+    <div className="med-campo">
+      <label className="campo-l" htmlFor={id}>
+        Total pactado *
+      </label>
+      <div className={`med-conic ${falta ? 'pres-falta' : ''}`}>
+        <i className="fas fa-dollar-sign" aria-hidden="true" />
+        <input
+          id={id}
+          className="med-input"
+          type="text"
+          inputMode="decimal"
+          placeholder="Ej.: 1.297.684"
+          value={valor}
+          onChange={(e) => onCambiar(e.target.value)}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Dirección, coordinador y total: lo que piden Confirmar y Ganar, con lo que falta marcado. */
+function useCierre(f: FilaGestion, previo: boolean) {
+  const opciones = coordinadoresDe(f.bolsa)
+  const [ubicacion, setUbicacion] = useState(previo ? f.bolsa.ubicacionObra : '')
+  const [coordinador, setCoordinador] = useState(
+    previo ? coordinadorPrevio(f.bolsa.coordinadorObra, opciones) : opciones.length === 1 ? opciones[0].nombre : '',
+  )
+  const [total, setTotal] = useState('')
+  const [faltan, setFaltan] = useState<string[]>([])
+  const validar = (): { ubicacion: string; coordinador: string; total: number } | null => {
+    const importe = importeDe(total)
+    const falta = [
+      ...(!ubicacion.trim() ? ['Ingresá la dirección de la obra (calle y número).'] : []),
+      ...(!coordinador ? ['Elegí quién coordina la obra.'] : []),
+      ...(importe === null || importe <= 0 ? ['Ingresá el total pactado (un importe mayor a cero).'] : []),
+    ]
+    setFaltan(falta)
+    return falta.length || importe === null ? null : { ubicacion: ubicacion.trim(), coordinador, total: importe }
+  }
+  const limpiar = () => setFaltan([])
+  return { opciones, ubicacion, setUbicacion, coordinador, setCoordinador, total, setTotal, faltan, limpiar, validar }
+}
+
+/** Los campos de dirección, coordinador y total, en bordó (`carga-grid`), como en la carga del presupuesto. */
+function CamposCierre({ f, c }: { f: FilaGestion; c: ReturnType<typeof useCierre> }) {
+  const uid = useId()
+  return (
+    <>
+      <div className="carga-grid pres-modal-campos">
+        <div className="pres-datos-fijos">
+          <Dato l="Tipo de carpintería" v={f.p.tipo} />
+          <Dato l="Color" v={f.p.color} />
+          <Dato l="Cliente" v={f.bolsa.cliente?.nombre ?? ''} />
+        </div>
+
+        <div className="med-campo">
+          <label className="campo-l" htmlFor={`${uid}-ubic`}>
+            Dirección de la obra *
+          </label>
+          <div className={`med-conic ${c.faltan.some((x) => x.includes('dirección')) ? 'pres-falta' : ''}`}>
+            <i className="fas fa-location-dot" aria-hidden="true" />
+            <input
+              id={`${uid}-ubic`}
+              className="med-input"
+              type="text"
+              maxLength={300}
+              placeholder="Calle y número, p. ej. Pujol 1147"
+              value={c.ubicacion}
+              onChange={(e) => {
+                c.setUbicacion(e.target.value)
+                c.limpiar()
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="med-campo">
+          <label className="campo-l" htmlFor={`${uid}-coord`}>
+            Coordinador de la obra *
+          </label>
+          <SelectBuscable
+            id={`${uid}-coord`}
+            valor={c.coordinador}
+            opciones={c.opciones.map((o) => ({ valor: o.nombre, texto: `${o.nombre} · ${o.rol}` }))}
+            placeholder={c.opciones.length ? 'Elegí quién coordina la obra' : 'El presupuesto no tiene cliente ni constructor'}
+            falta={c.faltan.some((x) => x.includes('coordina'))}
+            onElegir={(v) => {
+              c.setCoordinador(v)
+              c.limpiar()
+            }}
+          />
+        </div>
+
+        <CampoTotal
+          id={`${uid}-total`}
+          valor={c.total}
+          falta={c.faltan.some((x) => x.includes('total'))}
+          onCambiar={(v) => {
+            c.setTotal(v)
+            c.limpiar()
+          }}
+        />
+      </div>
+
+      {c.faltan.length > 0 && (
+        <ul className="modal-faltantes">
+          {c.faltan.map((x) => (
+            <li key={x}>
+              <i className="fas fa-circle-xmark" /> {x}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
 /**
- * Confirmar un presupuesto desde la app (regla del usuario, 13/10/2026): pide lo mismo que el
- * formulario del enlace —la dirección de la obra y quién la coordina— y hace lo mismo que la
- * confirmación del cliente: el presupuesto Confirmado, sus datos en la bolsa, la constancia, la obra y
- * su registro en la cuenta corriente.
+ * Confirmar un presupuesto desde la app (reglas del usuario, 13/10 y 15/10/2026): pide lo mismo que el
+ * formulario del enlace —la dirección de la obra y quién la coordina— y además el total pactado, y en
+ * un solo paso lo confirma y lo gana: el presupuesto Confirmado, sus datos en la bolsa, la constancia,
+ * la bolsa Ganada, la obra y su registro en la cuenta corriente.
  */
 export function ModalConfirmarPresupuesto({
   fila: f,
@@ -77,21 +214,12 @@ export function ModalConfirmarPresupuesto({
 }: {
   fila: FilaGestion
   onClose: () => void
-  onConfirmar: (ubicacion: string, coordinador: string) => void
+  onConfirmar: (datos: { ubicacion: string; coordinador: string; total: number }) => void
 }) {
-  const uid = useId()
-  const opciones = coordinadoresDe(f.bolsa)
-  const [ubicacion, setUbicacion] = useState('')
-  const [coordinador, setCoordinador] = useState(opciones.length === 1 ? opciones[0].nombre : '')
-  const [faltan, setFaltan] = useState<string[]>([])
-
+  const c = useCierre(f, false)
   const confirmar = () => {
-    const falta = [
-      ...(!ubicacion.trim() ? ['Ingresá la dirección de la obra (calle y número).'] : []),
-      ...(!coordinador ? ['Elegí quién coordina la obra.'] : []),
-    ]
-    setFaltan(falta)
-    if (!falta.length) onConfirmar(ubicacion.trim(), coordinador)
+    const datos = c.validar()
+    if (datos) onConfirmar(datos)
   }
 
   return (
@@ -112,65 +240,11 @@ export function ModalConfirmarPresupuesto({
       }
     >
       <Clave f={f} />
-      <p className="modal-nota">Dicho presupuesto se confirmará y se registrará como Obra.</p>
-
-      {/* `carga-grid`: los campos en bordó, como en la carga del presupuesto. */}
-      <div className="carga-grid pres-modal-campos">
-        <div className="pres-datos-fijos">
-          <Dato l="Tipo de carpintería" v={f.p.tipo} />
-          <Dato l="Color" v={f.p.color} />
-          <Dato l="Total pactado" v={f.p.total !== null ? formatoImporte(f.p.total) : ''} />
-          <Dato l="Cliente" v={f.bolsa.cliente?.nombre ?? ''} />
-        </div>
-
-        <div className="med-campo">
-          <label className="campo-l" htmlFor={`${uid}-ubic`}>
-            Dirección de la obra *
-          </label>
-          <div className={`med-conic ${faltan.some((x) => x.includes('dirección')) ? 'pres-falta' : ''}`}>
-            <i className="fas fa-location-dot" aria-hidden="true" />
-            <input
-              id={`${uid}-ubic`}
-              className="med-input"
-              type="text"
-              maxLength={300}
-              placeholder="Calle y número, p. ej. Pujol 1147"
-              value={ubicacion}
-              onChange={(e) => {
-                setUbicacion(e.target.value)
-                setFaltan([])
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="med-campo">
-          <label className="campo-l" htmlFor={`${uid}-coord`}>
-            Coordinador de la obra *
-          </label>
-          <SelectBuscable
-            id={`${uid}-coord`}
-            valor={coordinador}
-            opciones={opciones.map((o) => ({ valor: o.nombre, texto: `${o.nombre} · ${o.rol}` }))}
-            placeholder={opciones.length ? 'Elegí quién coordina la obra' : 'El presupuesto no tiene cliente ni constructor'}
-            falta={faltan.some((x) => x.includes('coordina'))}
-            onElegir={(v) => {
-              setCoordinador(v)
-              setFaltan([])
-            }}
-          />
-        </div>
-      </div>
-
-      {faltan.length > 0 && (
-        <ul className="modal-faltantes">
-          {faltan.map((x) => (
-            <li key={x}>
-              <i className="fas fa-circle-xmark" /> {x}
-            </li>
-          ))}
-        </ul>
-      )}
+      <p className="modal-nota">
+        Dicho presupuesto se confirmará, quedará <strong>Ganado</strong> y se registrará como Obra, con su movimiento en la
+        cuenta corriente del cliente.
+      </p>
+      <CamposCierre f={f} c={c} />
     </Modal>
   )
 }
@@ -228,7 +302,54 @@ export function ModalPerderPresupuesto({
   )
 }
 
-export type AccionFila = 'enviar' | 'reenviar' | 'confirmar' | 'perder'
+/**
+ * Ganar un presupuesto que el cliente confirmó por WhatsApp (regla del usuario, 15/10/2026): la bolsa
+ * está "Confirmado - Pend de Cerrar" y falta el total pactado. La dirección y el coordinador vienen de
+ * la confirmación y se pueden corregir. Queda Ganado y se crean la obra y su movimiento en la cuenta
+ * corriente.
+ */
+export function ModalGanarPresupuesto({
+  fila: f,
+  onClose,
+  onGanar,
+}: {
+  fila: FilaGestion
+  onClose: () => void
+  onGanar: (datos: { ubicacion: string; coordinador: string; total: number }) => void
+}) {
+  const c = useCierre(f, true)
+  const ganar = () => {
+    const datos = c.validar()
+    if (datos) onGanar(datos)
+  }
+  return (
+    <Modal
+      title="¿Desea ganar el siguiente presupuesto?"
+      icon={<i className="fas fa-trophy ag-icono-verde" />}
+      onClose={onClose}
+      className="ag-modal pres-modal"
+      actions={
+        <>
+          <button type="button" className="btn btn-out" onClick={onClose}>
+            Volver
+          </button>
+          <button type="button" className="btn ag-btn-verde" onClick={ganar}>
+            <i className="fas fa-trophy" /> Sí, ganar presupuesto
+          </button>
+        </>
+      }
+    >
+      <Clave f={f} />
+      <p className="modal-nota">
+        El cliente ya lo confirmó. Con el total pactado queda <strong>Ganado</strong> y se registra como Obra, con su
+        movimiento en la cuenta corriente del cliente.
+      </p>
+      <CamposCierre f={f} c={c} />
+    </Modal>
+  )
+}
+
+export type AccionFila = 'enviar' | 'reenviar' | 'confirmar' | 'perder' | 'ganar'
 
 /** El recordatorio de los 5 días, dicho para el usuario. */
 function textoRecordatorio(estado: string): { texto: string; ok: boolean | null } {
@@ -271,12 +392,24 @@ export function FichaPresupuesto({
       <dl className="ag-resumen">
         <dt>Estado</dt>
         <dd>
-          <SituacionChip p={p} />
+          <SituacionChip p={p} estadoBolsa={bolsa.estado} />
         </dd>
         <dt>Carpintería</dt>
         <dd>{p.tipo || p.color ? <Etiquetas tipo={p.tipo} color={p.color} /> : <span className="ant-sd">Sin especificar</span>}</dd>
-        <dt>Total pactado</dt>
-        <dd>{p.total !== null ? formatoImporte(p.total) : <span className="ant-sd">Sin total</span>}</dd>
+        {bolsa.total !== null && (
+          <>
+            <dt>Total pactado</dt>
+            <dd>{formatoImporte(bolsa.total)}</dd>
+          </>
+        )}
+        {s === 'confirmado' && (
+          <>
+            <dt>Dirección de la obra</dt>
+            <dd>{bolsa.ubicacionObra || <span className="ant-sd">Sin dirección</span>}</dd>
+            <dt>Coordinador</dt>
+            <dd>{bolsa.coordinadorObra || <span className="ant-sd">Sin coordinador</span>}</dd>
+          </>
+        )}
         <dt>Cliente</dt>
         <dd>{bolsa.cliente?.nombre || <span className="ant-sd">Sin cliente</span>}</dd>
         <dt>Constructor/Arquitecto</dt>
@@ -315,7 +448,7 @@ export function FichaPresupuesto({
         </dd>
       </dl>
       <div className="ag-ficha-acciones">
-        {!envio && !acciones.confirmar && !acciones.perder ? (
+        {!envio && !acciones.confirmar && !acciones.perder && !acciones.ganar ? (
           <span className="ant-sd">Este presupuesto ya no admite acciones.</span>
         ) : (
           <>
@@ -327,6 +460,11 @@ export function FichaPresupuesto({
             {acciones.confirmar && (
               <button type="button" className="ag-acc ag-acc--ok" onClick={() => onAccion('confirmar')}>
                 <i className="fas fa-circle-check" /> Confirmar
+              </button>
+            )}
+            {acciones.ganar && (
+              <button type="button" className="ag-acc ag-acc--ok" onClick={() => onAccion('ganar')}>
+                <i className="fas fa-trophy" /> Ganar
               </button>
             )}
             {acciones.perder && (

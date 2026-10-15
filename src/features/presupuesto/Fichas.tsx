@@ -357,25 +357,3 @@ export function ContactosFichas({
     </div>
   )
 }
-
-/**
- * Cargar otro presupuesto sobre uno ya existente: UNA sola card, la del cliente (en este modo sólo se
- * busca cliente, regla del usuario, 13/10/2026).
- */
-export function ContactoUnicoFicha({
-  cliente,
-  leyendo = false,
-  onQuitar,
-  onGuardado,
-}: {
-  cliente: Contacto | null
-  leyendo?: boolean
-  onQuitar: () => void
-  onGuardado?: (c: Contacto) => void
-}) {
-  return (
-    <div className="pres-fichas pres-fichas--unica">
-      <ContactoFicha tipo="Cliente" contacto={leyendo ? null : cliente} cargando={leyendo} onQuitar={onQuitar} onGuardado={onGuardado} />
-    </div>
-  )
-}

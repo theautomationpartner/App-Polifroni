@@ -73,6 +73,14 @@ const formulario = (doc: Documento, accion: string) =>
  */
 function paginaSinRespuesta(doc: Documento): string {
   const op = doc.documento === 'op'
+  /* Gana un solo presupuesto por bolsa: si ya se confirmó otro, éste ya no se responde. */
+  if (doc.situacion === 'pendiente' && doc.otroConfirmado) {
+    return paginaAviso(
+      'Ya confirmaste otro presupuesto',
+      'Quedó confirmado otro de los presupuestos que te enviamos, así que éste ya no hace falta confirmarlo. Si querés cambiarlo, respondé al mensaje de WhatsApp y te ayudamos.',
+      '📝',
+    )
+  }
   switch (doc.situacion) {
     case 'confirmada':
       return paginaRespuesta(doc.documento, doc.nombre, 'confirmada', '')
@@ -131,7 +139,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
        si alguien ya la confirmó desde la app (o la respondió el otro destinatario), al cliente se le
        muestra el agradecimiento de ya confirmada, nunca el formulario. */
     if (req.method !== 'POST') {
-      return html(res, 200, tarjeta, doc.situacion === 'pendiente' ? formulario(doc, accion) : paginaSinRespuesta(doc))
+      return html(res, 200, tarjeta, doc.situacion === 'pendiente' && !doc.otroConfirmado ? formulario(doc, accion) : paginaSinRespuesta(doc))
     }
 
     let campos: Record<string, string>
@@ -140,7 +148,7 @@ export async function manejarConfirmar(req: Pedido, res: ServerResponse): Promis
     } catch {
       return html(res, 400, tarjeta, paginaAviso('No pudimos leer tu respuesta', 'Volvé a abrir el enlace desde el mensaje de WhatsApp e intentá de nuevo.'))
     }
-    if (doc.situacion !== 'pendiente') return html(res, 409, tarjeta, paginaSinRespuesta(doc))
+    if (doc.situacion !== 'pendiente' || doc.otroConfirmado) return html(res, 409, tarjeta, paginaSinRespuesta(doc))
     const leida = leerRespuesta(enlace.documento, campos, doc.coordinadores)
     /* Los formularios ya exigen cada campo antes de enviar: si igual falta algo, se vuelve a mostrar. */
     if (!leida.ok) return html(res, 422, tarjeta, formulario(doc, accion))

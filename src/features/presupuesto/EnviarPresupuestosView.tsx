@@ -31,7 +31,7 @@ const TEXTOS_FINALIZAR: TextosFinalizar = {
 export function EnviarPresupuestosView() {
   const dispatch = useDispatch()
   const { presupuesto, enviado, usuario } = useApp()
-  const { modo, bolsa, cliente, arquitecto, presupuestos } = presupuesto
+  const { cliente, arquitecto, presupuestos } = presupuesto
   const [aConfirmar, setAConfirmar] = useState<string[]>([])
   const para = [cliente?.nombre, arquitecto?.nombre].filter(Boolean).join(' y ')
 
@@ -39,14 +39,14 @@ export function EnviarPresupuestosView() {
     <section className="view paso-layout obras-v2 presupuesto-v2">
       <PasoHeader />
       <PasoTitulo
-        titulo={etiquetaPaso('envio', null, null, 'presupuestos', modo)}
+        titulo={etiquetaPaso('envio', null, null, 'presupuestos')}
         descripcion="Seleccioná a quiénes se envían los presupuestos cargados en la etapa anterior y, si lo deseás, quién tiene que confirmarlos."
       />
 
       <div className="emision-grid emision-grid--mitades pres-etapa">
-        {/* Primero el envío (pedido del usuario); a su derecha, lo que sale. Con otra bolsa u otros
-            contactos, el envío arranca de cero (`key`). */}
-        <EnviarPresupuesto key={`${bolsa?.id ?? ''}-${cliente?.id ?? ''}-${arquitecto?.id ?? ''}`} onAConfirmar={setAConfirmar} />
+        {/* Primero el envío (pedido del usuario); a su derecha, lo que sale. Con otros contactos, el
+            envío arranca de cero (`key`). */}
+        <EnviarPresupuesto key={`${cliente?.id ?? ''}-${arquitecto?.id ?? ''}`} onAConfirmar={setAConfirmar} />
         <TablaPresupuestos presupuestos={presupuestos} aConfirmar={enviado ? (presupuesto.envio?.aConfirmar ?? []) : aConfirmar} />
       </div>
 

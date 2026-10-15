@@ -6,17 +6,8 @@
  * mandan se juntan en una misma "bolsa" (el ítem del tablero), uno por subelemento.
  */
 import { ROLES, sinCodigo, type DatosContacto, type Rol } from '@/lib/destinatario'
-import type { BolsaPresupuesto, PresupuestoEnviado } from '@/services/monday/presupuestos'
 
 export { nuevaClave } from '@/lib/claveConfirmacion'
-
-/** Qué se hace en "Crear y Cargar Presupuestos": una bolsa nueva, u otro presupuesto en una existente. */
-export type ModoPresupuesto = 'crear' | 'cargar'
-
-export const MODOS_PRESUPUESTO: readonly { id: ModoPresupuesto; titulo: string }[] = [
-  { id: 'crear', titulo: 'Crear nuevo presupuesto' },
-  { id: 'cargar', titulo: 'Cargar otro presupuesto sobre uno ya existente' },
-]
 
 /** Lo mínimo de un contacto para mandarle el presupuesto. */
 export interface ContactoEnvio {
@@ -163,15 +154,11 @@ export function fechaLocal(d: Date): string {
 
 export const ETIQUETA_GANADO = 'Ganado'
 export const ETIQUETA_PERDIDO = 'Perdido'
+/** La bolsa que el cliente confirmó por WhatsApp y espera el total pactado (regla del usuario, 15/10/2026). */
+export const ETIQUETA_PEND_CERRAR = 'Confirmado - Pend de Cerrar'
 const ETIQUETA_VENCIDO = 'Presupuesto vencido'
 
-/**
- * Los índices de `🤖Estado Presupuesto` de las bolsas que YA NO se gestionan: Ganado (0) y Perdido
- * (2). La consulta lista los presupuestos de todas las demás (regla del usuario, 13/10/2026).
- */
-export const INDICES_CERRADOS: number[] = [0, 2]
-
-/** ¿La bolsa en este estado se gestiona? Todas menos las Ganadas y las Perdidas. */
+/** ¿La bolsa en este estado se gestiona (sus presupuestos y "+Nuevo")? Todas menos las Ganadas y las Perdidas. */
 export const gestionable = (etiqueta: string): boolean => ![ETIQUETA_GANADO, ETIQUETA_PERDIDO].includes(etiqueta.trim())
 
 /**
@@ -195,60 +182,51 @@ export function situacionDe(confirmacion: string): SituacionPresupuesto {
 export const yaEnviado = (estadoEnvio: string): boolean => estadoEnvio.trim() === 'Enviado'
 
 /**
- * Qué se puede hacer con un presupuesto (regla del usuario, 13/10/2026). Sólo con uno que todavía no
- * tiene respuesta:
- *  - Enviar (si nunca salió) o Reenviar (si ya salió). Hace falta el PDF.
- *  - Confirmar: hace falta el PDF y que la bolsa no esté vencida.
- *  - Perdido (rechazarlo).
+ * Qué se puede hacer con un presupuesto (reglas del usuario, 13/10 y 15/10/2026):
+ *  - Ganar: el que el cliente confirmó por WhatsApp, con la bolsa "Confirmado - Pend de Cerrar" (falta
+ *    el total pactado).
+ *  - Con uno que todavía no tiene respuesta: Enviar (si nunca salió) o Reenviar (si ya salió), con el
+ *    PDF; Confirmar, con el PDF y si la bolsa no está vencida ni ya tiene uno confirmado; Perdido.
  */
 export function accionesPresupuesto(
   estadoBolsa: string,
   p: { estadoEnvio: string; confirmacion: string; pdf: unknown },
-): { envio: 'enviar' | 'reenviar' | null; confirmar: boolean; perder: boolean } {
+): { envio: 'enviar' | 'reenviar' | null; confirmar: boolean; perder: boolean; ganar: boolean } {
+  const nada = { envio: null, confirmar: false, perder: false, ganar: false }
+  const pendCerrar = estadoBolsa.trim() === ETIQUETA_PEND_CERRAR
+  const s = situacionDe(p.confirmacion)
+  if (s === 'confirmado') return { ...nada, ganar: pendCerrar }
   /* Sin respuesta y en una bolsa que se sigue gestionando (no recién Ganada o Perdida). */
-  if (situacionDe(p.confirmacion) !== 'pendiente' || !gestionable(estadoBolsa)) return { envio: null, confirmar: false, perder: false }
+  if (s !== 'pendiente' || !gestionable(estadoBolsa)) return nada
   return {
     envio: p.pdf ? (yaEnviado(p.estadoEnvio) ? 'reenviar' : 'enviar') : null,
-    confirmar: !!p.pdf && ganable(estadoBolsa),
+    confirmar: !!p.pdf && ganable(estadoBolsa) && !pendCerrar,
     perder: true,
+    ganar: false,
   }
 }
 
-export type FiltroGestion = 'todos' | 'paraEnviar' | 'enviados' | 'rechazados'
+/**
+ * Las pestañas de la consulta, por el estado de la BOLSA (regla del usuario, 15/10/2026: se listan
+ * todas las bolsas). "En gestión": las que no están Ganadas ni Perdidas.
+ */
+export type FiltroBolsa = 'todos' | 'enGestion' | 'paraCerrar' | 'ganados' | 'perdidos'
 
-export const FILTROS_GESTION: readonly { id: FiltroGestion; titulo: string }[] = [
+export const FILTROS_BOLSA: readonly { id: FiltroBolsa; titulo: string }[] = [
   { id: 'todos', titulo: 'Todos' },
-  { id: 'paraEnviar', titulo: 'Para enviar' },
-  { id: 'enviados', titulo: 'Pend. de confirmar' },
-  { id: 'rechazados', titulo: 'Rechazados' },
+  { id: 'enGestion', titulo: 'En gestión' },
+  { id: 'paraCerrar', titulo: 'Pend. de cerrar' },
+  { id: 'ganados', titulo: 'Ganados' },
+  { id: 'perdidos', titulo: 'Perdidos' },
 ]
 
-export function pasaFiltro(filtro: FiltroGestion, p: { estadoEnvio: string; confirmacion: string }): boolean {
-  const s = situacionDe(p.confirmacion)
-  if (filtro === 'todos') return true
-  if (filtro === 'rechazados') return s === 'rechazado'
-  if (filtro === 'paraEnviar') return s === 'pendiente' && !yaEnviado(p.estadoEnvio)
-  return s === 'pendiente' && yaEnviado(p.estadoEnvio)
-}
-
-/** Las bolsas que ya no reciben presupuestos: "cargar otro" no las lista (regla del usuario, 13/10/2026). */
-const BOLSA_CERRADA = [ETIQUETA_GANADO, ETIQUETA_PERDIDO]
-
-/**
- * Cargar otro presupuesto: de las bolsas del cliente, las que no están Ganadas ni Perdidas. Los
- * presupuestos ya enviados de TODAS ellas se listan (por fecha de envío); los nuevos van a la más
- * reciente (el id de Monday crece con el tiempo). `null` si no queda ninguna.
- */
-export function bolsaParaCargar(
-  bolsas: (BolsaPresupuesto & { estado: string })[],
-): { bolsa: BolsaPresupuesto; enviados: PresupuestoEnviado[] } | null {
-  const abiertas = bolsas.filter((b) => !BOLSA_CERRADA.includes(b.estado.trim()))
-  if (!abiertas.length) return null
-  const bolsa = abiertas.reduce((m, b) => (Number(b.id) > Number(m.id) ? b : m))
-  const enviados = abiertas
-    .flatMap((b) => b.presupuestos)
-    .sort((a, b) => a.fechaEnvio.localeCompare(b.fechaEnvio) || Number(a.id) - Number(b.id))
-  return { bolsa, enviados }
+export function pasaFiltroBolsa(filtro: FiltroBolsa, estado: string): boolean {
+  const e = estado.trim()
+  if (filtro === 'enGestion') return gestionable(e)
+  if (filtro === 'paraCerrar') return e === ETIQUETA_PEND_CERRAR
+  if (filtro === 'ganados') return e === ETIQUETA_GANADO
+  if (filtro === 'perdidos') return e === ETIQUETA_PERDIDO
+  return true
 }
 
 /** `✋Tipo` de la obra (Aluminio | PVC) según el tipo de carpintería del presupuesto. */
