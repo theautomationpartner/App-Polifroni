@@ -2,15 +2,17 @@
  * Consultar y Gestionar Presupuestos: la lectura de las bolsas y sus presupuestos, y lo que escribe la
  * app desde ahí (reglas del usuario, 13/10 y 15/10/2026).
  *
- *  - Se listan TODAS las bolsas (el ítem), sin sus presupuestos. Los presupuestos (subelementos) de una
+ *  - Se listan las bolsas (el ítem) menos las Perdidas y las vencidas, sin sus presupuestos. Los presupuestos (subelementos) de una
  *    bolsa se leen de Monday al abrirla.
  *  - Enviar / Reenviar: el subelemento queda "Enviado" con la fecha del envío (y la clave del enlace, si
  *    alguien lo tiene que confirmar). La bolsa, a quién se mandó y —en el primer envío— "Presupuesto
  *    Enviado".
- *  - Confirmar / Perdido: los hace el SERVIDOR (`/api/presupuesto-respuesta`), exactamente igual que la
+ *  - Perdido (de la bolsa): la app deja la bolsa en "Perdido" y sale de la lista.
+ *  - Confirmar / Ganar: los hace el SERVIDOR (`/api/presupuesto-respuesta`), exactamente igual que la
  *    respuesta del cliente por el enlace de WhatsApp: el subelemento Confirmado (y los datos a la bolsa,
  *    la obra y la cuenta corriente) o Rechazado con el motivo.
  */
+import { ETIQUETA_PERDIDO, seLista } from '@/lib/presupuesto'
 import type { CV } from './parse'
 import { byId, valor } from './parse'
 import { cabecerasPropias, mondayApi } from './sdk'
@@ -102,7 +104,7 @@ function coloresDe(settings: string): Record<string, string> {
 }
 
 /**
- * TODAS las bolsas del tablero (regla del usuario, 15/10/2026), sin sus presupuestos: de la más nueva a
+ * Las bolsas del tablero (regla del usuario, 15/10/2026) menos las Perdidas y las vencidas, sin sus presupuestos: de la más nueva a
  * la más vieja (por su ID Presupuesto). Viene también el color de cada etiqueta, para pintar la pastilla igual que en el
  * tablero.
  */
@@ -136,7 +138,10 @@ export async function listarPresupuestosGestion(): Promise<PresupuestoGestion[]>
   /* Por el número del 🤖ID Presupuesto (IDPRES-882): el id de Monday no sigue el orden de alta (hubo
      bolsas importadas después). */
   const numero = (b: PresupuestoGestion) => Number(/\d+/.exec(b.idPresupuesto)?.[0] ?? 0)
-  return todas.map((i) => deItem(i, colores)).sort((a, b) => numero(b) - numero(a) || Number(b.id) - Number(a.id))
+  return todas
+    .map((i) => deItem(i, colores))
+    .filter((b) => seLista(b.estado))
+    .sort((a, b) => numero(b) - numero(a) || Number(b.id) - Number(a.id))
 }
 
 /** Los presupuestos (subelementos) de una bolsa, leídos de Monday al abrirla: del más viejo al más nuevo. */
@@ -199,8 +204,18 @@ export async function registrarEnvioGestion(a: {
   )
 }
 
+/** Da la bolsa por perdida: su `🤖Estado Presupuesto` pasa a "Perdido" (regla del usuario, 15/10/2026). */
+export async function marcarBolsaPerdida(bolsaId: string): Promise<void> {
+  await mondayApi(
+    `mutation ($id: ID!, $v: JSON!) {
+      change_multiple_column_values(board_id: ${BOARD_PRESUPUESTOS}, item_id: $id, column_values: $v, create_labels_if_missing: false) { id }
+    }`,
+    { id: bolsaId, v: JSON.stringify({ [COL_PRES.estado]: { label: ETIQUETA_PERDIDO } }) },
+  )
+}
+
 /* ────────────────────────────────────────────────────────────────────────────────
- * Confirmar / Perdido: lo mismo que el enlace, en el servidor
+ * Confirmar / Ganar: lo mismo que el enlace, en el servidor
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /** El servidor no aceptó la respuesta: el texto es para mostrarle al usuario. */
@@ -216,12 +231,11 @@ export class RespuestaRechazada extends Error {
 export type RespuestaPresupuesto =
   /** Desde la app, Confirmar pide el total y gana el presupuesto en el mismo paso. */
   | { tipo: 'confirmar'; ubicacion: string; coordinador: string; total: number }
-  | { tipo: 'rechazar'; motivo: string }
   /** Uno que el cliente confirmó por WhatsApp ("Confirmado - Pend de Cerrar"): el total, y si se corrigen, dirección y coordinador. */
   | { tipo: 'ganar'; total: number; ubicacion: string; coordinador: string }
 
 /**
- * Confirma, rechaza o gana un presupuesto desde la app, por el MISMO camino que el cliente en el
+ * Confirma o gana un presupuesto desde la app, por el MISMO camino que el cliente en el
  * enlace (`/api/presupuesto-respuesta`). Vuelve apenas el presupuesto quedó escrito: la obra y la
  * cuenta corriente siguen en el servidor. `autor`: sólo cuenta en desarrollo (sin sesión); en producción el servidor lo saca de la
  * sesión.

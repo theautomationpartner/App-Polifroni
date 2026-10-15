@@ -30,7 +30,7 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
   /* Agenda: una sola operación, el calendario, donde se crean y se gestionan los turnos. */
   { id: 'calendario', titulo: 'AGENDA DE TURNOS', proceso: 'agenda' },
   { id: 'presupuestos', titulo: 'CREAR NUEVO PRESUPUESTO', proceso: 'presupuesto' },
-  { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
+  { id: 'gestionarPresupuestos', titulo: 'CONSULTAR PRESUPUESTOS NO GANADOS', proceso: 'presupuesto' },
   { id: 'facturar', titulo: 'FACTURAR UNA OBRA', proceso: 'gestionObras' },
 ]
 

@@ -161,7 +161,7 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   /* Tres etapas: a quién es, los presupuestos a enviar y su envío. */
   presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear Nuevo Presupuesto', etapas: 3 },
   /* Una sola pantalla, como la consulta de órdenes y la de turnos. */
-  gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar y Gestionar Presupuestos', etapas: 1 },
+  gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar Presupuestos No Ganados', etapas: 1 },
   /* El cliente y su cuenta, las obras a facturar, y la emisión con su envío. */
   facturar: { icono: 'fa-file-invoice', titulo: 'Facturar una Obra', etapas: 3 },
 }

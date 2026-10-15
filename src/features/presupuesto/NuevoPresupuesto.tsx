@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { ModalCargando } from '@/components/ui/ModalCargando'
 import { ModalErrorConsulta } from '@/features/agenda/ModalErrorConsulta'
 import { etiquetaEnviarA } from '@/lib/presupuesto'
 import type { PresupuestoGestion } from '@/services/monday'
@@ -139,29 +140,11 @@ export function ModalNuevoPresupuesto({
         </div>
       </div>
 
-      {registro.fase !== 'nada' && (
-        <p
-          className={`cobro-bloqueo-inline ${registro.fase === 'ok' ? 'cobro-bloqueo-inline--ok' : ''} pres-nuevo-estado`}
-          role="status"
-          aria-live="polite"
-        >
-          {registro.fase === 'registrando' && (
-            <>
-              <i className="fas fa-circle-notch spin" /> Registrando el presupuesto en el sistema...
-            </>
-          )}
-          {registro.fase === 'ok' && (
-            <>
-              <i className="fas fa-circle-check" /> El presupuesto se envió y quedó en la lista de {bolsa.nombre}.
-            </>
-          )}
-          {registro.fase === 'error' && (
-            <>
-              <i className="fas fa-circle-exclamation" /> El presupuesto YA se envió por WhatsApp, pero no se pudo registrar en Monday.
-              Tocá «Reintentar el registro» en unos segundos.
-            </>
-          )}
-        </p>
+      {registro.fase === 'registrando' && (
+        <ModalCargando
+          titulo="Registrando nuevo presupuesto cargado..."
+          detalle={`Lo subimos a ${bolsa.nombre} en Monday. Esperá unos segundos.`}
+        />
       )}
 
       {errorMonday && <ModalErrorConsulta accion={errorMonday} onClose={() => setErrorMonday(null)} />}
