@@ -18,6 +18,7 @@ import {
 import { useApp, useDispatch } from '@/state/hooks'
 import { conDestinatario } from './borrador'
 import { ContactosFichas } from './Fichas'
+import { ModalAltaContacto } from './ModalAltaContacto'
 
 /** Lo que dice el buscador compartido cuando Monday no trae nada; acá se reemplaza por uno propio. */
 const SIN_RESULTADOS_BUSCADOR = 'Sin resultados en Monday. Probá con parte del nombre o pegá el id.'
@@ -28,7 +29,8 @@ const TIPO: Record<TipoContacto, { etiqueta: string; color: string; articulo: st
   Constructor: { etiqueta: 'Constructor/Arquitecto', color: '#575ce5', articulo: 'un constructor/arquitecto' },
 }
 
-const SIN_RESULTADOS = 'Sin resultados para la búsqueda ingresada. Probá con otro nombre de cliente o de constructor/arquitecto.'
+const SIN_RESULTADOS =
+  'Sin resultados para la búsqueda ingresada. Probá con otro nombre o CUIT, o tocá «+ Alta nueva» para cargarlo.'
 
 /** Una fila del desplegable: el nombre, la pastilla de lo que es (la misma `op-estado` de los estados) y el id. */
 function FilaContacto({ f }: { f: ObraEncontrada }) {
@@ -66,6 +68,8 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   const [noEncontrado, setNoEncontrado] = useState(false)
   /** Se eligió otro con la card ya ocupada: se pregunta antes de reemplazar. */
   const [reemplazo, setReemplazo] = useState<{ tipo: TipoContacto; nuevo: Contacto } | null>(null)
+  /** El alta nueva está abierta (la búsqueda no encontró nada): con el CUIT buscado, si lo era. */
+  const [alta, setAlta] = useState<{ cuit: string } | null>(null)
 
   const tiposBusqueda: TipoContacto[] = ['Cliente', 'Constructor']
 
@@ -104,6 +108,16 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
   /** Se editó el contacto desde su card (ya quedó en Monday): la card y el envío siguen con lo nuevo. */
   const editado = (t: TipoContacto, c: Contacto) =>
     dispatch({ type: 'setPresupuesto', cambios: t === 'Cliente' ? { cliente: c } : { arquitecto: c } })
+
+  /**
+   * Se dio de alta: el contacto ya está en Monday y va directo a su card (sin releerlo ni volver a
+   * buscarlo). Se cierra el alta y se limpia el buscador, que no arrastra lo buscado a la próxima vez.
+   */
+  const creado = (t: TipoContacto, c: Contacto) => {
+    asignar(t, c)
+    setAlta(null)
+    b.limpiar()
+  }
 
   const abrir = async (id: string) => {
     let tipo = tipos.current.get(id) ?? null
@@ -152,7 +166,7 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
     },
     abrir,
     onSinResultados: () => {},
-    pedidoVacio: 'Escribí el nombre del cliente o del constructor/arquitecto para buscar.',
+    pedidoVacio: 'Escribí el nombre o el CUIT del cliente o del constructor/arquitecto para buscar.',
   })
   const listo = listas.Cliente.length > 0 || listas.Constructor.length > 0
   const ayudaBuscador = ayudaDe(b, listo, true, '')
@@ -163,12 +177,13 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
     <>
       <BuscadorObras
         b={b}
-        placeholder="Buscar cliente o constructor/arquitecto por nombre"
+        placeholder="Buscar cliente o constructor/arquitecto por nombre o CUIT"
         ayuda={ayuda}
         ayudaEnRojo={false}
         deshabilitado={!mondayHabilitado()}
         ocupado={leyendo !== null}
         tituloBuscar="Buscar directamente en Monday, en Clientes y en Constructor/Arquitecto"
+        altaNueva={() => setAlta({ cuit: /^[\d.\-\s]+$/.test(b.termino.trim()) ? b.termino : '' })}
         renderFila={(f) => <FilaContacto f={f} />}
       />
       <ContactosFichas
@@ -205,6 +220,16 @@ function BuscadorContactos({ onError }: { onError: (accion: string) => void }) {
           Ya tenías {TIPO[reemplazo.tipo].articulo} seleccionado: <strong>{actual(reemplazo.tipo)?.nombre}</strong>. ¿Querés
           reemplazarlo por <strong>{reemplazo.nuevo.nombre}</strong>?
         </Modal>
+      )}
+      {alta && (
+        <ModalAltaContacto
+          cuitInicial={alta.cuit}
+          onVolver={() => {
+            setAlta(null)
+            b.limpiar()
+          }}
+          onCreado={creado}
+        />
       )}
       {noEncontrado && (
         <AvisoModal titulo="No se encontró" onClose={() => setNoEncontrado(false)}>

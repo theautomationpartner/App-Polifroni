@@ -233,7 +233,13 @@ export function BuscadorObras({
   ocupado = false,
   tituloBuscar = 'Buscar directamente en Monday, por si la obra todavía no está en la lista rápida',
   renderFila,
+  altaNueva,
 }: {
+  /**
+   * El alta de lo que no existe. Cuando Monday no trajo nada para lo buscado, el botón Buscar se
+   * transforma en «+ Alta nueva» y hace esto; al editar el texto vuelve a ser Buscar.
+   */
+  altaNueva?: () => void
   /** Cómo se dibuja cada resultado. Sin esto, el nombre y el id (las obras). */
   renderFila?: (f: ObraEncontrada) => ReactNode
   b: Buscador
@@ -247,6 +253,8 @@ export function BuscadorObras({
   /** Se está leyendo la obra elegida: el botón muestra "Buscando..." igual que al buscar. */
   ocupado?: boolean
 }) {
+  /* Se consultó Monday con lo escrito y no hay nada: lo que sigue es el alta. */
+  const sinResultadosEnMonday = !!b.buscado && b.remotos !== null && b.remotos.length === 0 && !b.buscando && !b.error
   return (
     <div className="card unified-toolbar" onKeyDown={(e) => b.alPresionarTecla(e, ocupado)}>
       <div className="search-container" ref={b.caja}>
@@ -322,23 +330,34 @@ export function BuscadorObras({
 
       {/* El botón dejó de ser el único camino: es la salida para la obra que la lista rápida
           todavía no tiene (dada de alta hace un rato). */}
-      <button
-        type="button"
-        className="btn-buscar"
-        onClick={b.onBuscar}
-        disabled={b.buscando || ocupado || deshabilitado}
-        title={tituloBuscar}
-      >
-        {b.buscando || ocupado ? (
-          <>
-            <i className="fas fa-spinner fa-spin" /> Buscando...
-          </>
-        ) : (
-          <>
-            <i className="fas fa-search" /> Buscar
-          </>
-        )}
-      </button>
+      {altaNueva && sinResultadosEnMonday ? (
+        <button
+          type="button"
+          className="btn-buscar btn-buscar--alta"
+          onClick={altaNueva}
+          title="Dar de alta lo que no se encontró"
+        >
+          <i className="fas fa-plus" /> Alta nueva
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="btn-buscar"
+          onClick={b.onBuscar}
+          disabled={b.buscando || ocupado || deshabilitado}
+          title={tituloBuscar}
+        >
+          {b.buscando || ocupado ? (
+            <>
+              <i className="fas fa-spinner fa-spin" /> Buscando...
+            </>
+          ) : (
+            <>
+              <i className="fas fa-search" /> Buscar
+            </>
+          )}
+        </button>
+      )}
     </div>
   )
 }
