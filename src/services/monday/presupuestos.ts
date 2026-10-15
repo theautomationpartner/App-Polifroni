@@ -149,20 +149,49 @@ async function leerIndice(tipo: TipoContacto): Promise<void> {
   }
 }
 
-/** El botón Buscar: los contactos cuyo nombre contiene lo escrito, o el que tiene ese id. */
+/** La columna del CUIT/CUIL/DNI de cada tablero: texto en Clientes, número en Constructor/Arquitecto. */
+const COL_CUIT = { Cliente: 'text_mkwzq9z4', Constructor: 'numeric_mksy21gb' } as const
+
+/** Los contactos cuyo CUIT/CUIL es éste. En Clientes hay valores cargados con guiones. */
+async function buscarPorCuit(tipo: TipoContacto, digitos: string, limite: number): Promise<{ id: string; nombre: string }[]> {
+  const valores = [digitos]
+  if (tipo === 'Cliente' && digitos.length === 11) valores.push(`${digitos.slice(0, 2)}-${digitos.slice(2, 10)}-${digitos.slice(10)}`)
+  const d = await mondayApi<{ boards: { items_page: { items: { id: string; name: string }[] } }[] }>(
+    `query ($v: CompareValue!, $lim: Int!) {
+      boards(ids: [${BOARD_CONTACTO[tipo]}]) {
+        items_page(limit: $lim, query_params: { rules: [{ column_id: "${COL_CUIT[tipo]}", compare_value: $v, operator: any_of }] }) { items { id name } }
+      }
+    }`,
+    { v: valores, lim: limite },
+  )
+  return (d.boards[0]?.items_page.items ?? []).map((i) => ({ id: String(i.id), nombre: i.name }))
+}
+
+/** El contacto de ese id de ítem, si es de este tablero. */
+async function buscarPorId(tipo: TipoContacto, id: string): Promise<{ id: string; nombre: string }[]> {
+  const d = await mondayApi<{ items: { id: string; name: string; board: { id: string } }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { id name board { id } } }`,
+    { ids: [id] },
+  )
+  return d.items.filter((i) => String(i.board.id) === String(BOARD_CONTACTO[tipo])).map((i) => ({ id: String(i.id), nombre: i.name }))
+}
+
+/**
+ * El botón Buscar: los contactos cuyo nombre contiene lo escrito, el que tiene ese CUIT/CUIL (con o sin
+ * guiones) o el que tiene ese id. Un número de 11 dígitos puede ser un CUIT o un id de ítem (ya los hay de
+ * 11 dígitos): se prueba con los dos.
+ */
 export async function buscarContactos(tipo: TipoContacto, texto: string, limite = 50): Promise<{ id: string; nombre: string }[]> {
   const t = texto.trim()
-  const board = BOARD_CONTACTO[tipo]
-  if (/^\d{6,}$/.test(t)) {
-    const d = await mondayApi<{ items: { id: string; name: string; board: { id: string } }[] }>(
-      `query ($ids: [ID!]) { items(ids: $ids) { id name board { id } } }`,
-      { ids: [t] },
-    )
-    return d.items.filter((i) => String(i.board.id) === String(board)).map((i) => ({ id: String(i.id), nombre: i.name }))
+  const numero = /^[\d.\-\s]+$/.test(t) ? t.replace(/\D/g, '') : ''
+  if (numero.length === 11) {
+    const [porCuit, porId] = await Promise.all([buscarPorCuit(tipo, numero, limite), /^\d+$/.test(t) ? buscarPorId(tipo, t) : []])
+    return [...porCuit, ...porId.filter((i) => !porCuit.some((c) => c.id === i.id))]
   }
+  if (/^\d{6,}$/.test(t)) return buscarPorId(tipo, t)
   const d = await mondayApi<{ boards: { items_page: { items: { id: string; name: string }[] } }[] }>(
     `query ($t: CompareValue!, $lim: Int!) {
-      boards(ids: [${board}]) {
+      boards(ids: [${BOARD_CONTACTO[tipo]}]) {
         items_page(limit: $lim, query_params: { rules: [{ column_id: "name", compare_value: $t, operator: contains_text }] }) { items { id name } }
       }
     }`,

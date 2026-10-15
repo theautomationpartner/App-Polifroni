@@ -1,0 +1,118 @@
+/**
+ * El alta nueva de un cliente o de un constructor/arquitecto (Etapa 1 del presupuesto): la ventana con sus
+ * dos pestañas y su formulario. Los campos son los de siempre (`med-*` dentro de `carga-grid`, en bordó).
+ */
+.modal-box.pres-alta {
+  width: min(680px, 94vw);
+  max-width: 680px;
+}
+.pres-alta .modal-body {
+  text-align: left;
+}
+/* El ícono y el título, en una misma línea (como la ficha del turno). */
+.modal-box.pres-alta > .modal-icon,
+.modal-box.pres-alta > .modal-title {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0;
+}
+.modal-box.pres-alta > .modal-icon {
+  margin-right: 10px;
+  font-size: 26px;
+}
+.modal-box.pres-alta > .modal-body {
+  margin-top: 16px;
+}
+.pres-alta-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  border-bottom: 1px solid #e4e7ec;
+}
+.pres-alta-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  margin-bottom: -1px;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.pres-alta-tab:hover:not(:disabled):not(.pres-alta-tab--on) {
+  background: #f4f6f9;
+  color: #334155;
+}
+.pres-alta-tab--on {
+  border-bottom-color: var(--marca);
+  background: var(--marca-suave);
+  color: var(--marca);
+}
+.pres-alta-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.pres-alta-ayuda {
+  margin: 12px 0 0;
+  min-height: 20px;
+  color: #64748b;
+  font-size: 12.5px;
+}
+.pres-alta-ok {
+  color: #00a35e;
+}
+.pres-alta-reintentar {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--marca);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* `carga-grid` trae las columnas de la carga (500px + resto) con más especificidad: se pisan acá. Los
+   campos van de a dos por fila, una columna cada uno. */
+.obras-v2 .pres-alta .pres-alta-campos.carga-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: start;
+  margin-top: 12px;
+}
+.pres-alta-campos .med-campo {
+  min-width: 0;
+}
+@media (max-width: 560px) {
+  .obras-v2 .pres-alta .pres-alta-campos.carga-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* La frase de lo que la consulta no trajo, y los errores del campo: siempre en rojo, debajo del input. */
+.pres-alta .pres-alta-error {
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* El mismo borde rojo del campo que falta, también dentro de la ventana (que va dentro de `presupuesto-v2`
+   pero fuera de la card). */
+.pres-alta .pres-falta .med-input {
+  border-color: var(--red);
+  background: #fff5f6;
+  box-shadow: 0 0 0 3px rgba(226, 68, 92, 0.16);
+}
+/* El botón de Buscar, ya transformado en «+ Alta nueva». */
+.obras-v2 .btn-buscar.btn-buscar--alta {
+  background: var(--marca);
+}
+.obras-v2 .btn-buscar.btn-buscar--alta:hover:not(:disabled) {
+  filter: brightness(0.92);
+}

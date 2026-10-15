@@ -83,6 +83,8 @@ export default defineConfig(({ mode }) => {
         'CONFIRMACION_SECRET',
         /* El WhatsApp del taller de fabricación: a donde sale la OP confirmada. */
         'TALLER_WHATSAPP',
+        /* La clave de la consulta al padrón de ARCA (alta de clientes y constructores). */
+        'ARCA_API_KEY',
       ]) {
         if (env[k]) process.env[k] = env[k]
       }
@@ -111,6 +113,13 @@ export default defineConfig(({ mode }) => {
       server.middlewares.use('/api/presupuesto-respuesta', async (req, res) => {
         const mod = await server.ssrLoadModule('/api/_presupuestoRespuestaHttp.ts')
         await mod.manejarRespuestaPresupuesto(req, res, null)
+      })
+
+      /* El padrón de ARCA para el alta de clientes y constructores: la misma ruta que en Vercel, con la
+         `ARCA_API_KEY` de `.env.local`. */
+      server.middlewares.use('/api/arca-padron', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_arcaHttp.ts')
+        await mod.manejarArcaPadron(req, res)
       })
 
       /* El PDF de la factura de obra emitida, al Drive de Polifroni (<año> / Facturas Obras / <fecha>). */
