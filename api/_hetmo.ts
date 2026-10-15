@@ -12,6 +12,7 @@
  * parsea, y la consigna se queda con lo que importa —no inventar, copiar los números tal cual—.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { mondayServidor } from './_mondayApi.js'
 import { leerPrompt, type NombrePrompt } from './_prompts.js'
 
 /** El modelo de la lectura. Un número mal leído es un vidrio que se tira: va el más capaz de la línea Opus. */
@@ -179,10 +180,48 @@ export async function consultarClaude(
   }
 }
 
+/** El tablero de subelementos de las OP y sus columnas de componentes del vidrio. */
+const BOARD_SUB_ORDENES = 18432580598
+const COLS_COMPONENTE = { comp1: 'dropdown_mm7gmkmy', camara: 'dropdown_mm7g1hyj', comp2: 'dropdown_mm7gf95e' } as const
+
+let opcionesCache: { cuando: number; valor: Record<string, string[]> } | null = null
+
+/**
+ * Las opciones de Vidrio Comp 1, Cámara y Vidrio Comp 2 del tablero, para la consigna: la IA escribe
+ * cada componente como la opción que ya existe. Se guardan 10 minutos por instancia. Si Monday no
+ * contesta, la lectura sigue igual (la app ajusta los valores a las opciones al guardar).
+ */
+async function opcionesVidrio(): Promise<Record<string, string[]>> {
+  if (opcionesCache && Date.now() - opcionesCache.cuando < 600_000) return opcionesCache.valor
+  try {
+    const d = await mondayServidor<{ boards?: { columns?: { id: string; settings_str: string }[] }[] }>(
+      `query ($cols: [String!]) { boards(ids: [${BOARD_SUB_ORDENES}]) { columns(ids: $cols) { id settings_str } } }`,
+      { cols: Object.values(COLS_COMPONENTE) },
+    )
+    const valor: Record<string, string[]> = {}
+    for (const c of d.boards?.[0]?.columns ?? []) {
+      const etiquetas = (JSON.parse(c.settings_str || '{}') as { labels?: { name?: string }[] | Record<string, string> }).labels
+      valor[c.id] = (Array.isArray(etiquetas) ? etiquetas.map((e) => String(e?.name ?? '')) : Object.values(etiquetas ?? {})).filter(Boolean)
+    }
+    opcionesCache = { cuando: Date.now(), valor }
+    return valor
+  } catch (e) {
+    console.warn('[hetmo] no se pudieron leer las opciones de los vidrios; la lectura sigue sin ellas', e)
+    return {}
+  }
+}
+
+const lista = (opciones: string[] | undefined) => (opciones?.length ? opciones.map((o) => `"${o}"`).join(', ') : '(no disponible)')
+
 /** Las aberturas de la orden y sus vidrios, en una sola lectura (al cargar el PDF de HETMO). */
 export async function leerHetmo(pdf: Buffer): Promise<LecturaHetmo> {
+  const opciones = await opcionesVidrio()
+  const sistema = prompt('hetmo-aberturas-vidrios.sistema')
+    .replace('{{OPCIONES_COMP1}}', lista(opciones[COLS_COMPONENTE.comp1]))
+    .replace('{{OPCIONES_CAMARA}}', lista(opciones[COLS_COMPONENTE.camara]))
+    .replace('{{OPCIONES_COMP2}}', lista(opciones[COLS_COMPONENTE.comp2]))
   const lectura = (await consultarClaude(pdf, {
-    sistema: prompt('hetmo-aberturas-vidrios.sistema'),
+    sistema,
     esquema: ESQUEMA,
     pedido: prompt('hetmo-aberturas-vidrios.pedido'),
     maxTokens: 32000,
