@@ -87,64 +87,56 @@ export function ModalNuevoPresupuesto({
       onClose={cerrar}
       cerrable={!ocupado}
       className="pres-modal-nuevo"
+      /* Sin «Volver»: se cierra con la X. Abajo queda sólo el reintento del registro, si hace falta. */
       actions={
-        <>
-          {registro.fase === 'error' && envio && (
-            <button type="button" className="btn btn-primary btn-marca" onClick={() => void registrar(envio)}>
-              <i className="fas fa-rotate-right" /> Reintentar el registro
-            </button>
-          )}
-          <button type="button" className="btn btn-out" disabled={ocupado} onClick={cerrar}>
-            {registro.fase === 'ok' ? 'Cerrar' : 'Volver'}
+        registro.fase === 'error' && envio ? (
+          <button type="button" className="btn btn-primary btn-marca" onClick={() => void registrar(envio)}>
+            <i className="fas fa-rotate-right" /> Reintentar el registro
           </button>
-        </>
+        ) : undefined
       }
     >
-      <p className="modal-clave">
-        {bolsa.nombre}
-        <span className="ag-clave-fecha">{[bolsa.idPresupuesto, bolsa.arquitecto?.nombre].filter(Boolean).join(' · ')}</span>
-      </p>
+      {/* Los datos y el envío en UN componente, separados sólo por una línea divisoria (como la etapa 2). */}
+      <div className="card carga-datos pres-unido pres-nuevo-grid">
+        <DatosPresupuesto
+          tipo={tipo}
+          color={color}
+          archivo={archivo}
+          bloqueado={enviado}
+          listo={
+            enviado
+              ? { titulo: 'Presupuesto enviado', detalle: [tipo, color].join(' · ') }
+              : {
+                  titulo: 'Presupuesto cargado',
+                  detalle: completo ? `${tipo} · ${color}: listo para enviar` : 'Indicá el tipo de carpintería y el color para poder enviarlo',
+                }
+          }
+          onCambiar={(c) => {
+            if (c.tipo !== undefined) setTipo(c.tipo)
+            if (c.color !== undefined) setColor(c.color)
+            if (c.archivo !== undefined) setArchivo(c.archivo)
+          }}
+          onPreparando={setPreparando}
+          onErrorMonday={setErrorMonday}
+        />
 
-      <div className="emision-grid emision-grid--mitades pres-etapa pres-nuevo-grid">
-        <div className="card carga-datos">
-          <DatosPresupuesto
-            tipo={tipo}
-            color={color}
-            archivo={archivo}
-            bloqueado={enviado}
-            listo={
-              enviado
-                ? { titulo: 'Presupuesto enviado', detalle: [tipo, color].join(' · ') }
-                : {
-                    titulo: 'Presupuesto cargado',
-                    detalle: completo ? `${tipo} · ${color}: listo para enviar` : 'Indicá el tipo de carpintería y el color para poder enviarlo',
-                  }
-            }
-            onCambiar={(c) => {
-              if (c.tipo !== undefined) setTipo(c.tipo)
-              if (c.color !== undefined) setColor(c.color)
-              if (c.archivo !== undefined) setArchivo(c.archivo)
+        <div className="pres-unido-envio">
+          <EnvioPresupuestos
+            cliente={bolsa.cliente}
+            arquitecto={bolsa.arquitecto}
+            enviarA={bolsa.enviarA}
+            presupuestos={completo && archivo ? [{ id, archivo, tipo, color, clave }] : []}
+            enviado={enviado}
+            avisoNoListo="Para enviarlo, indicá el tipo de carpintería y el color y cargá el PDF del presupuesto"
+            sinContactos="El presupuesto no tiene un cliente ni un constructor/arquitecto vinculado: vinculalo en Monday."
+            onClaves={(l) => setClave(l[0]?.clave ?? clave)}
+            onEnviado={(e) => {
+              setEnvio(e)
+              void registrar(e)
             }}
-            onPreparando={setPreparando}
-            onErrorMonday={setErrorMonday}
+            onCelular={onCelular}
           />
         </div>
-
-        <EnvioPresupuestos
-          cliente={bolsa.cliente}
-          arquitecto={bolsa.arquitecto}
-          enviarA={bolsa.enviarA}
-          presupuestos={completo && archivo ? [{ id, archivo, tipo, color, clave }] : []}
-          enviado={enviado}
-          avisoNoListo="Para enviarlo, indicá el tipo de carpintería y el color y cargá el PDF del presupuesto"
-          sinContactos="El presupuesto no tiene un cliente ni un constructor/arquitecto vinculado: vinculalo en Monday."
-          onClaves={(l) => setClave(l[0]?.clave ?? clave)}
-          onEnviado={(e) => {
-            setEnvio(e)
-            void registrar(e)
-          }}
-          onCelular={onCelular}
-        />
       </div>
 
       {registro.fase !== 'nada' && (
