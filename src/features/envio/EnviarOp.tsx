@@ -51,6 +51,17 @@ const linkDeRespuesta = (cuerpo: { link_op?: string } | null): string => {
 const ERROR_TALLER =
   'Ocurrió un error interno al intentar enviar la orden al taller por WhatsApp. Reintentá en unos minutos; si el error persiste, contactate con el soporte de TAP.'
 
+/**
+ * ¿Es un reenvío? "Enviada" en `🤖Estado de Envio OP` (ya le llegó) o, en las de antes de esa
+ * columna, que espere la confirmación. "Pend de Enviar" es el primer envío.
+ */
+const esReenvioDe = (o: ResumenOrden | null | undefined): boolean => {
+  const envio = (o?.estadoEnvio ?? '').trim()
+  if (envio === ESTADO_ENVIO_OP.enviada) return true
+  if (envio === ESTADO_ENVIO_OP.pendiente) return false
+  return o?.estadoOrden === 'pendiente'
+}
+
 const rolesIniciales = (texto: string): Rol[] =>
   texto === 'Ambos' ? [...ROLES] : (ROLES as readonly string[]).includes(texto) ? [texto as Rol] : []
 
@@ -254,8 +265,9 @@ export function EnviarOp({
         : confirmadorElegido && roles.includes(confirmadorElegido)
           ? confirmadorElegido
           : null
-  /* Reenviar es mandar de nuevo una que ya espera respuesta: el estado de la OP no cambia. */
-  const reenvio = orden?.estadoOrden === 'pendiente'
+  /* Reenviar es mandar de nuevo una que ya salió ("Enviada") o que espera respuesta: el estado de la
+     OP no cambia. "Pend de Enviar" es su primer envío. */
+  const reenvio = esReenvioDe(orden)
   /* Una orden local lleva su PDF en el pedido: no necesita estar en el tablero. */
   const sinDocumento = !listo || (!orden && !local)
   const fase = modo === 'cliente' ? cliente.estado.fase : taller.estado.fase
@@ -325,7 +337,8 @@ export function EnviarOp({
       if (!orden) return
       /* La OP sigue en un estado que admite este envío. */
       const fresca = await leerOrden(orden.id)
-      const admitidos = modo === 'cliente' ? ['generada', 'pendiente'] : ['confirmada']
+      /* Al cliente: cualquier OP en juego (una editada conserva el estado de la anterior). */
+      const admitidos = modo === 'cliente' ? ['generada', 'pendiente', 'confirmada', 'taller', 'rechazada'] : ['confirmada']
       /* Al taller, además, que no se haya enviado ya (ver `aptaParaTaller`). */
       if (fresca && modo === 'taller' && !aptaParaTaller(fresca.estadoOrden, fresca.envioTaller)) {
         setFaltan({
@@ -385,7 +398,7 @@ export function EnviarOp({
          nada: navegar no deja registros a medias. */
       if (obra.opDestinatario.texto !== etiqueta) await setEstado(obra.id, COL.opDestinatario, etiqueta)
       if (obra.opVia.texto !== VIA) await setEstado(obra.id, COL.opVia, VIA)
-      const esReenvio = fresca.estadoOrden === 'pendiente'
+      const esReenvio = esReenvioDe(fresca)
       /* La OP ya está en el tablero: su clave se guarda ANTES de mandar, así el enlace funciona apenas
          llega. Un reenvío reusa la que ya tenía: el enlace del primer mensaje sigue sirviendo. */
       const clave = fresca.clave || nuevaClave()
@@ -399,7 +412,6 @@ export function EnviarOp({
         numero: fresca.numero,
         archivo: pdf.nombre || 'Orden de Produccion.pdf',
       }
-      await setEstadoEnvioOrden(fresca.id, ESTADO_ENVIO_OP.enviando).catch(() => {})
       void cliente.correr(
         {
           destinos: destinosWsp(),
@@ -431,10 +443,7 @@ export function EnviarOp({
   useEffect(() => {
     const e = enCurso.current
     if (!e) return
-    if (fase === 'error') {
-      if (modo === 'cliente' && e.orden) void setEstadoEnvioOrden(e.orden.id, ESTADO_ENVIO_OP.error).catch(() => {})
-      return
-    }
+    if (fase === 'error') return
     if (fase !== 'listo') return
     /* Al cliente o constructor, ya confirmado: la actividad del envío en cada destinatario (sin esperar). */
     if (modo === 'cliente') {
@@ -471,8 +480,10 @@ export function EnviarOp({
           console.warn('[taller] no se pudo marcar la OP como enviada a taller', err),
         )
       } else {
-        await setEstadoEnvioOrden(e.orden.id, ESTADO_ENVIO_OP.enviada).catch(() => {})
-        if (!e.reenvio) {
+        await setEstadoEnvioOrden(e.orden.id, 'enviada').catch(() => {})
+        /* El primer envío pasa a "Pend de Confirmar" SÓLO una orden generada (o sin estado): una que
+           ya estaba confirmada o en el taller no se saca de ahí por mandarla. */
+        if (!e.reenvio && (e.orden.estadoOrden === 'generada' || e.orden.estadoOrden === 'borrador')) {
           await setEstadoOrden(e.orden.id, ESTADO_OP.enviada).catch(() => {})
           /* Primer envío de una OP que ya estaba en el tablero: el recordatorio, a 5 días de hoy. */
           await guardarRecordatorio(e.orden.id, fechaRecordatorio(new Date())).catch((err) =>

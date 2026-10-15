@@ -78,7 +78,7 @@ export function ListadoView() {
   const vista = vistaConsulta(roles)
   /** Los filtros del rol: el admin elige; producción queda fija en "Enviadas al taller". */
   const filtros = filtrosConsulta(roles)
-  const soloTaller = vista.taller && !vista.pendientes && !vista.sinEtiqueta
+  const soloTaller = vista.taller && !vista.activas
 
   /** Las pendientes de confirmar y las sin etiqueta. `null` = leyéndolas. */
   const [ordenes, setOrdenes] = useState<ResumenOrden[] | null>(null)
@@ -145,11 +145,11 @@ export function ListadoView() {
     let vivo = true
     /* Sin ningún estado para ver (un rol sin consulta), no se pide nada: sin filtros, la lectura
        traería el tablero entero. */
-    if (!vista.pendientes && !vista.sinEtiqueta && !vista.taller) {
+    if (!vista.activas && !vista.taller) {
       setOrdenes([])
       return
     }
-    listarOrdenes({ soloPendientes: vista.pendientes, sinEtiqueta: vista.sinEtiqueta, enTaller: vista.taller })
+    listarOrdenes({ activas: vista.activas, enTaller: vista.taller })
       .then((lista) => {
         if (!vivo) return
         setOrdenes(lista)
@@ -164,7 +164,7 @@ export function ListadoView() {
     return () => {
       vivo = false
     }
-  }, [intento, vista.pendientes, vista.sinEtiqueta, vista.taller])
+  }, [intento, vista.activas, vista.taller])
 
   const categoriaDe = (o: ResumenOrden) => (o.id in categorias ? categorias[o.id] : categoriaConsulta(o))
   /** Las órdenes de un filtro. "Todas" es todo lo traído. */
@@ -406,7 +406,7 @@ export function ListadoView() {
 
   const total = ordenes?.length ?? 0
   /** Cómo se nombra lo que lista la consulta, según lo que ve el rol. */
-  const queSeLista = soloTaller ? 'enviadas al taller' : 'pendientes de confirmar, sin enviar y en el taller'
+  const queSeLista = soloTaller ? 'enviadas al taller' : 'en curso (todas menos las completadas y las canceladas)'
 
   return (
     <section className="view paso-layout obras-v2 anticipos-v2">
@@ -416,7 +416,7 @@ export function ListadoView() {
         descripcion={
           soloTaller
             ? 'Las órdenes enviadas al taller. Finalizá la producción de las que ya terminaron; buscalas por su ID, el N° de orden o el nombre de la obra.'
-            : 'Las órdenes que esperan la confirmación del cliente o del constructor, las que todavía no se enviaron y las que están en el taller. Buscalas por su ID, el N° de orden o el nombre de la obra.'
+            : 'Todas las órdenes en curso: todas menos las de producción completada y las canceladas. Buscalas por su ID, el N° de orden o el nombre de la obra.'
         }
         sinNumero
       />
@@ -463,7 +463,7 @@ export function ListadoView() {
           <p className="cobro-card-desc">
             {soloTaller
               ? 'Finalizá la producción de las órdenes enviadas al taller que ya terminaron de producirse.'
-              : 'Las órdenes que todavía no confirmó el cliente o el constructor, las que todavía no tienen estado y las enviadas al taller. Enviá o reenviá la que haga falta, cancelá la que ya no corresponda o finalizá la producción de las del taller.'}
+              : 'Todas las órdenes en curso. Enviá las pendientes de enviar o reenviá las ya enviadas, confirmá a mano, cancelá la que ya no corresponda o finalizá la producción de las del taller.'}
           </p>
 
           {/* Los filtros de la tabla. Producción tiene uno solo, fijo: "Enviadas al taller". */}

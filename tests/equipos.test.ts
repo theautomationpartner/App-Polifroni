@@ -129,11 +129,11 @@ assert.ok(!puedeOperar([], 'consultar'), 'sin roles, nada')
 assert.ok(!puedeOperar(null, 'consultar'))
 
 /* ── La consulta: qué órdenes ve y qué puede hacer cada rol ─────────────────────────────────────── */
-assert.deepEqual(vistaConsulta(['produccion']), { pendientes: false, sinEtiqueta: false, taller: true }, 'produccion: SÓLO el taller')
-assert.deepEqual(vistaConsulta(['admin']), { pendientes: true, sinEtiqueta: true, taller: true }, 'admin: todo')
-assert.deepEqual(vistaConsulta(['produccion', 'admin']), { pendientes: true, sinEtiqueta: true, taller: true }, 'los dos: la suma')
-assert.deepEqual(vistaConsulta([]), { pendientes: false, sinEtiqueta: false, taller: false }, 'sin roles: nada')
-assert.deepEqual(vistaConsulta(null), { pendientes: false, sinEtiqueta: false, taller: false })
+assert.deepEqual(vistaConsulta(['produccion']), { activas: false, taller: true }, 'produccion: SÓLO el taller')
+assert.deepEqual(vistaConsulta(['admin']), { activas: true, taller: false }, 'admin: todas menos completadas y canceladas')
+assert.deepEqual(vistaConsulta(['produccion', 'admin']), { activas: true, taller: false }, 'los dos: lo del admin')
+assert.deepEqual(vistaConsulta([]), { activas: false, taller: false }, 'sin roles: nada')
+assert.deepEqual(vistaConsulta(null), { activas: false, taller: false })
 
 /* Cada estado posible de una OP, con y sin la OP final, para cada rol. */
 const ETIQUETAS = ['', 'Generada', 'Enviada Pend Confirmar', 'Generada Pend de Enviar', 'Generada y Enviada Pend Confirmar', 'Confirmada', 'Rechazada', 'Enviada a Taller', 'Produccion Completada', 'Cancelada']
@@ -180,6 +180,17 @@ assert.equal(categoriaConsulta(ordenDe('Generada Pend de Enviar', true)), 'pendE
 assert.equal(categoriaConsulta(ordenDe('', true)), 'pendEnviar', 'sin estado: todavía no se envió')
 assert.equal(categoriaConsulta(ordenDe('Cancelada', true)), null)
 assert.equal(categoriaConsulta(ordenDe('Produccion Completada', true)), null)
+
+/* ── 🤖Estado de Envio OP: "Enviada" se reenvía, "Pend de Enviar" se envía, esté en el estado que esté ── */
+const conEnvio = (estado: string, estadoEnvio: string) => ({ ...ordenDe(estado, true), estadoEnvio })
+assert.ok(accionesConsulta(['admin'], conEnvio('Confirmada', 'Pend de Enviar')).includes('enviar'), 'una V2 confirmada sin enviar: Enviar')
+assert.ok(accionesConsulta(['admin'], conEnvio('Confirmada', 'Enviada')).includes('reenviar'), 'confirmada y ya enviada: Reenviar')
+assert.ok(accionesConsulta(['admin'], conEnvio('Enviada a Taller', 'Enviada')).includes('reenviar'))
+assert.ok(accionesConsulta(['admin'], conEnvio('Pend de Confirmar', 'Pend de Enviar')).includes('enviar'), 'el estado de envío manda')
+assert.ok(!accionesConsulta(['admin'], conEnvio('Cancelada', 'Enviada')).some((a) => a === 'reenviar' || a === 'enviar'), 'cancelada: nada que mandar')
+assert.ok(!accionesConsulta(['admin'], conEnvio('Produccion Completada', 'Pend de Enviar')).some((a) => a === 'reenviar' || a === 'enviar'))
+assert.ok(!accionesConsulta(['produccion'], conEnvio('Confirmada', 'Pend de Enviar')).includes('enviar'), 'Produccion nunca envía')
+assert.equal(categoriaConsulta(conEnvio('Confirmada', 'Pend de Enviar')), 'pendEnviar', 'pendiente de enviar: en su pestaña')
 
 console.log('equipos (rol por team): OK')
 

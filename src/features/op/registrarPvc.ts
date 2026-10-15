@@ -7,6 +7,7 @@ import {
   guardarNroHetmo,
   limpiarEstado,
   renombrarOrdenEmitida,
+  setEstadoEnvioOrden,
   setEstadoOrden,
   subirEtmoAOrden,
   subirOpFinal,
@@ -124,6 +125,8 @@ export async function guardarOpGenerada({
      la completa desde la consulta—, no como un ítem vacío y sin estado. */
   const nro = m.nroOrden.trim()
   await setEstadoOrden(id, ESTADO_OP.generada)
+  /* Generada y todavía sin enviar: "Pend de Enviar" (el envío confirmado la pasa a "Enviada"). */
+  await setEstadoEnvioOrden(id, 'pendiente').catch((e) => console.warn('[pvc] no se pudo marcar la OP como pendiente de enviar', e))
   await completarOrden(id, {
     tipo: 'PVC',
     numero: nro,
@@ -224,6 +227,7 @@ export async function registrarPvc({
   if (b.envio) {
     await registrarEnvioLocal(obra, id, b.envio)
   } else {
+    await setEstadoEnvioOrden(id, 'pendiente').catch(() => {})
     await Promise.all([
       limpiarEstado(obra.id, COL.estadoEnvioOp).catch(() => {}),
       limpiarEstado(obra.id, COL.mjsEnviadoCliente).catch(() => {}),

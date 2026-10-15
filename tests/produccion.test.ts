@@ -40,6 +40,7 @@ import { fechaRecordatorio } from '../src/lib/recordatorio'
 import { colorCancelado, porcentajeCancelado } from '../src/lib/cancelado'
 import {
   cantidadValida,
+  capasValidas,
   composicion,
   consolidar,
   medidaValida,
@@ -51,7 +52,7 @@ import { aAberturasOp, aVidriosOp } from '../src/lib/lecturaHetmo'
 import { validarTelWsp } from '../api/_telWsp'
 import { enlaceConfirmacion } from '../api/_confirmacion'
 import { textoEdicion, textoReenvio, textoTaller } from '../api/_mensajeOp'
-import { filasSubelementos, modeloDeSubelemento } from '../src/lib/subelementosOp'
+import { conMm, filasSubelementos, modeloDeSubelemento, normalizarComponente, sinMm } from '../src/lib/subelementosOp'
 import { aModeloListado, aberturasNuevas, editarModelo, filasAberturas, filasVidrios, hayCambiosAberturas, hayCambiosVidrios, textoNueva, mismaAbertura, modelosDe, motivoEdicion, nombreConVersion, partirTipoVidrio } from '../src/lib/edicionOp'
 import { armarActividadEnvio } from '../src/lib/actividadEnvio'
 import type { Obra } from '../src/types'
@@ -278,6 +279,11 @@ assert.equal(cantidadValida('2'), true)
 assert.equal(cantidadValida('0'), false)
 assert.equal(cantidadValida('1.5'), false)
 assert.equal(cantidadValida(''), false)
+assert.equal(capasValidas({ dvh: true, comp1: '4', camara: '12', comp2: '4' }), true)
+assert.equal(capasValidas({ dvh: true, comp1: '4', camara: '', comp2: '4' }), false, 'DVH sin cámara')
+assert.equal(capasValidas({ dvh: true, comp1: '4', camara: '12', comp2: '' }), false, 'DVH sin Comp 2')
+assert.equal(capasValidas({ dvh: false, comp1: '3+3', camara: '', comp2: '' }), true, 'simple: sólo Comp 1')
+assert.equal(capasValidas({ dvh: false, comp1: '', camara: '', comp2: '' }), false, 'sin Comp 1')
 
 /* ── La respuesta de la lectura de HETMO con Claude ────────────────────────────────────────────── */
 {
@@ -343,6 +349,22 @@ assert.equal(cantidadValida(''), false)
   assert.equal(filas[1].valores.ancho, '765')
   assert.deepEqual(filas[3].valores, { observacion: 'Mosquitero gris' }, 'abertura sin vidrio: sólo su observación')
   assert.deepEqual(filasSubelementos([{ nombre: 'P1', texto: '' }], []), [{ nombre: 'P1', valores: {} }], 'abertura sin nada: el subelemento igual')
+  /* Las medidas van al tablero con "mm" y se leen sin él. */
+  assert.equal(conMm('1.500'), '1.500 mm')
+  assert.equal(conMm('1.500 mm'), '1.500 mm', 'no se duplica la unidad')
+  assert.equal(conMm(''), '')
+  assert.equal(sinMm('843 mm'), '843')
+  assert.equal(sinMm('843'), '843', 'una de antes, sin unidad, queda igual')
+  /* Cada componente, escrito como la opción que ya existe en la columna. */
+  const opciones = ['4', '3+3', '4 GRIS', '3+3 ESMERILADO', '4+4 LOW-E']
+  assert.equal(normalizarComponente('4 gris', opciones), '4 GRIS')
+  assert.equal(normalizarComponente('4GRIS', opciones), '4 GRIS')
+  assert.equal(normalizarComponente('3 + 3', opciones), '3+3')
+  assert.equal(normalizarComponente('4+4 low-e', opciones), '4+4 LOW-E')
+  assert.equal(normalizarComponente('5 azul', opciones), '5 AZUL', 'sin opción igual: en mayúsculas, como vino')
+  assert.deepEqual(partirTipoVidrio('4 GRIS/12/4 INC'), { comp1: '4 GRIS', camara: '12', comp2: '4' }, 'el color queda con su componente')
+  assert.deepEqual(partirTipoVidrio('3+3 ESMERILADO/9/4+4 LOW-E'), { comp1: '3+3 ESMERILADO', camara: '9', comp2: '4+4 LOW-E' })
+  assert.deepEqual(partirTipoVidrio('6 TEMPLADO INC'), { comp1: '6 TEMPLADO', camara: '', comp2: '' }, 'simple con tipo: entero, sin la terminación')
   assert.equal(modeloDeSubelemento('V1 - Vidrio 2'), 'V1')
   assert.equal(modeloDeSubelemento('V27/28 DT 6 - Vidrio 1'), 'V27/28 DT 6')
   assert.equal(modeloDeSubelemento('M6'), 'M6', 'sin sufijo (o del formato anterior): igual')
@@ -414,6 +436,14 @@ assert.equal(cantidadValida(''), false)
   assert.ok(vid[1].quitado && !vid[0].quitado, 'el vidrio que el dibujo ya no trae, marcado')
   assert.deepEqual(vid[0].cantidad, { antes: '2', ahora: '2' }, 'piezas: la línea por las aberturas del modelo')
   assert.ok(hayCambiosVidrios(vid) && !hayCambiosVidrios(filasVidrios([viejo], null)))
+  /* Eliminar las aberturas que no están en el dibujo nuevo: en la lista nueva y en el motivo. */
+  const otra = aModeloListado({ codigo: 'V9', descripcion: 'Paño fijo', vidrios: [{ tipo: '4', ancho: '500', alto: '500', ud: 1 }] })
+  const sinV9 = filasAberturas([viejo, otra], [viejo])
+  assert.deepEqual(sinV9.map((f) => [f.modelo, f.quitada]), [['V1 DT 1', false], ['V9', true]], 'la que se elimina, marcada')
+  assert.ok(hayCambiosAberturas(sinV9))
+  assert.ok(filasVidrios([viejo, otra], [viejo]).some((f) => f.modelo === 'V9' && f.quitado), 'y sus vidrios, quitados')
+  assert.ok(!filasAberturas([viejo, otra], null).some((f) => f.quitada), 'sin edición generada no se elimina nada')
+  assert.ok(motivoEdicion('X V2', [], [], [], [otra]).includes('Se eliminó la abertura V9 - Paño fijo'), 'el motivo lo dice')
   const motivo = motivoEdicion('X V2', sinVidrios.cambios, ['V3'])
   assert.ok(motivo.includes('«X V2»') && motivo.includes('V1 DT 1: el color de Blanco a Negro') && motivo.includes('V3'), 'el motivo dice a cuál reemplaza y qué cambió')
 }
