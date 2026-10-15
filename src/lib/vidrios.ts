@@ -14,6 +14,16 @@ export const PEND_SOLICITAR = 'Pend de Solicitar'
 export const SOLICITADOS = 'Solicitados'
 
 /**
+ * Si una orden es del mismo tipo que su obra: en una obra de PVC sólo cuentan las órdenes de PVC, y
+ * en una de Aluminio, las de Aluminio. Sin tipo (la obra o la orden) no se adivina: no cuenta.
+ */
+export const delTipoDeLaObra = (tipoObra: 'PVC' | 'Aluminio' | null, tipoOrden: string | undefined): boolean => {
+  const t = (tipoOrden ?? '').trim()
+  const deLaOrden = /pvc/i.test(t) ? 'PVC' : /alum/i.test(t) ? 'Aluminio' : null
+  return tipoObra !== null && deLaOrden === tipoObra
+}
+
+/**
  * Qué órdenes entran en una solicitud de cortes: las que ya salieron al taller, cuyos vidrios
  * todavía no se pidieron (`🤖Estado Vidrios` = "Pend de Solicitar"; las Solicitadas, Colocadas o
  * Canceladas quedan afuera) y que tienen al menos un vidrio.

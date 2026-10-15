@@ -6,7 +6,8 @@ import { BuscadorObras, ayudaDe, useBuscadorObras } from '@/features/shared/Busc
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { indexar, type EntradaIndice } from '@/lib/busquedaObras'
 import { enElTaller } from '@/lib/estadosOp'
-import { etiquetaPaso } from '@/lib/pasos'
+import { etiquetaPaso, tipoDe } from '@/lib/pasos'
+import { delTipoDeLaObra } from '@/lib/vidrios'
 import { buscarObras, getIndiceObras, getObra, mondayHabilitado } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
 import type { Obra } from '@/types'
@@ -17,7 +18,9 @@ const AYUDA_SIN_OBRA = 'Buscá y cargá una obra para continuar'
  * Solicitud de cortes de vidrio · Etapa 1: la obra.
  *
  * El mismo buscador y la misma ficha que "Cargar y Enviar". Sólo se sigue con una obra que tenga
- * órdenes en el taller: los vidrios que se piden son los de órdenes ya mandadas a fabricar. Cuáles
+ * órdenes en el taller y del mismo tipo que la obra (en una de PVC, órdenes de PVC; en una de
+ * Aluminio, de Aluminio; ver `delTipoDeLaObra`): los vidrios que se piden son los de órdenes ya
+ * mandadas a fabricar. Cuáles
  * de esas órdenes tienen vidrios pendientes de solicitar se ve en la etapa siguiente, con la misma
  * consulta que arma su tabla (ver `VidriosSeleccionView`).
  */
@@ -67,7 +70,9 @@ export function VidriosObraView() {
   })
   const ayuda = ayudaDe(b, indice.length > 0, !!vista || cargando, AYUDA_SIN_OBRA)
 
-  const enTaller = vista ? vista.ordenes.filter((o) => enElTaller(o.estado, o.envioTaller)).length : 0
+  const tipo = tipoDe(vista)
+  const enTallerTodas = vista ? vista.ordenes.filter((o) => enElTaller(o.estado, o.envioTaller)) : []
+  const enTaller = enTallerTodas.filter((o) => delTipoDeLaObra(tipo, o.tipo)).length
   const siguiente = etiquetaPaso('carga', null, null, 'vidrios')
 
   const continuar = () => {
@@ -130,7 +135,19 @@ export function VidriosObraView() {
           Para continuar tenés que buscar y cargar una obra. Usá el buscador de arriba y volvé a intentar.
         </AvisoModal>
       )}
-      {sinTaller && vista && (
+      {sinTaller && vista && !tipo && (
+        <AvisoModal titulo="La obra no tiene su tipo cargado" onClose={() => setSinTaller(false)}>
+          Los cortes de vidrio se piden para órdenes del mismo tipo que la obra (PVC o Aluminio).{' '}
+          <strong>{vista.nombre}</strong> no tiene cargado su tipo en Monday: cargalo y volvé a buscarla.
+        </AvisoModal>
+      )}
+      {sinTaller && vista && tipo && enTallerTodas.length > 0 && (
+        <AvisoModal titulo={`Esta obra no tiene órdenes de ${tipo} enviadas al taller`} onClose={() => setSinTaller(false)}>
+          <strong>{vista.nombre}</strong> es una obra de {tipo}, y los cortes de vidrio se piden sólo para sus
+          órdenes de {tipo} que ya salieron al taller. Las que tiene en el taller son de otro tipo.
+        </AvisoModal>
+      )}
+      {sinTaller && vista && tipo && enTallerTodas.length === 0 && (
         <AvisoModal titulo="Esta obra no tiene órdenes enviadas al taller" onClose={() => setSinTaller(false)}>
           Los cortes de vidrio se piden para órdenes que ya salieron al taller. <strong>{vista.nombre}</strong>{' '}
           todavía no tiene ninguna: enviala desde «Cargar y Enviar Órdenes de Producción» → Al Taller.

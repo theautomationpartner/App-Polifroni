@@ -44,6 +44,7 @@ import {
   composicion,
   consolidar,
   medidaValida,
+  delTipoDeLaObra,
   ordenParaCortes,
   ordenVisibleEnCortes,
   textoSolicitud,
@@ -264,6 +265,15 @@ assert.equal(ordenParaCortes({ enTaller: true, estadoVidrios: 'Pend de Solicitar
 assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Solicitados', vidrios: 4 }), false, 'ya pedidos: no se ve')
 assert.equal(ordenVisibleEnCortes({ enTaller: true, estadoVidrios: 'Recibidos', vidrios: 4 }), false)
 assert.equal(ordenVisibleEnCortes({ enTaller: false, estadoVidrios: '', vidrios: 0 }), false, 'fuera del taller: no se ve')
+
+/* Sólo las órdenes del mismo tipo que la obra. */
+assert.equal(delTipoDeLaObra('PVC', 'PVC'), true)
+assert.equal(delTipoDeLaObra('Aluminio', 'Aluminio'), true)
+assert.equal(delTipoDeLaObra('Aluminio', 'Aluminio A30New'), true)
+assert.equal(delTipoDeLaObra('PVC', 'Aluminio'), false, 'una de Aluminio en una obra de PVC')
+assert.equal(delTipoDeLaObra('Aluminio', 'PVC'), false, 'una de PVC en una obra de Aluminio')
+assert.equal(delTipoDeLaObra('PVC', ''), false, 'orden sin tipo')
+assert.equal(delTipoDeLaObra(null, 'PVC'), false, 'obra sin tipo')
 
 /* Lo que se escribe al editar un vidrio. */
 assert.equal(medidaValida('843'), true)

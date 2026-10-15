@@ -7,13 +7,25 @@ import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { enElTaller } from '@/lib/estadosOp'
-import { etiquetaPaso } from '@/lib/pasos'
-import { cantidadValida, capasValidas, composicion, esDvh, medidaValida, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
+import { etiquetaPaso, tipoDe } from '@/lib/pasos'
+import {
+  PEND_SOLICITAR,
+  cantidadValida,
+  capasValidas,
+  composicion,
+  delTipoDeLaObra,
+  esDvh,
+  medidaValida,
+  ordenParaCortes,
+  ordenVisibleEnCortes,
+} from '@/lib/vidrios'
 import {
   COL_OBS,
   actualizarVidrios,
+  agregarVidrios,
   opcionesVidrio,
   ordenesDeObra,
+  quitarVidrios,
   vidriosDeOrdenes,
   type CambioVidrio,
   type ResumenOrden,
@@ -56,10 +68,28 @@ const cambiaronCapas = (b: Borrador, v: VidrioDeOrden) => {
 const COL_CAPA: Record<Capa, string> = { comp1: COL_OBS.comp1, camara: COL_OBS.camara, comp2: COL_OBS.comp2 }
 const TITULO_CAPA: Record<Capa, string> = { comp1: 'Vidrio 1', camara: 'Cámara', comp2: 'Vidrio 2' }
 
+/** Un vidrio nuevo de una orden de Aluminio: lo mismo que se edita, más su modelo y una clave para la fila. */
+type FilaAlta = Borrador & { clave: string; modelo: string }
+let claveAlta = 0
+const filaVacia = (): FilaAlta => ({
+  clave: `alta-${++claveAlta}`,
+  modelo: '',
+  dvh: false,
+  comp1: '',
+  camara: '',
+  comp2: '',
+  ancho: '',
+  alto: '',
+  cantidad: '',
+})
+/** Las órdenes de Aluminio no traen listado de vidrios: se los carga a mano (ver `agregarVidrios`). */
+const esAluminio = (o: ResumenOrden) => /aluminio/i.test(o.tipo)
+
 /**
  * Solicitud de cortes de vidrio · Etapa 2: qué vidrios se piden.
  *
- * Las órdenes de la obra que ya salieron al taller, en la misma tabla que "Seleccionar OP A Enviar",
+ * Las órdenes de la obra que ya salieron al taller y son del mismo tipo que la obra (en una de PVC,
+ * sólo las de PVC; en una de Aluminio, sólo las de Aluminio; ver `delTipoDeLaObra`), en la misma tabla que "Seleccionar OP A Enviar",
  * de a 6 por página. Elegir una orden con su casilla la despliega y muestra sus vidrios —los
  * subelementos con datos de vidrio: la composición, simple o DVH con cada capa, las medidas y la
  * cantidad—; destildarla la pliega. Arrancan todas sin elegir, plegadas. Las que no tienen vidrios
@@ -69,10 +99,20 @@ const TITULO_CAPA: Record<Capa, string> = { comp1: 'Vidrio 1', camara: 'Cámara'
  * capas (Vidrio Comp 1, Cámara y Vidrio Comp 2, con las opciones de sus columnas en Monday), el
  * ancho, el alto y la cantidad— y el mismo botón —ahora "Guardar"— escribe en Monday sólo los
  * vidrios que cambiaron (sus subelementos, ver `actualizarVidrios`). Pasar un DVH a Simple borra su
- * Cámara y su Comp 2.
+ * Cámara y su Comp 2. En la edición, además, el tacho de cada fila quita ese vidrio y «Agregar
+ * vidrios» suma filas nuevas, como en las de Aluminio: "Guardar" escribe los cambios, crea los nuevos
+ * (ver `agregarVidrios`) y quita los borrados (ver `quitarVidrios`). Vale igual para las de PVC y para
+ * las de Aluminio que ya tienen sus vidrios cargados.
+ *
+ * Las órdenes de Aluminio no traen vidrios: en vez de "Editar" llevan "Agregar vidrios", que abre la
+ * misma tabla vacía para cargarlos a mano —el modelo, el tipo, las capas, las medidas y la cantidad,
+ * como los de PVC—. "Guardar" los crea como subelementos de la OP (ver `agregarVidrios`) y la orden
+ * queda elegida para la solicitud.
  */
 export function VidriosSeleccionView() {
   const obra = useObra()
+  /** Sólo las órdenes de este tipo (el de la obra) entran en la solicitud. */
+  const tipoObra = tipoDe(obra)
   const dispatch = useDispatch()
   const { vidriosOps } = useApp()
   const [ordenes, setOrdenes] = useState<ResumenOrden[] | null>(null)
@@ -90,6 +130,10 @@ export function VidriosSeleccionView() {
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
   /** Las opciones de cada capa, por columna; se leen de Monday la primera vez que se edita. */
   const [opciones, setOpciones] = useState<Record<string, string[]> | null>(null)
+  /** Las órdenes de Aluminio a las que se les están agregando vidrios: por orden, sus filas nuevas. */
+  const [alta, setAlta] = useState<Record<string, FilaAlta[]>>({})
+  /** Las órdenes en edición: por orden, los ids de los vidrios que se quitaron con el tacho. */
+  const [quitados, setQuitados] = useState<Record<string, string[]>>({})
 
   useAccionEnCurso('Esperá a que se guarden los vidrios.', guardando !== null)
 
@@ -97,7 +141,9 @@ export function VidriosSeleccionView() {
     let vivo = true
     void (async () => {
       try {
-        const enTaller = (await ordenesDeObra(obra.ordenesIds)).filter((o) => enElTaller(o.estadoOrden, o.envioTaller))
+        const enTaller = (await ordenesDeObra(obra.ordenesIds)).filter(
+          (o) => enElTaller(o.estadoOrden, o.envioTaller) && delTipoDeLaObra(tipoObra, o.tipo),
+        )
         /* `🤖Tiene Vidrios` dice cuáles traen vidrios: sólo de ésas se leen los subelementos. */
         const porOp = await vidriosDeOrdenes(enTaller.filter((o) => o.tieneVidrios).map((o) => o.id))
         if (!vivo) return
@@ -154,13 +200,111 @@ export function VidriosSeleccionView() {
     )
   }
 
+  const cargarOpciones = () => {
+    if (opciones) return
+    opcionesVidrio()
+      .then(setOpciones)
+      /* Sin las opciones del tablero, cada capa ofrece al menos los valores que ya usan estos vidrios. */
+      .catch(() => setOpciones({}))
+  }
+
   const editar = (id: string) => {
     setEdicion((e) => ({ ...e, [id]: Object.fromEntries((vidrios[id] ?? []).map((v) => [v.id, borradorDe(v)])) }))
-    if (!opciones) {
-      opcionesVidrio()
-        .then(setOpciones)
-        /* Sin las opciones del tablero, cada capa ofrece al menos los valores que ya usan estos vidrios. */
-        .catch(() => setOpciones({}))
+    /* En la edición también se suman vidrios nuevos (empieza sin ninguno) y se quitan los que están. */
+    setAlta((a) => ({ ...a, [id]: [] }))
+    setQuitados((q) => ({ ...q, [id]: [] }))
+    cargarOpciones()
+  }
+
+  const quitarVidrio = (op: string, vidrio: string) => setQuitados((q) => ({ ...q, [op]: [...(q[op] ?? []), vidrio] }))
+
+  /** Cierra la edición de una orden: lo escrito, los vidrios nuevos y los quitados. */
+  const cerrarEdicion = (op: string) => {
+    setEdicion((e) => {
+      const resto = { ...e }
+      delete resto[op]
+      return resto
+    })
+    setQuitados((q) => {
+      const resto = { ...q }
+      delete resto[op]
+      return resto
+    })
+    cerrarAlta(op)
+  }
+
+  /** "Agregar vidrios" en una orden de Aluminio: abre la tabla con un vidrio vacío para cargar. */
+  const empezarAlta = (id: string) => {
+    setAlta((a) => ({ ...a, [id]: [filaVacia()] }))
+    cargarOpciones()
+  }
+
+  const escribirAlta = <K extends keyof FilaAlta>(op: string, clave: string, campo: K, valor: FilaAlta[K]) =>
+    setAlta((a) => ({ ...a, [op]: a[op].map((f) => (f.clave === clave ? { ...f, [campo]: valor } : f)) }))
+
+  const sumarFila = (op: string) => setAlta((a) => ({ ...a, [op]: [...a[op], filaVacia()] }))
+
+  const quitarFila = (op: string, clave: string) => setAlta((a) => ({ ...a, [op]: a[op].filter((f) => f.clave !== clave) }))
+
+  const cerrarAlta = (op: string) =>
+    setAlta((a) => {
+      const resto = { ...a }
+      delete resto[op]
+      return resto
+    })
+
+  /** Crea en Monday los vidrios cargados y deja la orden elegida para la solicitud. */
+  const guardarAlta = async (id: string) => {
+    const filas = alta[id] ?? []
+    if (filas.length === 0) {
+      setAviso({
+        titulo: 'Agregá al menos un vidrio',
+        texto: 'Tocá «Agregar otro vidrio» para cargar uno, o «Cancelar» si esta orden no lleva vidrios.',
+      })
+      return
+    }
+    if (filas.some((f) => !f.modelo.trim() || !borradorValido(f))) {
+      setAviso({
+        titulo: 'Revisá los vidrios',
+        texto:
+          'Cada vidrio lleva su modelo (por ejemplo V1), su Vidrio 1 y, si es DVH, también la Cámara y el Vidrio 2. El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
+      })
+      return
+    }
+    setGuardando(id)
+    try {
+      await agregarVidrios(
+        id,
+        filas.map((f) => ({
+          modelo: f.modelo.trim(),
+          ...capasDe(f),
+          ancho: f.ancho.trim(),
+          alto: f.alto.trim(),
+          cantidad: Number(f.cantidad),
+        })),
+      )
+    } catch (e) {
+      console.warn('[vidrios] no se pudieron agregar los vidrios', e)
+      setGuardando(null)
+      setAviso({
+        titulo: 'No se pudieron agregar los vidrios',
+        texto: 'Monday no respondió. Lo que cargaste sigue en la tabla: volvé a tocar «Guardar» en unos segundos.',
+      })
+      return
+    }
+    cerrarAlta(id)
+    try {
+      /* Se releen para tener los ids de los subelementos nuevos (los usa "Editar"). */
+      const porOp = await vidriosDeOrdenes([id])
+      setVidrios((todos) => ({ ...todos, [id]: porOp[id] ?? [] }))
+      setOrdenes((os) => os && os.map((x) => (x.id === id ? { ...x, tieneVidrios: true, estadoVidrios: PEND_SOLICITAR } : x)))
+      if (!vidriosOps.includes(id)) dispatch({ type: 'setVidriosOps', ids: [...vidriosOps, id] })
+    } catch {
+      /* Se guardaron, pero no se pudieron releer: se relee la tabla entera. */
+      setOrdenes(null)
+      setIntento((n) => n + 1)
+    } finally {
+      setGuardando(null)
     }
   }
 
@@ -174,10 +318,15 @@ export function VidriosSeleccionView() {
     return todas.map((o) => ({ valor: o, texto: o }))
   }
 
-  /** Guarda en Monday sólo los vidrios que cambiaron; sin cambios, sólo cierra la edición. */
+  /**
+   * Guarda en Monday la edición de una orden: corrige los vidrios que cambiaron, crea los nuevos y
+   * quita los borrados con el tacho; sin cambios, sólo cierra la edición.
+   */
   const guardar = async (id: string) => {
     const escritos = edicion[id] ?? {}
-    const originales = vidrios[id] ?? []
+    const borrados = quitados[id] ?? []
+    const nuevas = alta[id] ?? []
+    const originales = (vidrios[id] ?? []).filter((v) => !borrados.includes(v.id))
     const cambiados = originales.filter((v) => {
       const b = escritos[v.id]
       return (
@@ -188,11 +337,11 @@ export function VidriosSeleccionView() {
           b.cantidad.trim() !== (v.cantidad == null ? '' : String(v.cantidad)))
       )
     })
-    if (cambiados.some((v) => !borradorValido(escritos[v.id]))) {
+    if (cambiados.some((v) => !borradorValido(escritos[v.id])) || nuevas.some((f) => !f.modelo.trim() || !borradorValido(f))) {
       setAviso({
         titulo: 'Revisá los vidrios',
         texto:
-          'Cada vidrio lleva su Vidrio 1 y, si es DVH, también la Cámara y el Vidrio 2. El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
+          'Cada vidrio lleva su modelo (por ejemplo V1), su Vidrio 1 y, si es DVH, también la Cámara y el Vidrio 2. El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
       })
       return
     }
@@ -203,20 +352,54 @@ export function VidriosSeleccionView() {
       alto: escritos[v.id].alto.trim(),
       cantidad: Number(escritos[v.id].cantidad),
     }))
-    if (cambios.length) {
-      setGuardando(id)
-      try {
-        await actualizarVidrios(cambios)
-      } catch (e) {
-        console.warn('[vidrios] no se pudieron guardar los vidrios', e)
+    if (!cambios.length && !nuevas.length && !borrados.length) {
+      cerrarEdicion(id)
+      return
+    }
+    const quedan = originales.length + nuevas.length
+    setGuardando(id)
+    /* Hasta dónde se llegó: si falla, volver a tocar «Guardar» no repite lo que ya se hizo. */
+    let paso: 'cambios' | 'nuevas' | 'borrados' = 'cambios'
+    try {
+      if (cambios.length) await actualizarVidrios(cambios)
+      paso = 'nuevas'
+      if (nuevas.length) {
+        await agregarVidrios(
+          id,
+          nuevas.map((f) => ({
+            modelo: f.modelo.trim(),
+            ...capasDe(f),
+            ancho: f.ancho.trim(),
+            alto: f.alto.trim(),
+            cantidad: Number(f.cantidad),
+          })),
+        )
+      }
+      paso = 'borrados'
+      if (borrados.length) await quitarVidrios(id, borrados, quedan > 0)
+    } catch (e) {
+      console.warn('[vidrios] no se pudieron guardar los vidrios', e)
+      setGuardando(null)
+      if (paso === 'borrados' || (paso === 'nuevas' && nuevas.length)) {
+        /* Ya se escribió una parte (o no se sabe cuánta): se relee la orden tal como quedó en Monday. */
+        setAviso({
+          titulo: 'No se pudieron guardar todos los vidrios',
+          texto: 'Monday no respondió a mitad del guardado. Se volvieron a leer los vidrios: revisá la orden y, si falta algo, tocá «Editar» de nuevo.',
+        })
+        cerrarEdicion(id)
+        setOrdenes(null)
+        setIntento((n) => n + 1)
+      } else {
         setAviso({
           titulo: 'No se pudieron guardar los vidrios',
           texto: 'Monday no respondió. Lo que escribiste sigue en la tabla: volvé a tocar «Guardar» en unos segundos.',
         })
-        return
-      } finally {
-        setGuardando(null)
       }
+      return
+    }
+    cerrarEdicion(id)
+    if (!nuevas.length && !borrados.length) {
+      setGuardando(null)
       const porId = new Map(cambios.map((c) => [c.id, c]))
       setVidrios((todos) => ({
         ...todos,
@@ -225,19 +408,36 @@ export function VidriosSeleccionView() {
           return c ? { ...v, ...c.capas, ancho: c.ancho, alto: c.alto, cantidad: c.cantidad } : v
         }),
       }))
+      return
     }
-    setEdicion((e) => {
-      const resto = { ...e }
-      delete resto[id]
-      return resto
-    })
+    try {
+      /* Se releen para tener los ids de los subelementos nuevos y dejar afuera los quitados. */
+      const porOp = await vidriosDeOrdenes([id])
+      const vs = porOp[id] ?? []
+      setVidrios((todos) => ({ ...todos, [id]: vs }))
+      setOrdenes((os) => os && os.map((x) => (x.id === id ? { ...x, tieneVidrios: vs.length > 0 } : x)))
+      /* Sin vidrios, la orden ya no se puede pedir. */
+      if (!vs.length && vidriosOps.includes(id)) dispatch({ type: 'setVidriosOps', ids: vidriosOps.filter((x) => x !== id) })
+    } catch {
+      setOrdenes(null)
+      setIntento((n) => n + 1)
+    } finally {
+      setGuardando(null)
+    }
   }
 
   const continuar = () => {
     if (Object.keys(edicion).length) {
       setAviso({
         titulo: 'Hay vidrios en edición',
-        texto: 'Tocá «Guardar» en las órdenes que estás editando antes de continuar: si no, la solicitud sale con las medidas anteriores.',
+        texto: 'Tocá «Guardar» en las órdenes que estás editando antes de continuar: si no, la solicitud sale con los vidrios anteriores.',
+      })
+      return
+    }
+    if (Object.keys(alta).length) {
+      setAviso({
+        titulo: 'Hay vidrios sin guardar',
+        texto: 'Tocá «Guardar» en las órdenes de Aluminio a las que les estás agregando vidrios, o «Cancelar» si no los vas a pedir.',
       })
       return
     }
@@ -260,9 +460,10 @@ export function VidriosSeleccionView() {
         <div className="cobro-card">
           <h3 className="cobro-card-title">Órdenes enviadas al taller</h3>
           <p className="cobro-card-desc">
-            Órdenes de {obra.nombre} que ya están en el taller y tienen sus vidrios pendientes de solicitar.
+            Órdenes de {tipoObra ?? 'su tipo'} de {obra.nombre} que ya están en el taller y tienen sus vidrios pendientes de solicitar.
             Debajo de cada una, los vidrios que lleva: la composición, las medidas y la cantidad de piezas.
-            Las que no tienen vidrios se muestran apagadas y no se pueden elegir.
+            Las que no tienen vidrios se muestran apagadas y no se pueden elegir; a las de Aluminio se les
+            pueden cargar con «Agregar vidrios».
           </p>
 
           <div className="ant-tabla-wrap">
@@ -300,7 +501,7 @@ export function VidriosSeleccionView() {
                   <tr>
                     <td colSpan={8} className="ant-aviso">
                       <i className="fas fa-circle-info" />{' '}
-                      {error ? 'No se pudieron leer las órdenes desde Monday.' : `${obra.nombre} no tiene órdenes en el taller con vidrios pendientes de solicitar.`}{' '}
+                      {error ? 'No se pudieron leer las órdenes desde Monday.' : `${obra.nombre} no tiene órdenes de ${tipoObra ?? 'su tipo'} en el taller con vidrios pendientes de solicitar.`}{' '}
                       <button
                         type="button"
                         className="cobro-reintentar"
@@ -318,17 +519,113 @@ export function VidriosSeleccionView() {
                     const vs = vidrios[o.id] ?? []
                     const on = vidriosOps.includes(o.id)
                     const sinVidrios = vs.length === 0
+                    /* Una de Aluminio sin vidrios no se edita: se le agregan. */
+                    const paraAgregar = sinVidrios && esAluminio(o)
+                    const filasAlta = alta[o.id]
                     /* Elegida, se ve desplegada; recién destildada, se ve mientras se pliega. */
                     const abierta = !sinVidrios && (on || cerrando.has(o.id))
                     const escritos = edicion[o.id]
                     const enEdicion = !!escritos
+                    /* La carga de una de Aluminio sin vidrios; en la edición, las filas nuevas van en su tabla. */
+                    const enAlta = !!filasAlta && !enEdicion
+                    const borrados = quitados[o.id] ?? []
                     const guardandoEsta = guardando === o.id
+                    /** Una fila de vidrio nuevo: la de las de Aluminio sin vidrios y la de la edición. */
+                    const filaNueva = (f: FilaAlta, i: number) => {
+                      const nombre = f.modelo.trim() || `el vidrio ${i + 1}`
+                      return (
+                        <tr key={f.clave}>
+                          <td>
+                            <input
+                              className={`vid-input ${f.modelo.trim() ? '' : 'vid-input--mal'}`}
+                              value={f.modelo}
+                              placeholder="V1"
+                              disabled={guardandoEsta}
+                              onChange={(e) => escribirAlta(o.id, f.clave, 'modelo', e.target.value)}
+                              aria-label={`Modelo del vidrio ${i + 1}`}
+                            />
+                          </td>
+                          <td>
+                            {/* Simple o DVH: Simple deja sólo el Vidrio 1. */}
+                            <span className="vid-tipo-sel" role="group" aria-label={`Tipo de ${nombre}`}>
+                              {([false, true] as const).map((dvh) => (
+                                <button
+                                  key={String(dvh)}
+                                  type="button"
+                                  className={`vid-tipo-op ${f.dvh === dvh ? 'vid-tipo-op--on' : ''}`}
+                                  aria-pressed={f.dvh === dvh}
+                                  disabled={guardandoEsta}
+                                  onClick={() => escribirAlta(o.id, f.clave, 'dvh', dvh)}
+                                >
+                                  {dvh ? 'DVH' : 'Simple'}
+                                </button>
+                              ))}
+                            </span>
+                          </td>
+                          <td>
+                            <span className="vid-capas vid-capas--edicion">
+                              {(f.dvh ? (['comp1', 'camara', 'comp2'] as const) : (['comp1'] as const)).map((capa) => (
+                                <span key={capa} className={`vid-capa-sel ${capa === 'camara' ? 'vid-capa-sel--camara' : ''}`}>
+                                  <SelectBuscable
+                                    id={`vid-${f.clave}-${capa}`}
+                                    valor={f[capa]}
+                                    opciones={opcionesDe(capa, f[capa])}
+                                    placeholder={TITULO_CAPA[capa]}
+                                    cargando={!opciones}
+                                    textoCargando="…"
+                                    disabled={guardandoEsta}
+                                    falta={!f[capa].trim()}
+                                    onElegir={(valor) => escribirAlta(o.id, f.clave, capa, valor)}
+                                  />
+                                </span>
+                              ))}
+                            </span>
+                          </td>
+                          {(['ancho', 'alto', 'cantidad'] as const).map((campo) => {
+                            const valor = f[campo]
+                            const ok = campo === 'cantidad' ? cantidadValida(valor) : medidaValida(valor)
+                            return (
+                              <td key={campo}>
+                                <input
+                                  className={`vid-input ${ok ? '' : 'vid-input--mal'}`}
+                                  inputMode="numeric"
+                                  value={valor}
+                                  disabled={guardandoEsta}
+                                  onChange={(e) => escribirAlta(o.id, f.clave, campo, e.target.value)}
+                                  aria-label={`${campo === 'cantidad' ? 'Cantidad' : campo === 'ancho' ? 'Ancho' : 'Alto'} de ${nombre}`}
+                                />
+                              </td>
+                            )
+                          })}
+                          <td>
+                            <button
+                              type="button"
+                              className="vid-quitar"
+                              disabled={guardandoEsta}
+                              onClick={() => quitarFila(o.id, f.clave)}
+                              title="Quitar este vidrio"
+                              aria-label={`Quitar ${nombre}`}
+                            >
+                              <i className="fas fa-trash-can" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    }
                     return (
                       <Fragment key={o.id}>
                         {/* La casilla elige la orden y la despliega; destildarla la pliega. */}
                         <tr
-                          className={`ant-row vid-fila ${on ? 'ant-row--on' : ''} ${sinVidrios ? 'ant-row--off' : ''} ${abierta ? 'vid-fila--abierta' : ''}`}
-                          title={sinVidrios ? 'Esta orden no tiene vidrios cargados como subelementos.' : undefined}
+                          className={`ant-row vid-fila ${on ? 'ant-row--on' : ''} ${sinVidrios && !enAlta ? 'ant-row--off' : ''} ${abierta || enAlta ? 'vid-fila--abierta' : ''}`}
+                          title={
+                            enAlta
+                              ? undefined
+                              : paraAgregar
+                                ? 'Esta orden de Aluminio no tiene vidrios: agregalos con «Agregar vidrios».'
+                                : sinVidrios
+                                  ? 'Esta orden no tiene vidrios cargados como subelementos.'
+                                  : undefined
+                          }
                         >
                           <td className="ant-col-check">
                             <input
@@ -354,7 +651,9 @@ export function VidriosSeleccionView() {
                             <EstadoOrdenBadge estado={o.estadoOrden} chico />
                           </td>
                           <td className="ant-col-cen">
-                            {sinVidrios ? (
+                            {enAlta ? (
+                              <span className="vid-cuenta">Cargando vidrios</span>
+                            ) : sinVidrios ? (
                               <span className="ant-sd">Sin vidrios</span>
                             ) : (
                               <span className="vid-abrir" aria-hidden="true">
@@ -366,8 +665,31 @@ export function VidriosSeleccionView() {
                             )}
                           </td>
                           <td className="ant-col-cen">
-                            {/* Editar abre las medidas y la cantidad de los vidrios; Guardar las escribe. */}
-                            <button
+                            {paraAgregar ? (
+                              /* Aluminio: "Agregar vidrios" abre la tabla vacía; Guardar los crea. */
+                              <button
+                                type="button"
+                                className={`btn ${enAlta ? 'btn-primary btn-marca' : 'btn-out'} vid-editar`}
+                                disabled={guardando !== null}
+                                onClick={() => (enAlta ? void guardarAlta(o.id) : empezarAlta(o.id))}
+                              >
+                                {guardandoEsta ? (
+                                  <>
+                                    <i className="fas fa-circle-notch spin" /> Guardando
+                                  </>
+                                ) : enAlta ? (
+                                  <>
+                                    <i className="fas fa-floppy-disk" /> Guardar
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="fas fa-plus" /> Agregar vidrios
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              /* Editar abre las medidas y la cantidad de los vidrios; Guardar las escribe. */
+                              <button
                               type="button"
                               className={`btn ${enEdicion ? 'btn-primary btn-marca' : 'btn-out'} vid-editar`}
                               disabled={!on || sinVidrios || guardando !== null}
@@ -394,8 +716,61 @@ export function VidriosSeleccionView() {
                                 </>
                               )}
                             </button>
+                            )}
                           </td>
                         </tr>
+                        {enAlta && (
+                          <tr className="vid-detalle">
+                            <td colSpan={8}>
+                              <table className="vid-sub vid-sub--edicion">
+                                <colgroup>
+                                  <col className="vid-w-modelo" />
+                                  <col className="vid-w-tipo" />
+                                  <col className="vid-w-comp" />
+                                  <col className="vid-w-med" />
+                                  <col className="vid-w-med" />
+                                  <col className="vid-w-cant" />
+                                  <col className="vid-w-quitar" />
+                                </colgroup>
+                                <thead>
+                                  <tr>
+                                    <th>Modelo</th>
+                                    <th>Tipo</th>
+                                    <th>Composición (mm)</th>
+                                    <th>Ancho (mm)</th>
+                                    <th>Alto (mm)</th>
+                                    <th>Cantidad</th>
+                                    <th aria-label="Quitar" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {filasAlta.length === 0 ? (
+                                    <tr>
+                                      <td colSpan={7} className="vid-alta-vacia">
+                                        Sin vidrios cargados: tocá «Agregar otro vidrio».
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    filasAlta.map((f, i) => filaNueva(f, i))
+                                  )}
+                                </tbody>
+                              </table>
+                              <div className="vid-alta-pie">
+                                <button
+                                  type="button"
+                                  className="btn btn-out vid-editar"
+                                  disabled={guardandoEsta}
+                                  onClick={() => sumarFila(o.id)}
+                                >
+                                  <i className="fas fa-plus" /> Agregar otro vidrio
+                                </button>
+                                <button type="button" className="cobro-reintentar" disabled={guardandoEsta} onClick={() => cerrarAlta(o.id)}>
+                                  Cancelar
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                         {abierta && (
                           <tr
                             className={`vid-detalle ${on ? '' : 'vid-detalle--fuera'} ${cerrando.has(o.id) ? 'vid-detalle--cierra' : ''}`}
@@ -409,6 +784,7 @@ export function VidriosSeleccionView() {
                                   <col className="vid-w-med" />
                                   <col className="vid-w-med" />
                                   <col className="vid-w-cant" />
+                                  {enEdicion && <col className="vid-w-quitar" />}
                                 </colgroup>
                                 <thead>
                                   <tr>
@@ -418,10 +794,18 @@ export function VidriosSeleccionView() {
                                     <th>Ancho (mm)</th>
                                     <th>Alto (mm)</th>
                                     <th>Cantidad</th>
+                                    {enEdicion && <th aria-label="Quitar" />}
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {vs.map((v) => {
+                                  {enEdicion && vs.length === borrados.length && (filasAlta ?? []).length === 0 && (
+                                    <tr>
+                                      <td colSpan={7} className="vid-alta-vacia">
+                                        Quitaste todos los vidrios: al guardar, la orden queda sin vidrios. Tocá «Agregar vidrios» para cargar otros.
+                                      </td>
+                                    </tr>
+                                  )}
+                                  {vs.filter((v) => !borrados.includes(v.id)).map((v) => {
                                     const b = enEdicion ? escritos[v.id] : undefined
                                     return (
                                       <tr key={v.id}>
@@ -508,11 +892,42 @@ export function VidriosSeleccionView() {
                                             </td>
                                           </>
                                         )}
+                                        {enEdicion && (
+                                          <td>
+                                            <button
+                                              type="button"
+                                              className="vid-quitar"
+                                              disabled={guardandoEsta}
+                                              onClick={() => quitarVidrio(o.id, v.id)}
+                                              title="Quitar este vidrio"
+                                              aria-label={`Quitar ${v.modelo || 'el vidrio'}`}
+                                            >
+                                              <i className="fas fa-trash-can" />
+                                            </button>
+                                          </td>
+                                        )}
                                       </tr>
                                     )
                                   })}
+                                  {enEdicion && (filasAlta ?? []).map((f, i) => filaNueva(f, i))}
                                 </tbody>
                               </table>
+                              {enEdicion && (
+                                /* Sumar vidrios a la orden y descartar la edición. */
+                                <div className="vid-alta-pie">
+                                  <button
+                                    type="button"
+                                    className="btn btn-out vid-editar"
+                                    disabled={guardandoEsta}
+                                    onClick={() => sumarFila(o.id)}
+                                  >
+                                    <i className="fas fa-plus" /> Agregar vidrios
+                                  </button>
+                                  <button type="button" className="cobro-reintentar" disabled={guardandoEsta} onClick={() => cerrarEdicion(o.id)}>
+                                    Cancelar
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         )}
