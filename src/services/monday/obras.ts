@@ -303,6 +303,7 @@ async function conDocumentosDeOrdenes(obra: Obra): Promise<Obra> {
     ),
     envioTaller: (o.c[COL_OP_ENVIO_TALLER]?.text ?? '').trim(),
     nombre: o.nombre,
+    tipo: (o.c[COL_OP_TIPO]?.text ?? '').trim(),
   }))
   return { ...obra, ordenesIds: ordenes.map((o) => o.id), ordenes: estados, opFinal, ordenEtmo: etmo }
 }

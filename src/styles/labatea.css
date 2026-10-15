@@ -3185,6 +3185,39 @@
 .anticipos-v2 .vid-capa-sel--camara {
   flex: 0 0 64px;
 }
+/* ── Solicitud de cortes · agregar vidrios a una orden de Aluminio ── */
+/* La columna del tacho: angosta, al final de la fila. */
+.anticipos-v2 .vid-sub .vid-w-quitar {
+  width: 44px;
+}
+.anticipos-v2 .ant-tabla .vid-sub td.vid-alta-vacia {
+  color: var(--c-text-secondary);
+  font-size: 12.5px;
+}
+.anticipos-v2 .vid-quitar {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c-text-secondary);
+  cursor: pointer;
+}
+.anticipos-v2 .vid-quitar:hover:not(:disabled) {
+  background: #fdecee;
+  color: #c0273c;
+}
+.anticipos-v2 .vid-quitar:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+/* Debajo de los vidrios nuevos: sumar otro y cancelar la carga. */
+.anticipos-v2 .vid-alta-pie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
 /* El desplegable de la app (`SelectBuscable`) en chico, del alto de los inputs, y en bordó como en
    los formularios (ver `.carga-grid`). */
 .anticipos-v2 .vid-sub {

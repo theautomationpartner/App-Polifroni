@@ -17,7 +17,7 @@ import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
 import { ETIQUETA_OP, INDICE_OP, estadoDeOrden, etiquetaOp, indiceDeEtiqueta, indiceDeValor, type EstadoOrden } from '@/lib/estadosOp'
 import { conMm, filasSubelementos, modeloDeSubelemento, normalizarComponente, sinMm } from '@/lib/subelementosOp'
 import type { DatosAbertura } from '@/features/op/observaciones'
-import { SOLICITADOS } from '@/lib/vidrios'
+import { PEND_SOLICITAR, SOLICITADOS } from '@/lib/vidrios'
 import type { ArchivoObra } from '@/types'
 
 export { BOARD_ORDENES }
@@ -1054,6 +1054,93 @@ export async function actualizarVidrios(cambios: CambioVidrio[]): Promise<void> 
     })
     await mondayApi(`mutation (${firma.join(', ')}) { ${cuerpo.join(' ')} }`, variables)
   }
+}
+
+/** Un vidrio cargado a mano en una OP que no los trae (una de Aluminio): lo mismo que lee el ETMO de PVC. */
+export interface VidrioNuevo {
+  modelo: string
+  comp1: string
+  camara: string
+  comp2: string
+  /** En mm, tal cual se escribe ("843", "1.013"). */
+  ancho: string
+  alto: string
+  cantidad: number
+}
+
+/**
+ * Agrega vidrios a una OP que no los tiene (las de Aluminio no traen listado de vidrios): un
+ * subelemento por vidrio, nombrado como los de PVC ("V1 - Vidrio 1", "V1 - Vidrio 2"…), con sus capas,
+ * medidas y cantidad. Después tilda `🤖Tiene Vidrios` y deja `🤖Estado Vidrios` en "Pend de
+ * Solicitar", con lo que la orden entra en la solicitud de cortes (ver `ordenParaCortes`).
+ *
+ * No toca los subelementos que ya tenga la OP (sus aberturas y observaciones): los vidrios se suman,
+ * numerados después de los que ya tiene cada modelo (un V1 con "V1 - Vidrio 1" suma "V1 - Vidrio 2").
+ */
+export async function agregarVidrios(ordenId: string, vidrios: VidrioNuevo[]): Promise<void> {
+  const previas = await mondayApi<{ items: { subitems: { name: string }[] | null }[] }>(
+    `query ($id: [ID!]) { items(ids: $id) { subitems { name } } }`,
+    { id: [ordenId] },
+  )
+  const porModelo = new Map<string, number>()
+  for (const s of previas.items[0]?.subitems ?? []) {
+    const n = Number(/vidrio\s*(\d+)\s*$/i.exec(s.name)?.[1])
+    const modelo = modeloDeSubelemento(s.name)
+    if (Number.isFinite(n)) porModelo.set(modelo, Math.max(porModelo.get(modelo) ?? 0, n))
+  }
+  const filas: FilaMonday[] = vidrios.map((v) => {
+    const modelo = v.modelo.trim()
+    const n = (porModelo.get(modelo) ?? 0) + 1
+    porModelo.set(modelo, n)
+    const valores: Record<string, unknown> = {
+      [COL_OBS.comp1]: { labels: [v.comp1.trim()] },
+      [COL_OBS.ancho]: conMm(v.ancho.trim()),
+      [COL_OBS.alto]: conMm(v.alto.trim()),
+      [COL_OBS.cantidad]: String(v.cantidad),
+    }
+    if (v.camara.trim()) valores[COL_OBS.camara] = { labels: [v.camara.trim()] }
+    if (v.comp2.trim()) valores[COL_OBS.comp2] = { labels: [v.comp2.trim()] }
+    return { nombre: `${modelo} - Vidrio ${n}`, valores }
+  })
+  await insertarSubelementos(ordenId, filas)
+  await cambiarColumnas(ordenId, {
+    [COL_OP.tieneVidrios]: { checked: 'true' },
+    [COL_OP.estadoVidrios]: { label: PEND_SOLICITAR },
+  })
+}
+
+/** Las columnas del vidrio de un subelemento; las demás son de la abertura (ver `COL_OBS`). */
+const COLS_VIDRIO = [COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho, COL_OBS.alto, COL_OBS.cantidad] as const
+const COLS_ABERTURA = [COL_OBS.texto, COL_OBS.nombre, COL_OBS.color, COL_OBS.anchoAbertura, COL_OBS.altoAbertura, COL_OBS.cantidadAberturas] as const
+
+/**
+ * Quita vidrios de una OP. Un subelemento que es sólo el vidrio (los cargados a mano) se borra; uno
+ * que además lleva la abertura —su descripción, color, medidas u observación, como los de PVC— se
+ * queda, con las columnas del vidrio vacías: así no se pierde la abertura, y deja de leerse como
+ * vidrio (ver `vidriosDeOrdenes`). Si la OP queda sin vidrios, se destilda `🤖Tiene Vidrios`.
+ */
+export async function quitarVidrios(ordenId: string, ids: string[], quedanVidrios: boolean): Promise<void> {
+  if (ids.length) {
+    const d = await mondayApi<{ items: { id: string; column_values: { id: string; text: string | null }[] }[] }>(
+      `query ($ids: [ID!]) { items(ids: $ids) { id column_values(ids: ${JSON.stringify(COLS_ABERTURA)}) { id text } } }`,
+      { ids },
+    )
+    const conAbertura = new Set(
+      (d.items ?? []).filter((s) => s.column_values.some((c) => (c.text ?? '').trim())).map((s) => String(s.id)),
+    )
+    const vacias = JSON.stringify(Object.fromEntries(COLS_VIDRIO.map((c) => [c, null])))
+    for (const id of ids) {
+      if (conAbertura.has(id)) {
+        await mondayApi(
+          `mutation ($id: ID!, $v: JSON!) { change_multiple_column_values(board_id: ${BOARD_SUB_ORDENES}, item_id: $id, column_values: $v) { id } }`,
+          { id, v: vacias },
+        )
+      } else {
+        await mondayApi(`mutation ($id: ID!) { delete_item(item_id: $id) { id } }`, { id })
+      }
+    }
+  }
+  if (!quedanVidrios) await cambiarColumnas(ordenId, { [COL_OP.tieneVidrios]: null })
 }
 
 /**

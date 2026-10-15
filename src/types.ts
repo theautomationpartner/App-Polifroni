@@ -69,6 +69,8 @@ export interface Obra {
     envioTaller?: string
     /** El nombre del ítem de la OP ("Obra - IDOP-059 - Aluminio A1"). */
     nombre?: string
+    /** `Tipo` de la OP (PVC / Aluminio), tal cual. */
+    tipo?: string
   }[]
   planoAberturas: ArchivoObra[]
   planoPlanta: ArchivoObra[]
