@@ -119,3 +119,35 @@ export function filasSubelementos(aberturas: AberturaFila[], vidrios: VidrioFila
   })
   return filas
 }
+
+/* ── Las medidas en el tablero, con su unidad ─────────────────────────────────────────────────── */
+
+/** "1.500" → "1.500 mm": así se escriben el ancho y el alto (de la abertura y del vidrio). */
+export const conMm = (medida: string | null | undefined): string => {
+  const t = sinMm(medida)
+  return t ? `${t} mm` : ''
+}
+
+/** "1.500 mm" → "1.500": la medida para comparar, validar o sumar. Una sin unidad queda igual. */
+export const sinMm = (medida: string | null | undefined): string =>
+  String(medida ?? '')
+    .trim()
+    .replace(/\s*mm\.?$/i, '')
+    .trim()
+
+/* ── Las opciones de Vidrio Comp 1, Cámara y Vidrio Comp 2 ────────────────────────────────────── */
+
+/** Para comparar: mayúsculas, sin espacios ("4 gris" y "4GRIS" son "4GRIS"). */
+const claveOpcion = (v: string) => v.toUpperCase().replace(/\s+/g, '')
+
+/**
+ * El valor leído, escrito como la opción que ya existe en la columna ("4 gris" → "4 GRIS", "3 + 3" →
+ * "3+3"): así no se crea una opción duplicada. Si no hay ninguna igual, va en mayúsculas y con los
+ * espacios ordenados (y la columna la crea, como antes).
+ */
+export function normalizarComponente(valor: string | null | undefined, opciones: readonly string[]): string {
+  const limpio = String(valor ?? '').trim().replace(/\s+/g, ' ')
+  if (!limpio) return ''
+  const clave = claveOpcion(limpio)
+  return opciones.find((o) => claveOpcion(o) === clave) ?? limpio.toUpperCase().replace(/\s*\+\s*/g, '+')
+}

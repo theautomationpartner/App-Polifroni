@@ -64,9 +64,10 @@ export function ListaAberturasModal({
             </thead>
             <tbody>
               {filas.map((f) => (
-                <tr key={f.modelo} className={f.nueva ? 'ed-l-nueva' : undefined}>
+                <tr key={f.modelo} className={f.nueva ? 'ed-l-nueva' : f.quitada ? 'ed-l-quitado' : undefined}>
                   <td className="ed-l-modelo">
                     {f.modelo} {f.nueva && <Etiqueta texto="Nueva" />}
+                    {f.quitada && <Etiqueta texto="Se elimina" quita />}
                   </td>
                   <td>
                     <Dato p={f.descripcion} />

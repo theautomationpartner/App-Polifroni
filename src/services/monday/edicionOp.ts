@@ -13,12 +13,13 @@
  */
 import { mismaAbertura, partirTipoVidrio, type AberturaEditable, type ModeloListado } from '@/lib/edicionOp'
 import { indiceDeEtiqueta, indiceDeValor } from '@/lib/estadosOp'
-import { modeloDeSubelemento } from '@/lib/subelementosOp'
+import { conMm, modeloDeSubelemento, sinMm } from '@/lib/subelementosOp'
 import { BOARD_ORDENES, BOARD_SUB_ORDENES } from './columns'
 import { subirArchivo } from './obras'
 import {
   COL_OBS,
   COL_OP,
+  INDICE_ENVIO_OP,
   cancelarOrden,
   cuentasDeObras,
   filasDeSubelementos,
@@ -122,8 +123,8 @@ export function aberturasDeSubelementos(subs: SubelementoOrden[]): AberturaEdita
     const t = s.textos
     a.descripcion ||= t[COL_OBS.nombre] ?? ''
     a.color ||= t[COL_OBS.color] ?? ''
-    a.ancho ||= t[COL_OBS.anchoAbertura] ?? ''
-    a.alto ||= t[COL_OBS.altoAbertura] ?? ''
+    a.ancho ||= sinMm(t[COL_OBS.anchoAbertura])
+    a.alto ||= sinMm(t[COL_OBS.altoAbertura])
     a.cantidad ??= num(t[COL_OBS.cantidadAberturas] ?? '')
     a.observacion ||= t[COL_OBS.texto] ?? ''
     if (tieneVidrio(s)) {
@@ -131,8 +132,8 @@ export function aberturasDeSubelementos(subs: SubelementoOrden[]): AberturaEdita
         comp1: t[COL_OBS.comp1] ?? '',
         camara: t[COL_OBS.camara] ?? '',
         comp2: t[COL_OBS.comp2] ?? '',
-        ancho: t[COL_OBS.ancho] ?? '',
-        alto: t[COL_OBS.alto] ?? '',
+        ancho: sinMm(t[COL_OBS.ancho]),
+        alto: sinMm(t[COL_OBS.alto]),
         cantidad: num(t[COL_OBS.cantidad] ?? ''),
       })
     }
@@ -145,8 +146,12 @@ function copiaDe(s: SubelementoOrden): FilaMonday {
   const t = s.textos
   const valores: Record<string, unknown> = {}
   if (t[COL_OBS.texto]) valores[COL_OBS.texto] = { text: t[COL_OBS.texto] }
-  for (const c of [COL_OBS.nombre, COL_OBS.color, COL_OBS.anchoAbertura, COL_OBS.altoAbertura, COL_OBS.ancho, COL_OBS.alto]) {
+  for (const c of [COL_OBS.nombre, COL_OBS.color]) {
     if (t[c]) valores[c] = t[c]
+  }
+  /* Las medidas, con su unidad (las de antes no la tenían). */
+  for (const c of [COL_OBS.anchoAbertura, COL_OBS.altoAbertura, COL_OBS.ancho, COL_OBS.alto]) {
+    if (t[c]) valores[c] = conMm(t[c])
   }
   for (const c of [COL_OBS.cantidadAberturas, COL_OBS.cantidad]) {
     const n = num(t[c] ?? '')
@@ -197,6 +202,8 @@ export function subelementosDeEdicion(
   editados: ModeloListado[],
   /** Las observaciones por abertura, como quedaron en el formulario (por modelo, en mayúsculas). */
   observaciones?: ReadonlyMap<string, string>,
+  /** Las aberturas de la OP que se eliminan: sus subelementos no pasan a la nueva. */
+  eliminadas: readonly ModeloListado[] = [],
 ): FilaMonday[] {
   const obsDe = (modelo: string, vieja: string) => {
     const clave = modelo.trim().toUpperCase()
@@ -209,6 +216,7 @@ export function subelementosDeEdicion(
   const conObs = new Set<string>()
   for (const s of viejos) {
     const modelo = modeloDeSubelemento(s.nombre)
+    if (eliminadas.some((m) => mismaAbertura(m.codigo, modelo))) continue
     const vieja =
       viejos.find((x) => mismaAbertura(modeloDeSubelemento(x.nombre), modelo) && x.textos[COL_OBS.texto])?.textos[COL_OBS.texto] ?? ''
     const editado = editados.find((m) => mismaAbertura(m.codigo, modelo))
@@ -389,8 +397,13 @@ export async function reemplazarOrdenEditada(e: EntradaReemplazo): Promise<strin
     e.onCreada?.(id)
   }
   const conVidrios = e.subelementos.some((f) => COLS_VIDRIO.some((c) => f.valores[c] != null))
+  /* El estado va APARTE, al final (ver más abajo): el cambio de esa columna es lo que dispara la
+     automatización de Monday que mueve la OP al grupo de su estado. */
+  const { [COL_OP.estado]: estado, ...sinEstado } = valores
   await cambiar(id, {
-    ...valores,
+    ...sinEstado,
+    /* Recién registrada, la OP final nueva no le llegó a nadie: si después se envía, pasa a "Enviada". */
+    [COL_OP.estadoEnvio]: { index: INDICE_ENVIO_OP.pendiente },
     ...(e.medicion
       ? {
           [COL_OP.medidoPor]: e.medicion.medidoPor,
@@ -419,6 +432,18 @@ export async function reemplazarOrdenEditada(e: EntradaReemplazo): Promise<strin
     await insertarSubelementos(id, e.subelementos)
   })().catch((err) => console.warn('[editar] no se pudieron crear los subelementos de la OP nueva', err))
   if (obraId) await vincularOrdenEnObra(obraId, id).catch((err) => console.warn('[editar] no se pudo sumar la OP a la obra', err))
+
+  /* El estado de la anterior, en una mutación SOLA: Monday detecta el cambio de la columna y su
+     automatización mueve la OP nueva al grupo de ese estado. */
+  if (estado) {
+    avance('Asignando el estado de la orden')
+    await mondayApi(
+      `mutation ($id: ID!, $valor: JSON!) {
+        change_column_value(board_id: ${BOARD_ORDENES}, item_id: $id, column_id: "${COL_OP.estado}", value: $valor) { id }
+      }`,
+      { id, valor: JSON.stringify(estado) },
+    )
+  }
 
   avance('Cancelando la orden anterior')
   /* Sin quién la canceló: en una edición no hace falta ese dato. */
