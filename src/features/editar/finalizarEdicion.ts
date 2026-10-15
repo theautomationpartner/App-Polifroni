@@ -10,7 +10,7 @@ export const TEXTOS_FINALIZAR_EDICION: TextosFinalizar = {
   sinEnviar: 'Orden editada',
   preguntaTitulo: 'La orden nueva todavía no se envió',
   pregunta:
-    'La orden nueva ya quedó registrada con el mismo estado de la anterior, pero no le llegó a nadie. Si está «Generada Pend de Enviar», podés enviarla después desde «Consultar órdenes de producción» con «Completar Carga».',
+    'La orden nueva ya quedó registrada con el mismo estado de la anterior y como «Pend de Enviar»: no le llegó a nadie. Podés enviarla después desde «Consultar órdenes de producción».',
   registrando: 'Registrando el envío en el sistema...',
   registrandoDetalle: 'Dejamos constancia del envío en la orden nueva. Esperá unos segundos.',
   errorTitulo: 'No se pudo registrar la orden editada',
@@ -31,7 +31,11 @@ export function useRegistrarEdicion(): () => Promise<void> {
       edicion.nuevaId ??
       (await registrarEdicion(edicion, (nueva) => dispatch({ type: 'setEdicion', cambios: { nuevaId: nueva } })))
     if (!edicion.nuevaId) dispatch({ type: 'setEdicion', cambios: { nuevaId: id } })
-    if (enviado && borrador.envio && edicion.obra) await registrarEnvioLocal(edicion.obra, id, borrador.envio)
+    /* Sólo una V2 "Generada" pasa a "Pend de Confirmar": una confirmada o en el taller conserva su estado. */
+    const sinEnviarAun = !edicion.orden || edicion.orden.estadoOrden === 'generada' || edicion.orden.estadoOrden === 'borrador'
+    if (enviado && borrador.envio && edicion.obra) {
+      await registrarEnvioLocal(edicion.obra, id, borrador.envio, { cambiarEstado: sinEnviarAun })
+    }
   }, [edicion, enviado, borrador.envio, dispatch])
 }
 

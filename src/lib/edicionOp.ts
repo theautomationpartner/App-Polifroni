@@ -139,10 +139,17 @@ const raiz = (codigo: string | null | undefined): string => claveModelo(codigo).
 export const mismaAbertura = (a: string | null | undefined, b: string | null | undefined): boolean =>
   claveModelo(a) === claveModelo(b) || (raiz(a) !== '' && raiz(a) === raiz(b) && (!claveModelo(a).includes(' ') || !claveModelo(b).includes(' ')))
 
-/** "3+3/12/4 INC" → { comp1: "3+3", camara: "12", comp2: "4" }. Un vidrio simple va entero en comp1. */
+/**
+ * "3+3/12/4 INC" → { comp1: "3+3", camara: "12", comp2: "4" }. Un vidrio simple va entero en comp1.
+ * El color o el tipo del componente queda con él ("4 GRIS/12/4 INC" → comp1 "4 GRIS"); la
+ * terminación del final ("INC", incoloro) no es parte del componente.
+ */
 export function partirTipoVidrio(tipo: string | null | undefined): { comp1: string; camara: string; comp2: string } {
-  const composicion = String(tipo ?? '').trim().split(/\s+/)[0] ?? ''
-  const partes = composicion.split('/')
+  const composicion = String(tipo ?? '')
+    .trim()
+    .replace(/\s+(INC|INCOLORO)\.?$/i, '')
+    .replace(/\s+/g, ' ')
+  const partes = composicion.split('/').map((p) => p.trim())
   if (partes.length === 3 && partes.every(Boolean)) return { comp1: partes[0], camara: partes[1], comp2: partes[2] }
   return { comp1: composicion, camara: '', comp2: '' }
 }
@@ -303,10 +310,13 @@ export function motivoEdicion(
   cambios: readonly CambioCampo[],
   sinCambios: readonly string[],
   nuevas: readonly ModeloListado[] = [],
+  /** Las aberturas de la orden que no estaban en el dibujo nuevo y el usuario eligió eliminar. */
+  eliminadas: readonly ModeloListado[] = [],
 ): string {
   const lineas = [
     ...cambios.map((c) => `- ${c.abertura}: ${c.campo} de ${c.anterior} a ${c.nuevo}`),
     ...nuevas.map((m) => `- Se agregó la abertura ${textoNueva(m)}`),
+    ...eliminadas.map((m) => `- Se eliminó la abertura ${[claveModelo(m.codigo), m.descripcion].filter(Boolean).join(' - ')}`),
   ]
   const dibujos = sinCambios.length ? [`- Dibujo actualizado sin cambios de datos: ${sinCambios.join(', ')}`] : []
   return [
@@ -331,6 +341,8 @@ export interface FilaListaAbertura {
   modelo: string
   /** Abertura agregada por la edición (no estaba en la OP). */
   nueva: boolean
+  /** Abertura de la OP que la edición elimina (no estaba en el dibujo nuevo). */
+  quitada: boolean
   descripcion: Par
   color: Par
   medidas: Par
@@ -364,10 +376,14 @@ const piezas = (v: VidrioListado | undefined, m: ModeloListado | undefined) =>
 export function filasAberturas(base: readonly ModeloListado[], final: readonly ModeloListado[] | null): FilaListaAbertura[] {
   const fin = final ?? base
   const filas = base.map((b) => {
-    const f = fin.find((x) => mismaAbertura(x.codigo, b.codigo)) ?? b
+    const enFinal = fin.find((x) => mismaAbertura(x.codigo, b.codigo))
+    /* Con la edición generada, una de la OP que ya no está en la orden nueva se eliminó. */
+    const quitada = !!final && !enFinal
+    const f: ModeloListado = enFinal ?? (quitada ? { ...b, descripcion: '', color: '', ancho: null, alto: null, cantidad: null, vidrios: [] } : b)
     return {
       modelo: claveModelo(b.codigo),
       nueva: false,
+      quitada,
       descripcion: par(b.descripcion ?? '', f.descripcion ?? ''),
       color: par((b.color ?? '').toUpperCase(), (f.color ?? '').toUpperCase()),
       medidas: par(medidasDe(b), medidasDe(f)),
@@ -380,6 +396,7 @@ export function filasAberturas(base: readonly ModeloListado[], final: readonly M
     .map((f) => ({
       modelo: claveModelo(f.codigo),
       nueva: true,
+      quitada: false,
       descripcion: par('', f.descripcion ?? ''),
       color: par('', (f.color ?? '').toUpperCase()),
       medidas: par('', medidasDe(f)),
@@ -415,6 +432,6 @@ export function filasVidrios(base: readonly ModeloListado[], final: readonly Mod
 }
 
 export const hayCambiosAberturas = (filas: readonly FilaListaAbertura[]): boolean =>
-  filas.some((f) => f.nueva || [f.descripcion, f.color, f.medidas, f.cantidad, f.vidrios].some(cambio))
+  filas.some((f) => f.nueva || f.quitada || [f.descripcion, f.color, f.medidas, f.cantidad, f.vidrios].some(cambio))
 export const hayCambiosVidrios = (filas: readonly FilaListaVidrio[]): boolean =>
   filas.some((f) => f.nuevo || f.quitado || [f.tipo, f.ancho, f.alto, f.cantidad].some(cambio))

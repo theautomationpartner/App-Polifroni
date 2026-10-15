@@ -21,6 +21,8 @@ export interface EdicionGenerada {
   editados: ModeloListado[]
   cambios: CambioCampo[]
   nuevas: ModeloListado[]
+  /** Las aberturas de la OP que no estaban en el dibujo nuevo y el usuario eligió eliminar. */
+  eliminadas: ModeloListado[]
   /** Los documentos de los dibujos de la OP editada (`🤖OP OriginaL`), en orden. */
   documentos: File[]
   /** El dibujo nuevo de HETMO: va detrás de `documentos`. */

@@ -13,6 +13,7 @@ import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import {
   aModeloListado,
   aberturasDeLectura,
+  claveModelo,
   aberturasNuevas,
   conModelos,
   editarModelo,
@@ -57,8 +58,11 @@ interface Propuesta {
   cambiosFormulario: CambioCampo[]
   /** Aberturas del dibujo nuevo que la OP no tenía: se agregan al final de la orden. */
   nuevas: ModeloListado[]
-  /** Cuántas aberturas de la orden no están en el dibujo nuevo (quedan como estaban). */
-  fueraDelDibujo: number
+  /**
+   * Las aberturas de la orden que no están en el dibujo nuevo. Se pregunta qué hacer con ellas:
+   * mantenerlas como estaban o eliminarlas (la orden queda sólo con las del dibujo nuevo).
+   */
+  fuera: ModeloListado[]
 }
 
 type Fase =
@@ -111,6 +115,11 @@ export function EditarDibujoView() {
   const [errorCarga, setErrorCarga] = useState('')
   const [fase, setFase] = useState<Fase | null>(null)
   const [sinGenerar, setSinGenerar] = useState(false)
+  /**
+   * Qué hacer con las aberturas de la orden que no están en el dibujo nuevo: `true` eliminarlas,
+   * `false` mantenerlas, `null` todavía no se eligió (sin elegir no se puede confirmar).
+   */
+  const [quitarFuera, setQuitarFuera] = useState<boolean | null>(null)
   const [lista, setLista] = useState<'aberturas' | 'vidrios' | null>(null)
   const [indice, setIndice] = useState(0)
   /** Las observaciones de cada abertura como están en la OP (para saber qué se cambió). */
@@ -231,11 +240,11 @@ export function EditarDibujoView() {
       const archivoIdx = base.documentos.length
       const cambios: CambioCampo[] = []
       const reemplazos = new Map<ModeloListado, ModeloListado>()
-      let fueraDelDibujo = 0
+      const fuera: ModeloListado[] = []
       modelos.forEach((viejo, i) => {
         const leida = r.aberturas.find((x) => mismaAbertura(x.codigoOriginal, viejo.codigo)) ?? r.aberturas[i]
         if (!leida?.encontrada) {
-          fueraDelDibujo++
+          fuera.push(viejo)
           return
         }
         const nuevo = aModeloListado(leida.modelo)
@@ -249,7 +258,10 @@ export function EditarDibujoView() {
       })
       const nuevas = aberturasNuevas(r.nuevas, modelos, archivoIdx)
       const delFormulario = cambiosFormulario()
-      if (!reemplazos.size && !nuevas.length && !delFormulario.length) {
+      /* Sin cambios: nada cambió, nada se agregó y no hay aberturas de la orden fuera del dibujo que se
+         puedan eliminar (si NINGUNA está en el dibujo, es otro documento, no una edición). */
+      const puedeEliminar = fuera.length > 0 && (fuera.length < modelos.length || nuevas.length > 0)
+      if (!reemplazos.size && !nuevas.length && !delFormulario.length && !puedeEliminar) {
         setFase({ tipo: 'sinCambios' })
         return
       }
@@ -262,9 +274,10 @@ export function EditarDibujoView() {
           cambios,
           cambiosFormulario: delFormulario,
           nuevas,
-          fueraDelDibujo,
+          fuera,
         },
       })
+      setQuitarFuera(null)
     } catch (e) {
       setFase({
         tipo: 'error',
@@ -324,11 +337,15 @@ export function EditarDibujoView() {
    */
   const confirmar = async (p: Propuesta) => {
     if (!dibujo) return
+    /* Con aberturas fuera del dibujo, la orden se arma según lo que eligió el usuario. */
+    if (p.fuera.length && quitarFuera === null) return
+    const eliminadas = quitarFuera ? p.fuera : []
+    const modelosFinales = eliminadas.length ? p.modelos.filter((m) => !eliminadas.includes(m)) : p.modelos
     try {
       setFase({ tipo: 'editando', detalle: 'Armando la nueva orden de producción final' })
       const obra = edicion.obra ?? (await getObra(orden.obraId))
       if (!obra) throw new Error('No se encontró la obra de la orden en Monday.')
-      const lectura = conModelos(p.base.lectura, p.modelos)
+      const lectura = conModelos(p.base.lectura, modelosFinales)
       const r = await generarOpFinal({
         lectura,
         obra: obra.nombre,
@@ -351,10 +368,11 @@ export function EditarDibujoView() {
       const cambios = { obra, nuevaId: null, generada: {
         archivo,
         lectura,
-        modelos: p.modelos,
+        modelos: modelosFinales,
         editados: p.editados,
         cambios: [...p.cambiosFormulario, ...p.cambios],
         nuevas: p.nuevas,
+        eliminadas,
         documentos: p.base.documentos,
         dibujo,
         nombreNuevo,
@@ -529,7 +547,13 @@ export function EditarDibujoView() {
               <button type="button" className="btn btn-out" onClick={() => setFase(null)}>
                 Cancelar
               </button>
-              <button type="button" className="btn btn-primary btn-marca" onClick={() => void confirmar(fase.p)}>
+              <button
+                type="button"
+                className="btn btn-primary btn-marca"
+                disabled={fase.p.fuera.length > 0 && quitarFuera === null}
+                title={fase.p.fuera.length > 0 && quitarFuera === null ? 'Elegí qué hacer con las aberturas que no están en el nuevo dibujo' : undefined}
+                onClick={() => void confirmar(fase.p)}
+              >
                 <i className="fas fa-check" /> Confirmar edición
               </button>
             </>
@@ -550,13 +574,33 @@ export function EditarDibujoView() {
                 </li>
               ))}
             </ul>
-            {fase.p.fueraDelDibujo > 0 && (
-              <p className="ed-nota">
-                <i className="fas fa-circle-info" />{' '}
-                {fase.p.fueraDelDibujo === 1
-                  ? '1 abertura de la orden no está en el nuevo dibujo y queda como estaba.'
-                  : `${fase.p.fueraDelDibujo} aberturas de la orden no están en el nuevo dibujo y quedan como estaban.`}
-              </p>
+            {fase.p.fuera.length > 0 && (
+              <fieldset className="ed-fuera">
+                <legend>
+                  {fase.p.fuera.length === 1
+                    ? '1 abertura de la orden no está en el nuevo dibujo'
+                    : `${fase.p.fuera.length} aberturas de la orden no están en el nuevo dibujo`}
+                  : <strong>{fase.p.fuera.map((m) => claveModelo(m.codigo)).join(', ')}</strong>. ¿Qué hacés con{' '}
+                  {fase.p.fuera.length === 1 ? 'ella' : 'ellas'}?
+                </legend>
+                <label className={`ed-fuera-op ${quitarFuera === false ? 'ed-fuera-op--on' : ''}`}>
+                  <input type="radio" name="ed-fuera" checked={quitarFuera === false} onChange={() => setQuitarFuera(false)} />
+                  <span>
+                    <strong>{fase.p.fuera.length === 1 ? 'Mantenerla' : 'Mantenerlas'}</strong>
+                    <small>
+                      {fase.p.fuera.length === 1 ? 'Sigue' : 'Siguen'} en la orden como estaba{fase.p.fuera.length === 1 ? '' : 'n'}
+                      {fase.p.nuevas.length ? ', junto con las nuevas' : ''}.
+                    </small>
+                  </span>
+                </label>
+                <label className={`ed-fuera-op ${quitarFuera === true ? 'ed-fuera-op--on ed-fuera-op--quita' : ''}`}>
+                  <input type="radio" name="ed-fuera" checked={quitarFuera === true} onChange={() => setQuitarFuera(true)} />
+                  <span>
+                    <strong>{fase.p.fuera.length === 1 ? 'Eliminarla' : 'Eliminarlas'}</strong>
+                    <small>La orden queda sólo con las aberturas del nuevo dibujo.</small>
+                  </span>
+                </label>
+              </fieldset>
             )}
             <p className="ed-nota">
               Al confirmar se genera la nueva OP final y se registra en Monday: se crea la orden «{nombreConVersion(orden.nombre)}» con el
