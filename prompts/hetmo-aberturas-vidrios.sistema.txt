@@ -75,6 +75,14 @@ Reglas de vidrios:
   d. Las aberturas sin línea "Vid:" (mosquiteros, por ejemplo) NO generan ninguna entrada en "vidrios", pero SÍ están en "aberturas".
   e. Si la composición NO tiene exactamente dos barras (por ejemplo un vidrio simple "4" o un triple "4/12/4/12/4"), copiala entera en "composicion" y poné comp1, camara y comp2 en null. No la partas a la fuerza.
   f. Si el documento no tiene ninguna línea "Vid:", "vidrios" es un array vacío [].
+  g. Un componente puede traer el COLOR o el TIPO del vidrio junto a su espesor: va con él, entero y en mayúsculas:
+     "4 GRIS/12/4 INC" -> comp1 = "4 GRIS"; "3+3 ESMERILADO/9/4 INC" -> comp1 = "3+3 ESMERILADO"; "4+4 LOW-E/12/4" -> comp1 = "4+4 LOW-E".
+     La terminación del final ("INC") NO es parte del componente.
+  h. Escribí cada componente EXACTAMENTE como una de estas opciones cuando corresponda (mismas palabras, mayúsculas y espacios).
+     Si lo que dice el documento no está en la lista, copialo tal cual: no lo cambies por otra opción parecida.
+       comp1 (Vidrio Comp 1): {{OPCIONES_COMP1}}
+       camara (Cámara): {{OPCIONES_CAMARA}}
+       comp2 (Vidrio Comp 2): {{OPCIONES_COMP2}}
 
 # FORMATO DE SALIDA
 Devolvés UN objeto JSON y nada más. Sin explicaciones, sin bloques de código, sin comentarios, sin texto antes ni después.
