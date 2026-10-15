@@ -87,9 +87,9 @@ await prueba('ARCA sin razón social: el nombre queda vacío', () => {
   assert.equal(desdeArca(arca({ razonSocial: '' }), opcionesCliente).nombre, undefined)
 })
 
-await prueba('validación: nombre y CUIT obligatorios; celular y e-mail con formato', () => {
+await prueba('validación: nombre, CUIT y celular obligatorios; celular y e-mail con formato', () => {
   const e = erroresAlta('Cliente', alVacio())
-  assert.ok(e.cuit && e.nombre)
+  assert.ok(e.cuit && e.nombre && e.celular)
   const mal = erroresAlta('Cliente', { ...alVacio(), nombre: 'X', cuit: '20-31227368-4', celular: '123', email: 'x' })
   assert.ok(mal.celular && mal.email && !mal.cuit && !mal.nombre)
   const bien = erroresAlta('Constructor', { ...alVacio(), nombre: 'X', cuit: '20-31227368-4', celular: '249 436-9123', email: 'a@b.com' })

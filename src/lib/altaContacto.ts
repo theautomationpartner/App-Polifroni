@@ -131,7 +131,7 @@ export function aColumnas(tipo: TipoAlta, v: ValoresAlta): Record<string, string
   return r
 }
 
-/** Lo que está mal, por clave: el nombre obligatorio, el CUIT válido y el formato del celular y del e-mail. */
+/** Lo que está mal, por clave: el nombre, el CUIT y el celular obligatorios, y el formato del celular y del e-mail. */
 export function erroresAlta(tipo: TipoAlta, v: ValoresAlta): Partial<Record<ClaveAlta, string>> {
   const e: Partial<Record<ClaveAlta, string>> = {}
   if (!v.cuit.trim()) e.cuit = 'Ingresá el CUIT o CUIL.'
@@ -140,6 +140,8 @@ export function erroresAlta(tipo: TipoAlta, v: ValoresAlta): Partial<Record<Clav
   for (const [clave, col] of Object.entries(COLUMNA[tipo]) as [ClaveAlta, string][]) {
     if (clave !== 'cuit' && porColumna[col]) e[clave] = porColumna[col]
   }
+  /* Sin Cel-WhatsApp no se le pueden enviar los presupuestos (regla del usuario, 15/10/2026). */
+  if (!v.celular.trim()) e.celular = 'Ingresá el Cel-WhatsApp: sin él no se le pueden enviar los presupuestos.'
   return e
 }
 
