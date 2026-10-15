@@ -1,7 +1,6 @@
 import { ETIQUETA } from '@/services/monday/columns'
 import { tipoDeObra, type TipoOrden } from '@/lib/tipoObra'
 import { ETIQUETA_OP, type EstadoOrden } from '@/lib/estadosOp'
-import type { ModoPresupuesto } from '@/lib/presupuesto'
 import type { Destino, Obra, Paso, Operacion } from '@/types'
 
 /**
@@ -31,12 +30,11 @@ export function etiquetaPaso(
   destino: Destino | null,
   tipo: TipoOrden | null,
   operacion: Operacion | null = 'enviar',
-  modoPresupuesto: ModoPresupuesto | null = null,
 ): string {
-  /* Presupuesto · Crear y Cargar: a quién (un cliente/constructor, o una bolsa abierta), los
-     presupuestos que se van a mandar (uno o varios) y su envío. Son TRES etapas. */
+  /* Presupuesto · Crear: a quién (un cliente y/o un constructor), los presupuestos que se van a
+     mandar (uno o varios) y su envío. Son TRES etapas. */
   if (operacion === 'presupuestos') {
-    if (paso === 'obra') return modoPresupuesto === 'cargar' ? 'Seleccionar Presupuesto' : 'Seleccionar Cliente'
+    if (paso === 'obra') return 'Seleccionar Cliente'
     return paso === 'carga' ? 'Cargar Presupuestos' : 'Enviar Presupuestos'
   }
   /* Obras · Facturar una Obra: la obra, qué se le factura (y por cuánto) y la emisión con su envío. */
@@ -61,9 +59,7 @@ export const etiquetasPasos = (
   destino: Destino | null,
   tipo: TipoOrden | null,
   operacion: Operacion | null = 'enviar',
-  modoPresupuesto: ModoPresupuesto | null = null,
-): string[] =>
-  (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo, operacion, modoPresupuesto))
+): string[] => (['obra', 'carga', 'envio'] as const).map((p) => etiquetaPaso(p, destino, tipo, operacion))
 
 /** Cuántas OP de la obra están en un estado. */
 export const cuantasEn = (obra: Obra, estado: EstadoOrden): number =>

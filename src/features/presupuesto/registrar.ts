@@ -1,12 +1,13 @@
 import { etiquetaEnviarA, fechaLocal, nombreBolsa } from '@/lib/presupuesto'
 import {
-  actualizarEnviarA,
+  actualizarBolsa,
   crearBolsa,
   crearPresupuestoEnviado,
   marcarBolsaEnviada,
   nombrarPresupuestoEnviado,
   subirPdfPresupuesto,
 } from '@/services/monday'
+import type { PresupuestoGestion } from '@/services/monday'
 import type { BorradorPresupuesto, PresupuestoCargado } from './borrador'
 
 /**
@@ -14,10 +15,9 @@ import type { BorradorPresupuesto, PresupuestoCargado } from './borrador'
  * toca solo apenas el envío sale bien). Hasta acá no se escribió nada: los PDF vivían en la app.
  *
  * En orden:
- *  1. Crear: la bolsa (el ítem), con el cliente y/o el constructor, a quién se envió, quién la creó
- *     (🤖Creado por) y en "Presupuesto Enviado". Cargar otro: la bolsa ya existe; se actualiza a quién se envió esta vez (el estado no se toca).
- *  2. Por CADA presupuesto de la lista, su subelemento: tipo de carpintería, color, Total Pactado,
- *     "Enviado", la fecha del envío y —sólo si el responsable tenía que confirmarlo— la clave del
+ *  1. La bolsa (el ítem), con el cliente y/o el constructor, a quién se envió, quién la creó
+ *     (🤖Creado por) y en "Presupuesto Enviado".
+ *  2. Por CADA presupuesto de la lista, su subelemento: tipo de carpintería, color, "Enviado", la fecha del envío y —sólo si el responsable tenía que confirmarlo— la clave del
  *     enlace que salió en el mensaje (`🤖Clave Confirmacion`). Después su PDF (`✋Presupuesto pdf`) y
  *     su nombre (`🤖ID PDF`).
  *
@@ -39,13 +39,9 @@ export async function registrarPresupuesto({
   if (!envio) throw new Error('Los presupuestos todavía no se enviaron.')
   const enviarA = etiquetaEnviarA(envio.roles)
 
-  let bolsaId = borrador.bolsaId ?? borrador.bolsa?.id ?? null
+  let bolsaId = borrador.bolsaId
   if (!bolsaId) {
     bolsaId = await crearBolsa({ nombre: nombreBolsa(cliente, arquitecto), cliente, arquitecto, enviarA, creadoPor })
-    avanzar({ bolsaId })
-  } else if (borrador.bolsa && !borrador.bolsaId) {
-    /* Otro presupuesto en una bolsa existente: a quién se le mandó esta vez. */
-    if (enviarA && enviarA !== borrador.bolsa.enviarA) await actualizarEnviarA(bolsaId, enviarA)
     avanzar({ bolsaId })
   }
 
@@ -64,7 +60,6 @@ export async function registrarPresupuesto({
         tipo: p.tipo,
         color: p.color,
         fechaEnvio: fechaLocal(new Date(envio.cuando)),
-        total: p.total,
         /* La clave, sólo en los que se pidió confirmar: con ella `/confirmar` encuentra éste. */
         clave: envio.confirmador && envio.aConfirmar.includes(p.id) ? p.clave : null,
       })
@@ -77,8 +72,52 @@ export async function registrarPresupuesto({
     await nombrarPresupuestoEnviado(subitemId).catch((e) => console.warn('[presupuesto] no se pudo nombrar el subelemento', e))
   }
 
-  /* 3. Una bolsa nueva queda "Presupuesto Enviado" y con quién la creó. Se escribe de nuevo al final:
-     una automatización del tablero la pasa a "Solicitud de Presupuesto" al crearle el primer
-     subelemento. Cargar otro presupuesto no toca el estado (regla del usuario, 13/10/2026). */
-  if (borrador.modo === 'crear') await marcarBolsaEnviada(bolsaId, creadoPor)
+  /* 3. La bolsa queda "Presupuesto Enviado" y con quién la creó. Se escribe de nuevo al final: una
+     automatización del tablero la pasa a "Solicitud de Presupuesto" al crearle el primer subelemento. */
+  await marcarBolsaEnviada(bolsaId, creadoPor)
+}
+
+/** Lo que ya quedó en Monday de un presupuesto nuevo: un reintento no lo repite. */
+export interface AvanceNuevo {
+  subitemId: string | null
+  pdfSubido: boolean
+}
+
+/**
+ * «+Nuevo» de la consulta (regla del usuario, 15/10/2026): el presupuesto que acaba de salir por
+ * WhatsApp, como subelemento de una bolsa que ya existía —tipo, color, "Enviado", la fecha y la clave
+ * del enlace si alguien lo confirma—, con su PDF y su nombre (🤖ID PDF). Después, la bolsa: a quién se
+ * le mandó esta vez y su estado de antes (no se cambia, ver `actualizarBolsa`).
+ *
+ * `avance` se completa a medida que se escribe: si algo falla, el reintento sigue desde ahí.
+ */
+export async function registrarNuevoEnBolsa(a: {
+  bolsa: PresupuestoGestion
+  tipo: string
+  color: string
+  archivo: File
+  clave: string | null
+  enviarA: string
+  /** Cuándo salió (ISO). */
+  cuando: string
+  avance: AvanceNuevo
+}): Promise<string> {
+  const { avance } = a
+  if (!avance.subitemId) {
+    avance.subitemId = await crearPresupuestoEnviado({
+      bolsaId: a.bolsa.id,
+      tipo: a.tipo,
+      color: a.color,
+      fechaEnvio: fechaLocal(new Date(a.cuando)),
+      clave: a.clave,
+    })
+  }
+  if (!avance.pdfSubido) {
+    await subirPdfPresupuesto(avance.subitemId, a.archivo)
+    avance.pdfSubido = true
+  }
+  await nombrarPresupuestoEnviado(avance.subitemId).catch((e) => console.warn('[presupuesto] no se pudo nombrar el subelemento', e))
+  /* Al final, con el subelemento ya creado: la automatización del tablero ya cambió el estado. */
+  await actualizarBolsa(a.bolsa.id, { enviarA: a.enviarA !== a.bolsa.enviarA ? a.enviarA : '', estado: a.bolsa.estado })
+  return avance.subitemId
 }

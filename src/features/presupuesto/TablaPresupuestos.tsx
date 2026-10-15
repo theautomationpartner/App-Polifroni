@@ -2,8 +2,8 @@ import { useEffect, useId, useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { conTope } from '@/features/agenda/ModalErrorConsulta'
-import { colorTipoCarpinteria, formatoImporte, importeDe } from '@/lib/presupuesto'
-import { getOpcionesPresupuesto, getUrlArchivo, type OpcionesPresupuesto, type PresupuestoEnviado } from '@/services/monday'
+import { colorTipoCarpinteria } from '@/lib/presupuesto'
+import { getOpcionesPresupuesto, getUrlArchivo, type OpcionesPresupuesto } from '@/services/monday'
 import type { PresupuestoCargado } from './borrador'
 
 /** 2,4 MB · 850 KB: el peso del PDF, como lo muestra la fila. */
@@ -36,9 +36,6 @@ export async function verPdfMonday(assetId: string) {
     w?.close()
   }
 }
-
-/** "2026-10-05" → "05/10/2026". */
-const fechaCorta = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
 
 /** Las etiquetas de tipo de carpintería y color de una fila (la misma pastilla de los estados). */
 export function Etiquetas({ tipo, color }: { tipo: string; color: string }) {
@@ -83,15 +80,12 @@ function ModalEditarPresupuesto({
 }: {
   p: PresupuestoCargado
   onClose: () => void
-  onGuardar: (cambios: { tipo: string; color: string; total: number }) => void
+  onGuardar: (cambios: { tipo: string; color: string }) => void
 }) {
   const uid = useId()
   const opciones = useOpcionesPresupuesto()
   const [tipo, setTipo] = useState(p.tipo)
   const [color, setColor] = useState(p.color)
-  const [total, setTotal] = useState(p.total.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
-  const importe = importeDe(total)
-  const totalValido = importe !== null && importe > 0
   return (
     <Modal
       title="Editar presupuesto"
@@ -106,8 +100,8 @@ function ModalEditarPresupuesto({
           <button
             type="button"
             className="btn btn-primary btn-marca"
-            disabled={!tipo || !color || !totalValido}
-            onClick={() => importe !== null && onGuardar({ tipo, color, total: importe })}
+            disabled={!tipo || !color}
+            onClick={() => onGuardar({ tipo, color })}
           >
             Guardar
           </button>
@@ -145,22 +139,6 @@ function ModalEditarPresupuesto({
             onElegir={setColor}
           />
         </div>
-        <div className="med-campo">
-          <label className="campo-l" htmlFor={`${uid}-total`}>
-            Total pactado *
-          </label>
-          <div className={`med-conic ${!totalValido ? 'pres-falta' : ''}`}>
-            <i className="fas fa-dollar-sign" aria-hidden="true" />
-            <input
-              id={`${uid}-total`}
-              className="med-input"
-              type="text"
-              inputMode="decimal"
-              value={total}
-              onChange={(e) => setTotal(e.target.value)}
-            />
-          </div>
-        </div>
       </div>
     </Modal>
   )
@@ -168,14 +146,11 @@ function ModalEditarPresupuesto({
 
 /**
  * "Presupuestos a enviar": la lista de los presupuestos agregados, uno por fila (una card): el ícono
- * del PDF con su nombre y su peso, el tipo de carpintería, el color, el Total Pactado y sus acciones
- * —ver el PDF y, en la etapa de carga, corregir tipo, color y total (lápiz) o sacarlo de la lista—.
+ * del PDF con su nombre y su peso, el tipo de carpintería, el color y sus acciones
+ * —ver el PDF y, en la etapa de carga, corregir tipo y color (lápiz) o sacarlo de la lista—.
  *
  * En la etapa de envío va sin edición (`onEditar` ausente), y marca los que el responsable tiene que
  * confirmar.
- *
- * `enviados`: al cargar sobre un presupuesto ya existente, los que ya se le mandaron. Van arriba, sólo
- * para ver su PDF: no se editan ni se quitan, y no vuelven a salir.
  */
 export function TablaPresupuestos({
   presupuestos,
@@ -184,12 +159,9 @@ export function TablaPresupuestos({
   aConfirmar = [],
   bloqueado = false,
   sinCard = false,
-  enviados = [],
 }: {
   presupuestos: PresupuestoCargado[]
-  /** Los que ya se enviaron en este presupuesto (sólo para ver). */
-  enviados?: PresupuestoEnviado[]
-  onEditar?: (id: string, cambios: { tipo: string; color: string; total: number }) => void
+  onEditar?: (id: string, cambios: { tipo: string; color: string }) => void
   onQuitar?: (id: string) => void
   /** Los que el responsable tiene que confirmar: llevan la etiqueta. */
   aConfirmar?: string[]
@@ -206,42 +178,6 @@ export function TablaPresupuestos({
         <i className="fas fa-list-ul" /> Presupuestos a enviar
         <span className="ag-tab-n pres-lista-n">{presupuestos.length}</span>
       </h3>
-
-      {enviados.length > 0 && (
-        <div className="pres-filas" role="list" aria-label="Presupuestos ya enviados">
-          {enviados.map((e) => (
-            <div key={e.id} className="pres-fila pres-fila--enviado" role="listitem">
-              <span className="pres-fila-ic" aria-hidden="true">
-                PDF
-              </span>
-              <span className="pres-fila-arch">
-                <span className="pres-fila-nombre" title={e.pdf?.nombre ?? e.nombre}>
-                  {e.pdf?.nombre ?? e.nombre}
-                </span>
-                <span className="pres-fila-peso">{e.nombre}</span>
-              </span>
-              <Etiquetas tipo={e.tipo} color={e.color} />
-              <span className="pres-fila-total" title="Total pactado">
-                {e.total !== null ? formatoImporte(e.total) : '—'}
-              </span>
-              <span className="pres-fila-acc">
-                <span className="cbadge ok" title="Ya se envió: no se edita ni se vuelve a enviar">
-                  Enviado{e.fechaEnvio ? ` ${fechaCorta(e.fechaEnvio)}` : ''}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-out pres-ficha-btn"
-                  disabled={!e.pdf}
-                  title={e.pdf ? undefined : 'Este presupuesto no tiene el PDF cargado en Monday'}
-                  onClick={() => e.pdf && void verPdfMonday(e.pdf.assetId)}
-                >
-                  <i className="fas fa-eye" /> Ver Presup
-                </button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {presupuestos.length === 0 ? (
         <div className="pres-lista-vacia">
@@ -262,9 +198,6 @@ export function TablaPresupuestos({
                 <span className="pres-fila-peso">{peso(p.archivo.size)}</span>
               </span>
               <Etiquetas tipo={p.tipo} color={p.color} />
-              <span className="pres-fila-total" title="Total pactado">
-                {formatoImporte(p.total)}
-              </span>
               <span className="pres-fila-acc">
                 {aConfirmar.includes(p.id) && <span className="cbadge cbadge--confirmador">A confirmar</span>}
                 <button type="button" className="btn btn-out pres-ficha-btn" onClick={() => verPdfLocal(p.archivo)}>

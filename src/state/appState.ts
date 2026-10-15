@@ -228,11 +228,6 @@ export type Action =
   | { type: 'setEdicion'; cambios: Partial<BorradorEdicion> }
   /** Facturar una Obra: lo elegido en cada etapa y lo que ya quedó en Monday. */
   | { type: 'setFactura'; cambios: Partial<BorradorFactura> }
-  /**
-   * Presupuesto: cambiar entre crear uno nuevo y cargar otro empieza de nuevo (lo elegido era para
-   * el otro camino).
-   */
-  | { type: 'setModoPresupuesto'; modo: BorradorPresupuesto['modo'] }
   /** Contestar "¿A quién vas a enviarle la orden?". Cambiarla empieza la carga de nuevo. */
   | { type: 'setDestino'; destino: Destino }
   | { type: 'goto'; paso: Paso }
@@ -306,10 +301,6 @@ export function reducer(state: AppState, action: Action): AppState {
 
     case 'setFactura':
       return { ...state, factura: { ...state.factura, ...action.cambios } }
-
-    case 'setModoPresupuesto':
-      if (state.accionEnCurso || state.presupuesto.modo === action.modo) return state
-      return { ...state, ...sinTrabajo, presupuesto: { ...presupuestoInicial(), modo: action.modo } }
 
     case 'setDestino':
       if (state.accionEnCurso || state.destino === action.destino) return state

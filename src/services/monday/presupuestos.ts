@@ -7,8 +7,6 @@
  *
  *  - La bolsa vincula al cliente (👤 Clientes 9617181550) y/o al constructor/arquitecto
  *    (👤 Constructor/Arquitecto 9618146225). No pasa por las cuentas corrientes.
- *  - Mientras la bolsa recibe presupuestos queda en "Solicitud de Presupuesto": es lo que lista
- *    "Cargar otro presupuesto".
  *  - El tipo de carpintería, el color, el PDF y la fecha de envío son de cada SUBELEMENTO.
  */
 import type { ArchivoObra } from '@/types'
@@ -54,8 +52,6 @@ export const COL_SUB = {
   estadoEnvio: 'color_mkvgch3n',
   idPdf: 'pulse_id_mkvgbfmj',
   fechaEnvio: 'date_mm1zw6h1',
-  /** ✋Total Pactado del presupuesto. */
-  total: 'numeric_mm836j1t',
   /** 🤖Clave Confirmacion: la clave del enlace de confirmación que salió en el mensaje. */
   clave: 'text_mm7wn1jz',
   /** 🤖 Estado de Confirmacion: Confirmado | Rechazado | Error de Confirmacion (vacío: sin respuesta). */
@@ -66,12 +62,9 @@ export const COL_SUB = {
 
 /** Etiquetas del tablero que escribe la app. */
 export const ETIQUETA_PRES = {
-  /** El estado del ítem cuando se envía su primer presupuesto (regla del usuario, 13/10/2026). "Cargar
-      otro" sólo deja afuera las bolsas Ganadas o Perdidas (`bolsaParaCargar`). */
+  /** El estado del ítem cuando se envía su primer presupuesto (regla del usuario, 13/10/2026). */
   presupuestoEnviado: 'Presupuesto Enviado',
   solicitud: 'Solicitud de Presupuesto',
-  /** Índice de "Solicitud de Presupuesto" en `🤖Estado Presupuesto`: más estable que el texto. */
-  indiceSolicitud: 5,
   enviado: 'Enviado',
 } as const
 
@@ -324,7 +317,7 @@ export const getOpcionesPresupuesto = memoGlobal(async (): Promise<OpcionesPresu
 })
 
 /* ────────────────────────────────────────────────────────────────────────────────
- * Las bolsas abiertas ("Solicitud de Presupuesto")
+ * Las bolsas y sus presupuestos
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /** Un presupuesto ya enviado: un subelemento de la bolsa. */
@@ -338,8 +331,6 @@ export interface PresupuestoEnviado {
   estadoEnvio: string
   /** El PDF del presupuesto (`✋Presupuesto pdf`). `null` si no tiene. */
   pdf: ArchivoObra | null
-  /** ✋Total Pactado. `null` en los que no lo tienen (los anteriores a esta columna). */
-  total: number | null
   /** 🤖 Estado de Confirmacion, tal cual (vacío: todavía sin respuesta). */
   confirmacion: string
   /** 🤖Clave Confirmacion: la del enlace que salió (un reenvío la reusa). */
@@ -362,7 +353,8 @@ export interface BolsaPresupuesto {
   presupuestos: PresupuestoEnviado[]
 }
 
-export const CAMPOS_BOLSA = `
+/** La bolsa sin sus presupuestos: lo que lista la consulta (los presupuestos se leen al abrirla). */
+export const CAMPOS_CABECERA_BOLSA = `
   id name
   column_values(ids: ${JSON.stringify([
     COL_PRES.cliente,
@@ -377,7 +369,10 @@ export const CAMPOS_BOLSA = `
     ... on MirrorValue { display_value }
     ... on BoardRelationValue { display_value linked_item_ids }
   }
-  subitems {
+`
+
+/** Un presupuesto (subelemento) de la bolsa. */
+export const CAMPOS_SUBELEMENTO = `
     id name
     column_values(ids: ${JSON.stringify([
       COL_SUB.tipo,
@@ -385,15 +380,13 @@ export const CAMPOS_BOLSA = `
       COL_SUB.fechaEnvio,
       COL_SUB.estadoEnvio,
       COL_SUB.pdf,
-      COL_SUB.total,
       COL_SUB.confirmacion,
       COL_SUB.clave,
       COL_SUB.motivo,
     ])}) { id text value }
-  }
 `
 
-export type ItemBolsa = { id: string; name: string; column_values: CV[]; subitems: { id: string; name: string; column_values: CV[] }[] | null }
+export type ItemBolsa = { id: string; name: string; column_values: CV[]; subitems?: { id: string; name: string; column_values: CV[] }[] | null }
 
 /** El vínculo y su espejo de celular, como contacto. El e-mail no se espeja en la bolsa. */
 const contactoDe = (rel?: CV, cel?: CV): Contacto | null => {
@@ -408,6 +401,25 @@ const pdfDe = (cv?: CV): ArchivoObra | null => {
   return a.find((x) => !x.esImagen) ?? a[0] ?? null
 }
 
+/** Un presupuesto (subelemento) tal como lo usa la app. */
+export function presupuestoDe(s: { id: string; name: string; column_values: CV[] }): PresupuestoEnviado {
+  const sc = byId(s)
+  return {
+    id: String(s.id),
+    nombre: s.name,
+    tipo: valor(sc[COL_SUB.tipo]),
+    color: valor(sc[COL_SUB.color]),
+    fechaEnvio: valor(sc[COL_SUB.fechaEnvio]),
+    estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
+    pdf: pdfDe(sc[COL_SUB.pdf]),
+    /* Sin respuesta: vacío. El tablero le puso nombre a esa etiqueta (índice 5, "Pend de Confirmar"),
+       así que se decide por el índice y no por el texto. */
+    confirmacion: [null, 5].includes(indiceDeValor(sc[COL_SUB.confirmacion]?.value)) ? '' : valor(sc[COL_SUB.confirmacion]),
+    clave: valor(sc[COL_SUB.clave]),
+    motivo: valor(sc[COL_SUB.motivo]),
+  }
+}
+
 export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
   const c = byId(i)
   return {
@@ -418,102 +430,8 @@ export function bolsaDe(i: ItemBolsa): BolsaPresupuesto {
     cliente: contactoDe(c[COL_PRES.cliente], c[COL_PRES.celCliente]),
     arquitecto: contactoDe(c[COL_PRES.arquitecto], c[COL_PRES.celConstructor]),
     enviarA: valor(c[COL_PRES.enviarA]),
-    presupuestos: (i.subitems ?? []).map((s) => {
-      const sc = byId(s)
-      return {
-        id: String(s.id),
-        nombre: s.name,
-        tipo: valor(sc[COL_SUB.tipo]),
-        color: valor(sc[COL_SUB.color]),
-        fechaEnvio: valor(sc[COL_SUB.fechaEnvio]),
-        estadoEnvio: valor(sc[COL_SUB.estadoEnvio]),
-        pdf: pdfDe(sc[COL_SUB.pdf]),
-        total: valor(sc[COL_SUB.total]).trim() ? Number(valor(sc[COL_SUB.total])) : null,
-        /* Sin respuesta: vacío. El tablero le puso nombre a esa etiqueta (índice 5, "Pend de Confirmar"),
-           así que se decide por el índice y no por el texto. */
-        confirmacion: [null, 5].includes(indiceDeValor(sc[COL_SUB.confirmacion]?.value)) ? '' : valor(sc[COL_SUB.confirmacion]),
-        clave: valor(sc[COL_SUB.clave]),
-        motivo: valor(sc[COL_SUB.motivo]),
-      }
-    }),
+    presupuestos: (i.subitems ?? []).map(presupuestoDe),
   }
-}
-
-/**
- * Las bolsas en "Solicitud de Presupuesto": las únicas a las que se les carga otro presupuesto. Se
- * filtran en Monday por el índice de la etiqueta, así no se trae el tablero entero (más de 700).
- */
-export async function listarBolsasAbiertas(): Promise<BolsaPresupuesto[]> {
-  interface PaginaBolsas {
-    cursor: string | null
-    items: ItemBolsa[]
-  }
-  const d = await mondayApi<{ boards: { items_page: PaginaBolsas }[] }>(
-    `query {
-      boards(ids: [${BOARD_PRESUPUESTOS}]) {
-        items_page(limit: 200, query_params: { rules: [{ column_id: "${COL_PRES.estado}", compare_value: [${ETIQUETA_PRES.indiceSolicitud}], operator: any_of }] }) {
-          cursor items { ${CAMPOS_BOLSA} }
-        }
-      }
-    }`,
-  )
-  const todas: ItemBolsa[] = []
-  let pagina: PaginaBolsas | undefined = d.boards[0]?.items_page
-  for (let vuelta = 0; pagina && vuelta < 10; vuelta++) {
-    todas.push(...pagina.items)
-    if (!pagina.cursor) break
-    const sig: { next_items_page: PaginaBolsas } = await mondayApi(
-      `query ($c: String!) { next_items_page(limit: 200, cursor: $c) { cursor items { ${CAMPOS_BOLSA} } } }`,
-      { c: pagina.cursor },
-    )
-    pagina = sig.next_items_page
-  }
-  return todas.map(bolsaDe)
-}
-
-/** Una bolsa, releída del tablero (con su estado, para saber si sigue abierta). */
-export async function leerBolsa(id: string): Promise<(BolsaPresupuesto & { estado: string }) | null> {
-  const d = await mondayApi<{ items: (ItemBolsa & { board: { id: string }; estado: CV[] })[] }>(
-    `query ($ids: [ID!]) {
-      items(ids: $ids) { board { id } ${CAMPOS_BOLSA} estado: column_values(ids: ["${COL_PRES.estado}"]) { id text } }
-    }`,
-    { ids: [id] },
-  )
-  const i = d.items[0]
-  if (!i || String(i.board.id) !== String(BOARD_PRESUPUESTOS)) return null
-  return { ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }
-}
-
-/**
- * La relación inversa de cada contacto hacia sus presupuestos: en 👤 Clientes, "Presupuestos"; en
- * 👤 Constructor/Arquitecto, "link to Presupuestos" (la que crea el ✋Constructor/Arquitecto de la bolsa).
- */
-const COL_PRESUPUESTOS_DEL_CONTACTO: Record<TipoContacto, string> = {
-  Cliente: 'board_relation_mkvvkdg7',
-  Constructor: 'board_relation_mkvgpwq5',
-}
-
-/**
- * Los presupuestos (bolsas) de un cliente o de un constructor, en CUALQUIER estado: el estado del ítem
- * es sólo informativo (regla del usuario, 13/10/2026). Se leen desde el contacto, por su relación
- * inversa, sin recorrer el tablero. Los archivados o borrados no van.
- */
-export async function bolsasDeContacto(tipo: TipoContacto, id: string): Promise<(BolsaPresupuesto & { estado: string })[]> {
-  const rel = await mondayApi<{ items: { column_values: CV[] }[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_PRESUPUESTOS_DEL_CONTACTO[tipo]}"]) { id ... on BoardRelationValue { linked_item_ids } } } }`,
-    { ids: [id] },
-  )
-  const ids = (rel.items[0]?.column_values[0]?.linked_item_ids ?? []).map(String)
-  if (!ids.length) return []
-  const d = await mondayApi<{ items: (ItemBolsa & { state: string; board: { id: string }; estado: CV[] })[] }>(
-    `query ($ids: [ID!]) {
-      items(ids: $ids) { state board { id } ${CAMPOS_BOLSA} estado: column_values(ids: ["${COL_PRES.estado}"]) { id text } }
-    }`,
-    { ids },
-  )
-  return d.items
-    .filter((i) => i.state === 'active' && String(i.board.id) === String(BOARD_PRESUPUESTOS))
-    .map((i) => ({ ...bolsaDe(i), estado: i.estado[0]?.text ?? '' }))
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -566,13 +484,22 @@ export async function marcarBolsaEnviada(bolsaId: string, creadoPor: string | nu
   )
 }
 
-/** A quién se le mandó esta vez (✋Enviar a), en una bolsa que ya existía. */
-export async function actualizarEnviarA(bolsaId: string, enviarA: string): Promise<void> {
+/**
+ * Lo que deja en una bolsa que ya existía un presupuesto nuevo («+Nuevo» de la consulta): a quién se
+ * le mandó esta vez (✋Enviar a) y su estado DE ANTES. El estado del ítem es sólo informativo y no se
+ * cambia; se vuelve a escribir porque una automatización del tablero lo pasa a "Solicitud de
+ * Presupuesto" apenas se le crea un subelemento. Sin nada que escribir, no hace nada.
+ */
+export async function actualizarBolsa(bolsaId: string, a: { enviarA?: string; estado?: string }): Promise<void> {
+  const valores: Record<string, unknown> = {}
+  if (a.enviarA) valores[COL_PRES.enviarA] = { label: a.enviarA }
+  if (a.estado?.trim()) valores[COL_PRES.estado] = { label: a.estado.trim() }
+  if (!Object.keys(valores).length) return
   await mondayApi(
     `mutation ($id: ID!, $valores: JSON!) {
       change_multiple_column_values(board_id: ${BOARD_PRESUPUESTOS}, item_id: $id, column_values: $valores, create_labels_if_missing: false) { id }
     }`,
-    { id: bolsaId, valores: JSON.stringify({ [COL_PRES.enviarA]: { label: enviarA } }) },
+    { id: bolsaId, valores: JSON.stringify(valores) },
   )
 }
 
@@ -586,8 +513,6 @@ export async function crearPresupuestoEnviado(a: {
   color: string
   /** `YYYY-MM-DD`. */
   fechaEnvio: string
-  /** ✋Total Pactado. */
-  total: number
   /**
    * La clave del enlace de confirmación, sólo si se pidió confirmar este presupuesto. Sin ella la
    * columna queda vacía: nadie puede confirmarlo por enlace.
@@ -599,7 +524,6 @@ export async function crearPresupuestoEnviado(a: {
     [COL_SUB.color]: { labels: [a.color] },
     [COL_SUB.estadoEnvio]: { label: ETIQUETA_PRES.enviado },
     [COL_SUB.fechaEnvio]: { date: a.fechaEnvio },
-    [COL_SUB.total]: String(a.total),
   }
   if (a.clave) valores[COL_SUB.clave] = a.clave
   const d = await mondayApi<{ create_subitem: { id: string } }>(

@@ -1,8 +1,9 @@
 /**
- * Consultar y Gestionar Presupuestos: la lectura de los presupuestos que todavía se gestionan y lo que
- * escribe la app desde ahí (regla del usuario, 13/10/2026).
+ * Consultar y Gestionar Presupuestos: la lectura de las bolsas y sus presupuestos, y lo que escribe la
+ * app desde ahí (reglas del usuario, 13/10 y 15/10/2026).
  *
- *  - Se listan los presupuestos (subelementos) de todas las bolsas que NO están Ganadas ni Perdidas.
+ *  - Se listan TODAS las bolsas (el ítem), sin sus presupuestos. Los presupuestos (subelementos) de una
+ *    bolsa se leen de Monday al abrirla.
  *  - Enviar / Reenviar: el subelemento queda "Enviado" con la fecha del envío (y la clave del enlace, si
  *    alguien lo tiene que confirmar). La bolsa, a quién se mandó y —en el primer envío— "Presupuesto
  *    Enviado".
@@ -16,14 +17,26 @@ import { cabecerasPropias, mondayApi } from './sdk'
 import {
   BOARD_PRESUPUESTOS,
   BOARD_SUB_PRESUPUESTOS,
-  CAMPOS_BOLSA,
+  CAMPOS_CABECERA_BOLSA,
+  CAMPOS_SUBELEMENTO,
   COL_PRES,
   COL_SUB,
   ETIQUETA_PRES,
   bolsaDe,
+  presupuestoDe,
   type BolsaPresupuesto,
   type ItemBolsa,
+  type PresupuestoEnviado,
 } from './presupuestos'
+
+/** Lo que deja la confirmación en la bolsa y lo que completa Ganar (regla del usuario, 15/10/2026). */
+const COL_CIERRE = {
+  /** ✋Total Pactado: se ingresa al ganar. */
+  total: 'numeric_mkvgy282',
+  /** 🤖Ubicación de la obra y 🤖Coordinador de la obra: los que indicó quien confirmó. */
+  ubicacionObra: 'text_mm85trcv',
+  coordinadorObra: 'text_mm85ye3y',
+} as const
 
 /** El recordatorio que manda Make a los 5 días del envío. */
 const COL_RECORDATORIO = {
@@ -45,14 +58,22 @@ export interface PresupuestoGestion extends BolsaPresupuesto {
   fechaRecordatorio: string
   /** El estado del recordatorio, tal cual (vacío: sin estado). */
   estadoRecordatorio: string
+  /** ✋Total Pactado de la bolsa (`null`: todavía no se ganó). */
+  total: number | null
+  /** La dirección de la obra y quién la coordina, como los dejó la confirmación. */
+  ubicacionObra: string
+  coordinadorObra: string
 }
 
 type ItemGestion = ItemBolsa & { gestion: CV[] }
 
-const CAMPOS_GESTION = `${CAMPOS_BOLSA} gestion: column_values(ids: ${JSON.stringify([
+const CAMPOS_GESTION = `${CAMPOS_CABECERA_BOLSA} gestion: column_values(ids: ${JSON.stringify([
   COL_PRES.estado,
   COL_RECORDATORIO.fecha,
   COL_RECORDATORIO.estado,
+  COL_CIERRE.total,
+  COL_CIERRE.ubicacionObra,
+  COL_CIERRE.coordinadorObra,
 ])}) { id text }`
 
 const deItem = (i: ItemGestion, colores: Record<string, string>): PresupuestoGestion => {
@@ -64,6 +85,9 @@ const deItem = (i: ItemGestion, colores: Record<string, string>): PresupuestoGes
     colorEstado: colores[estado] ?? '',
     fechaRecordatorio: valor(g[COL_RECORDATORIO.fecha]),
     estadoRecordatorio: valor(g[COL_RECORDATORIO.estado]),
+    total: valor(g[COL_CIERRE.total]).trim() ? Number(valor(g[COL_CIERRE.total])) : null,
+    ubicacionObra: valor(g[COL_CIERRE.ubicacionObra]),
+    coordinadorObra: valor(g[COL_CIERRE.coordinadorObra]),
   }
 }
 
@@ -78,11 +102,11 @@ function coloresDe(settings: string): Record<string, string> {
 }
 
 /**
- * Las bolsas que se gestionan: todas menos las que están en estos estados (por índice: Ganado y
- * Perdido), filtradas en Monday. Viene también el color de cada etiqueta, para pintar la pastilla
- * igual que en el tablero.
+ * TODAS las bolsas del tablero (regla del usuario, 15/10/2026), sin sus presupuestos: de la más nueva a
+ * la más vieja (por su ID Presupuesto). Viene también el color de cada etiqueta, para pintar la pastilla igual que en el
+ * tablero.
  */
-export async function listarPresupuestosGestion(indicesCerrados: number[]): Promise<PresupuestoGestion[]> {
+export async function listarPresupuestosGestion(): Promise<PresupuestoGestion[]> {
   interface Pagina {
     cursor: string | null
     items: ItemGestion[]
@@ -91,7 +115,7 @@ export async function listarPresupuestosGestion(indicesCerrados: number[]): Prom
     `query {
       boards(ids: [${BOARD_PRESUPUESTOS}]) {
         columns(ids: ["${COL_PRES.estado}"]) { settings_str }
-        items_page(limit: 200, query_params: { rules: [{ column_id: "${COL_PRES.estado}", compare_value: ${JSON.stringify(indicesCerrados)}, operator: not_any_of }] }) {
+        items_page(limit: 200) {
           cursor items { ${CAMPOS_GESTION} }
         }
       }
@@ -100,7 +124,7 @@ export async function listarPresupuestosGestion(indicesCerrados: number[]): Prom
   const colores = coloresDe(d.boards[0]?.columns[0]?.settings_str ?? '')
   const todas: ItemGestion[] = []
   let pagina: Pagina | undefined = d.boards[0]?.items_page
-  for (let vuelta = 0; pagina && vuelta < 20; vuelta++) {
+  for (let vuelta = 0; pagina && vuelta < 40; vuelta++) {
     todas.push(...pagina.items)
     if (!pagina.cursor) break
     const sig: { next_items_page: Pagina } = await mondayApi(
@@ -109,7 +133,19 @@ export async function listarPresupuestosGestion(indicesCerrados: number[]): Prom
     )
     pagina = sig.next_items_page
   }
-  return todas.map((i) => deItem(i, colores))
+  /* Por el número del 🤖ID Presupuesto (IDPRES-882): el id de Monday no sigue el orden de alta (hubo
+     bolsas importadas después). */
+  const numero = (b: PresupuestoGestion) => Number(/\d+/.exec(b.idPresupuesto)?.[0] ?? 0)
+  return todas.map((i) => deItem(i, colores)).sort((a, b) => numero(b) - numero(a) || Number(b.id) - Number(a.id))
+}
+
+/** Los presupuestos (subelementos) de una bolsa, leídos de Monday al abrirla: del más viejo al más nuevo. */
+export async function leerPresupuestosDeBolsa(bolsaId: string): Promise<PresupuestoEnviado[]> {
+  const d = await mondayApi<{ items: { subitems: ItemBolsa['subitems'] }[] }>(
+    `query ($ids: [ID!]) { items(ids: $ids) { subitems { ${CAMPOS_SUBELEMENTO} } } }`,
+    { ids: [bolsaId] },
+  )
+  return (d.items[0]?.subitems ?? []).map(presupuestoDe).sort((a, b) => Number(a.id) - Number(b.id))
 }
 
 /** Una bolsa releída antes de tocarla: otra persona (o el cliente) pudo haberla movido. */
@@ -178,14 +214,16 @@ export class RespuestaRechazada extends Error {
 }
 
 export type RespuestaPresupuesto =
-  | { tipo: 'confirmar'; ubicacion: string; coordinador: string }
+  /** Desde la app, Confirmar pide el total y gana el presupuesto en el mismo paso. */
+  | { tipo: 'confirmar'; ubicacion: string; coordinador: string; total: number }
   | { tipo: 'rechazar'; motivo: string }
+  /** Uno que el cliente confirmó por WhatsApp ("Confirmado - Pend de Cerrar"): el total, y si se corrigen, dirección y coordinador. */
+  | { tipo: 'ganar'; total: number; ubicacion: string; coordinador: string }
 
 /**
- * Confirma o rechaza un presupuesto desde la app, por el MISMO camino que el cliente en el enlace
- * (`/api/presupuesto-respuesta` → `registrarRespuesta`). Vuelve apenas el presupuesto quedó
- * Confirmado (con los datos en la bolsa) o Rechazado: la obra y la cuenta corriente siguen en el
- * servidor. `autor`: sólo cuenta en desarrollo (sin sesión); en producción el servidor lo saca de la
+ * Confirma, rechaza o gana un presupuesto desde la app, por el MISMO camino que el cliente en el
+ * enlace (`/api/presupuesto-respuesta`). Vuelve apenas el presupuesto quedó escrito: la obra y la
+ * cuenta corriente siguen en el servidor. `autor`: sólo cuenta en desarrollo (sin sesión); en producción el servidor lo saca de la
  * sesión.
  */
 export async function responderPresupuesto(subId: string, r: RespuestaPresupuesto, autor: string): Promise<void> {

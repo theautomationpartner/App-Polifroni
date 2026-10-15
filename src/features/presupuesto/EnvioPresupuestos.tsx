@@ -78,6 +78,7 @@ export function EnvioPresupuestos({
   enviado,
   reenvio = false,
   sinContactos = 'Volvé a la etapa anterior y elegí un cliente o un constructor/arquitecto.',
+  avisoNoListo = 'No hay presupuestos para enviar: volvé a la etapa anterior y agregá al menos uno',
   onClaves,
   onEnviado,
   onCelular,
@@ -94,6 +95,8 @@ export function EnvioPresupuestos({
   reenvio?: boolean
   /** Qué hacer si no hay a quién enviarle. */
   sinContactos?: string
+  /** Qué falta para poder enviar, si todavía no hay presupuesto (sin punto final). */
+  avisoNoListo?: string
   /** Las claves recién generadas, para guardarlas antes de mandar (un reintento manda las mismas). */
   onClaves?: (lista: PresupuestoAEnviar[]) => void
   onEnviado: (e: EnvioHecho) => void
@@ -142,7 +145,6 @@ export function EnvioPresupuestos({
   const clavesAConfirmar = aConfirmar.join(',')
   useEffect(() => onAConfirmar?.(aConfirmar), [clavesAConfirmar]) // eslint-disable-line react-hooks/exhaustive-deps
   const sinDocumento = presupuestos.length === 0
-  const avisoNoListo = 'No hay presupuestos para enviar: volvé a la etapa anterior y agregá al menos uno'
   const fase = wsp.estado.fase
   const estadoBoton: 'idle' | 'enviando' | 'enviado' | 'error' = enviado
     ? 'enviado'

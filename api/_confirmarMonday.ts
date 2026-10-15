@@ -16,7 +16,7 @@ import { archivosMonday, completarConfirmacion, type Archivos } from './_confirm
 /** Hace la consulta. Por defecto, Monday con el token del servidor; los tests pasan otra. */
 export type Consulta = <T>(query: string, variables: Record<string, unknown>, opciones?: { escritura?: boolean }) => Promise<T>
 
-const consultaMonday: Consulta = (q, v, o) => mondayServidor(q, v, o)
+export const consultaMonday: Consulta = (q, v, o) => mondayServidor(q, v, o)
 
 /* ────────────────────────────────────────────────────────────────────────────────
  * Tableros y columnas
@@ -132,7 +132,15 @@ export function situacionPresupuesto(etiqueta: string, indice: number | null = n
 export const LIMITES = { motivo: 1000, ubicacion: 300, coordinador: 200 } as const
 
 /** Presupuesto: al confirmar, su formulario pide además la ubicación y el coordinador de la obra. */
-export type Respuesta = { tipo: 'confirmar'; ubicacion?: string; coordinador?: string } | { tipo: 'rechazar'; motivo: string }
+export type Respuesta =
+  | {
+      tipo: 'confirmar'
+      ubicacion?: string
+      coordinador?: string
+      /** Sólo desde la app: el total pactado, para ganarlo en el mismo paso (regla del usuario, 15/10/2026). */
+      total?: number
+    }
+  | { tipo: 'rechazar'; motivo: string }
 
 /** Saca los caracteres de control (deja los saltos de línea del motivo) y los espacios de los bordes. */
 const limpio = (v: unknown, multilinea = false): string =>
@@ -202,6 +210,11 @@ export interface Documento {
    * cliente y el constructor/arquitecto de la bolsa; el comodín "SIN ARQUITECTO" no va. OP: vacío.
    */
   coordinadores: Coordinador[]
+  /**
+   * Presupuesto: OTRO presupuesto de la misma bolsa ya se confirmó (la bolsa está Ganada o "Confirmado
+   * - Pend de Cerrar"). Gana uno solo (regla del usuario, 15/10/2026): éste ya no se confirma. OP: false.
+   */
+  otroConfirmado: boolean
 }
 
 export interface Coordinador {
@@ -249,6 +262,11 @@ const indiceDe = (c?: CV): number | null => {
 const COL_OBRA_CONTACTO = { Cliente: 'board_relation_mkthtd70', Constructor: 'board_relation_mksz3v0h' } as const
 /** Las columnas de la bolsa del presupuesto con el cliente y el constructor/arquitecto. */
 const COL_BOLSA_CONTACTO = { Cliente: 'board_relation_mkvgt8r', Constructor: 'board_relation_mkvgk8yb' } as const
+/** 🤖Estado Presupuesto de la bolsa, y sus índices con un presupuesto ya confirmado: Ganado y "Confirmado - Pend de Cerrar". */
+const COL_BOLSA_ESTADO = 'color_mkvg6w7v'
+const INDICES_BOLSA_CONFIRMADA: readonly number[] = [0, 7]
+/** Lo que se lee de la bolsa junto con el presupuesto. */
+const COLS_BOLSA = [...Object.values(COL_BOLSA_CONTACTO), COL_BOLSA_ESTADO]
 
 /** El ítem comodín "SIN ARQUITECTO" de 👤 Constructor/Arquitecto: el tablero lo usa cuando no hay nadie. */
 const SIN_ARQUITECTO_ID = '10910009068'
@@ -322,6 +340,7 @@ export async function buscarDocumento(
       nombre: nombreDelEnlace ?? (await nombreEnObra(consulta, obraId, rol)),
       motivo,
       coordinadores: [],
+      otroConfirmado: false,
     }
   }
   const i = await porClave(
@@ -330,7 +349,7 @@ export async function buscarDocumento(
     COL_SUB_PRES.clave,
     clave,
     Object.values(COL_SUB_PRES),
-    Object.values(COL_BOLSA_CONTACTO),
+    COLS_BOLSA,
   )
   return i ? documentoPresupuesto(i, rol, nombreDelEnlace) : null
 }
@@ -349,7 +368,7 @@ export async function buscarPresupuestoPorId(subId: string, consulta: Consulta =
         column_values(ids: $cols) { ${CAMPOS_CV} }
       }
     }`,
-    { ids: [subId], cols: Object.values(COL_SUB_PRES), colsPadre: Object.values(COL_BOLSA_CONTACTO) },
+    { ids: [subId], cols: Object.values(COL_SUB_PRES), colsPadre: COLS_BOLSA },
   )
   const i = d.items[0]
   if (!i || !vigente(i) || String(i.board?.id ?? BOARD_SUB_PRESUPUESTOS) !== String(BOARD_SUB_PRESUPUESTOS)) return null
@@ -363,6 +382,7 @@ function documentoPresupuesto(i: ItemLeido, rol: RolConfirmacion, nombreDelEnlac
   const etiqueta = txt(c[COL_SUB_PRES.confirmacion])
   const carpinteria = [txt(c[COL_SUB_PRES.tipo]), txt(c[COL_SUB_PRES.color])].filter(Boolean).join(' · ')
   const bolsa = porId(i.parent_item?.column_values)
+  const indiceBolsa = indiceDe(bolsa[COL_BOLSA_ESTADO])
   return {
     documento: 'presupuesto',
     id: String(i.id),
@@ -374,6 +394,7 @@ function documentoPresupuesto(i: ItemLeido, rol: RolConfirmacion, nombreDelEnlac
     nombre: nombreDelEnlace ?? vinculado(bolsa[COL_BOLSA_CONTACTO[rol]]),
     motivo: txt(c[COL_SUB_PRES.motivo]),
     coordinadores: coordinadoresDe(bolsa),
+    otroConfirmado: indiceBolsa !== null && INDICES_BOLSA_CONFIRMADA.includes(indiceBolsa),
   }
 }
 
@@ -493,20 +514,25 @@ export async function registrarRespuesta(
   }
 
   if (doc.documento === 'presupuesto' && confirma) {
-    await completarConfirmacion(
+    const completar = completarConfirmacion(
       {
         subId: doc.id,
         titulo: `Confirmación de ${doc.titulo}`,
         contenido: textoUpdate(doc, nombre, r, new Date(), desdeApp),
         ubicacion: r.ubicacion ?? '',
-        /* El coordinador se eligió de la lista: su rol dice qué etiqueta va en ✋Coordinar Entrega. */
-        coordinador: doc.coordinadores.find((c) => c.nombre === r.coordinador)?.rol ?? null,
+        /* El coordinador se eligió de la lista: con su rol (✋Coordinar Entrega de la obra). */
+        coordinador: doc.coordinadores.find((c) => c.nombre === r.coordinador) ?? null,
+        total: r.tipo === 'confirmar' && r.total ? r.total : null,
       },
       consulta,
       archivos,
       undefined,
       enSegundoPlano,
-    ).catch((e) => console.warn('[confirmar] no se pudo completar la confirmación del presupuesto', e))
+    )
+    /* Por el enlace, la respuesta del cliente ya quedó: si falla lo demás, se registra en el log. Desde
+       la app, el usuario tiene que saberlo. */
+    if (desdeApp !== null) await completar
+    else await completar.catch((e) => console.warn('[confirmar] no se pudo completar la confirmación del presupuesto', e))
     return
   }
 
