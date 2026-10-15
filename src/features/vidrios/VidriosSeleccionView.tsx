@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
+import { SelectBuscable } from '@/components/ui/SelectBuscable'
 import { EstadoOrdenBadge } from '@/components/ui/EstadoOrdenBadge'
 import { useObra } from '@/features/obras/useObra'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
@@ -7,9 +8,11 @@ import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { enElTaller } from '@/lib/estadosOp'
 import { etiquetaPaso } from '@/lib/pasos'
-import { cantidadValida, composicion, esDvh, medidaValida, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
+import { cantidadValida, capasValidas, composicion, esDvh, medidaValida, ordenParaCortes, ordenVisibleEnCortes } from '@/lib/vidrios'
 import {
+  COL_OBS,
   actualizarVidrios,
+  opcionesVidrio,
   ordenesDeObra,
   vidriosDeOrdenes,
   type CambioVidrio,
@@ -29,10 +32,29 @@ const CIERRE_MS = 220
 /** Las piezas de una OP: la suma de las cantidades de sus vidrios. */
 const piezas = (vs: VidrioDeOrden[]) => vs.reduce((n, v) => n + (v.cantidad ?? 0), 0)
 
-/** Lo que se está escribiendo en un vidrio en edición: los tres campos como texto. */
-type Borrador = { ancho: string; alto: string; cantidad: string }
-const borradorDe = (v: VidrioDeOrden): Borrador => ({ ancho: v.ancho, alto: v.alto, cantidad: v.cantidad == null ? '' : String(v.cantidad) })
-const borradorValido = (b: Borrador) => medidaValida(b.ancho) && medidaValida(b.alto) && cantidadValida(b.cantidad)
+/** Lo que se está escribiendo en un vidrio en edición: el tipo, las capas y los tres números como texto. */
+type Borrador = { dvh: boolean; comp1: string; camara: string; comp2: string; ancho: string; alto: string; cantidad: string }
+type Capa = 'comp1' | 'camara' | 'comp2'
+const borradorDe = (v: VidrioDeOrden): Borrador => ({
+  dvh: esDvh(v),
+  comp1: v.comp1,
+  camara: v.camara,
+  comp2: v.comp2,
+  ancho: v.ancho,
+  alto: v.alto,
+  cantidad: v.cantidad == null ? '' : String(v.cantidad),
+})
+const borradorValido = (b: Borrador) =>
+  capasValidas(b) && medidaValida(b.ancho) && medidaValida(b.alto) && cantidadValida(b.cantidad)
+/** Las capas que se guardan: en un simple, la Cámara y el Comp 2 van vacías (se borran). */
+const capasDe = (b: Borrador) => ({ comp1: b.comp1.trim(), camara: b.dvh ? b.camara.trim() : '', comp2: b.dvh ? b.comp2.trim() : '' })
+const cambiaronCapas = (b: Borrador, v: VidrioDeOrden) => {
+  const c = capasDe(b)
+  return c.comp1 !== v.comp1 || c.camara !== v.camara || c.comp2 !== v.comp2
+}
+/** Las columnas de Monday de cada capa, para sus opciones. */
+const COL_CAPA: Record<Capa, string> = { comp1: COL_OBS.comp1, camara: COL_OBS.camara, comp2: COL_OBS.comp2 }
+const TITULO_CAPA: Record<Capa, string> = { comp1: 'Vidrio 1', camara: 'Cámara', comp2: 'Vidrio 2' }
 
 /**
  * Solicitud de cortes de vidrio · Etapa 2: qué vidrios se piden.
@@ -43,9 +65,11 @@ const borradorValido = (b: Borrador) => medidaValida(b.ancho) && medidaValida(b.
  * cantidad—; destildarla la pliega. Arrancan todas sin elegir, plegadas. Las que no tienen vidrios
  * (`🤖Tiene Vidrios` sin tildar) se muestran apagadas, sin casilla para elegir: no hay nada que pedir de ellas.
  *
- * Cada orden desplegada se puede corregir: "Editar" abre el ancho, el alto y la cantidad de sus
- * vidrios para escribirlos, y el mismo botón —ahora "Guardar"— escribe en Monday sólo los vidrios
- * que cambiaron (sus subelementos, ver `actualizarVidrios`).
+ * Cada orden desplegada se puede corregir: "Editar" abre sus vidrios —el tipo (Simple o DVH), las
+ * capas (Vidrio Comp 1, Cámara y Vidrio Comp 2, con las opciones de sus columnas en Monday), el
+ * ancho, el alto y la cantidad— y el mismo botón —ahora "Guardar"— escribe en Monday sólo los
+ * vidrios que cambiaron (sus subelementos, ver `actualizarVidrios`). Pasar un DVH a Simple borra su
+ * Cámara y su Comp 2.
  */
 export function VidriosSeleccionView() {
   const obra = useObra()
@@ -64,6 +88,8 @@ export function VidriosSeleccionView() {
   /** La orden que se está guardando en Monday. */
   const [guardando, setGuardando] = useState<string | null>(null)
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
+  /** Las opciones de cada capa, por columna; se leen de Monday la primera vez que se edita. */
+  const [opciones, setOpciones] = useState<Record<string, string[]> | null>(null)
 
   useAccionEnCurso('Esperá a que se guarden los vidrios.', guardando !== null)
 
@@ -128,11 +154,25 @@ export function VidriosSeleccionView() {
     )
   }
 
-  const editar = (id: string) =>
+  const editar = (id: string) => {
     setEdicion((e) => ({ ...e, [id]: Object.fromEntries((vidrios[id] ?? []).map((v) => [v.id, borradorDe(v)])) }))
+    if (!opciones) {
+      opcionesVidrio()
+        .then(setOpciones)
+        /* Sin las opciones del tablero, cada capa ofrece al menos los valores que ya usan estos vidrios. */
+        .catch(() => setOpciones({}))
+    }
+  }
 
-  const escribir = (op: string, vidrio: string, campo: keyof Borrador, valor: string) =>
+  const escribir = <K extends keyof Borrador>(op: string, vidrio: string, campo: K, valor: Borrador[K]) =>
     setEdicion((e) => ({ ...e, [op]: { ...e[op], [vidrio]: { ...e[op][vidrio], [campo]: valor } } }))
+
+  /** Las opciones de una capa: las de su columna y, si no está entre ellas, el valor que ya tiene. */
+  const opcionesDe = (capa: Capa, actual: string) => {
+    const lista = opciones?.[COL_CAPA[capa]] ?? []
+    const todas = actual && !lista.includes(actual) ? [actual, ...lista] : lista
+    return todas.map((o) => ({ valor: o, texto: o }))
+  }
 
   /** Guarda en Monday sólo los vidrios que cambiaron; sin cambios, sólo cierra la edición. */
   const guardar = async (id: string) => {
@@ -140,17 +180,25 @@ export function VidriosSeleccionView() {
     const originales = vidrios[id] ?? []
     const cambiados = originales.filter((v) => {
       const b = escritos[v.id]
-      return b && (b.ancho.trim() !== v.ancho || b.alto.trim() !== v.alto || b.cantidad.trim() !== (v.cantidad == null ? '' : String(v.cantidad)))
+      return (
+        b &&
+        (cambiaronCapas(b, v) ||
+          b.ancho.trim() !== v.ancho ||
+          b.alto.trim() !== v.alto ||
+          b.cantidad.trim() !== (v.cantidad == null ? '' : String(v.cantidad)))
+      )
     })
     if (cambiados.some((v) => !borradorValido(escritos[v.id]))) {
       setAviso({
         titulo: 'Revisá los vidrios',
-        texto: 'El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
+        texto:
+          'Cada vidrio lleva su Vidrio 1 y, si es DVH, también la Cámara y el Vidrio 2. El ancho y el alto van en mm enteros (por ejemplo 843 o 1.013) y la cantidad es un número de 1 en adelante.',
       })
       return
     }
     const cambios: CambioVidrio[] = cambiados.map((v) => ({
       id: v.id,
+      capas: cambiaronCapas(escritos[v.id], v) ? capasDe(escritos[v.id]) : undefined,
       ancho: escritos[v.id].ancho.trim(),
       alto: escritos[v.id].alto.trim(),
       cantidad: Number(escritos[v.id].cantidad),
@@ -174,7 +222,7 @@ export function VidriosSeleccionView() {
         ...todos,
         [id]: (todos[id] ?? []).map((v) => {
           const c = porId.get(v.id)
-          return c ? { ...v, ancho: c.ancho, alto: c.alto, cantidad: c.cantidad } : v
+          return c ? { ...v, ...c.capas, ancho: c.ancho, alto: c.alto, cantidad: c.cantidad } : v
         }),
       }))
     }
@@ -353,7 +401,7 @@ export function VidriosSeleccionView() {
                             className={`vid-detalle ${on ? '' : 'vid-detalle--fuera'} ${cerrando.has(o.id) ? 'vid-detalle--cierra' : ''}`}
                           >
                             <td colSpan={8}>
-                              <table className="vid-sub">
+                              <table className={`vid-sub ${enEdicion ? 'vid-sub--edicion' : ''}`}>
                                 <colgroup>
                                   <col className="vid-w-modelo" />
                                   <col className="vid-w-tipo" />
@@ -373,57 +421,96 @@ export function VidriosSeleccionView() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {vs.map((v) => (
-                                    <tr key={v.id}>
-                                      <td className="vid-modelo">{v.modelo || '—'}</td>
-                                      <td>
-                                        <span className={`vid-tipo ${esDvh(v) ? 'vid-tipo--dvh' : ''}`}>
-                                          {esDvh(v) ? 'DVH' : 'Simple'}
-                                        </span>
-                                      </td>
-                                      <td>
-                                        {esDvh(v) ? (
-                                          <span className="vid-capas" title="Vidrio 1 · Cámara · Vidrio 2">
-                                            <span className="vid-capa">{v.comp1 || '—'}</span>
-                                            <span className="vid-capa vid-capa--camara">{v.camara || '—'}</span>
-                                            <span className="vid-capa">{v.comp2 || '—'}</span>
-                                          </span>
-                                        ) : (
-                                          <span className="vid-capas">
-                                            <span className="vid-capa">{composicion(v)}</span>
-                                          </span>
-                                        )}
-                                      </td>
-                                      {enEdicion && escritos[v.id] ? (
-                                        <>
-                                          {(['ancho', 'alto', 'cantidad'] as const).map((campo) => {
-                                            const valor = escritos[v.id][campo]
-                                            const ok = campo === 'cantidad' ? cantidadValida(valor) : medidaValida(valor)
-                                            return (
-                                              <td key={campo}>
-                                                <input
-                                                  className={`vid-input ${ok ? '' : 'vid-input--mal'}`}
-                                                  inputMode="numeric"
-                                                  value={valor}
+                                  {vs.map((v) => {
+                                    const b = enEdicion ? escritos[v.id] : undefined
+                                    return (
+                                      <tr key={v.id}>
+                                        <td className="vid-modelo">{v.modelo || '—'}</td>
+                                        <td>
+                                          {b ? (
+                                            /* Simple o DVH: pasar a Simple deja sólo el Vidrio 1. */
+                                            <span className="vid-tipo-sel" role="group" aria-label={`Tipo de ${v.modelo || 'el vidrio'}`}>
+                                              {([false, true] as const).map((dvh) => (
+                                                <button
+                                                  key={String(dvh)}
+                                                  type="button"
+                                                  className={`vid-tipo-op ${b.dvh === dvh ? 'vid-tipo-op--on' : ''}`}
+                                                  aria-pressed={b.dvh === dvh}
                                                   disabled={guardandoEsta}
-                                                  onChange={(e) => escribir(o.id, v.id, campo, e.target.value)}
-                                                  aria-label={`${campo === 'cantidad' ? 'Cantidad' : campo === 'ancho' ? 'Ancho' : 'Alto'} de ${v.modelo || 'el vidrio'}`}
-                                                />
-                                              </td>
-                                            )
-                                          })}
-                                        </>
-                                      ) : (
-                                        <>
-                                          <td className="vid-num">{v.ancho || '—'}</td>
-                                          <td className="vid-num">{v.alto || '—'}</td>
-                                          <td className="vid-cant">
-                                            {v.cantidad ?? <span className="vid-falta">Sin cantidad</span>}
-                                          </td>
-                                        </>
-                                      )}
-                                    </tr>
-                                  ))}
+                                                  onClick={() => escribir(o.id, v.id, 'dvh', dvh)}
+                                                >
+                                                  {dvh ? 'DVH' : 'Simple'}
+                                                </button>
+                                              ))}
+                                            </span>
+                                          ) : (
+                                            <span className={`vid-tipo ${esDvh(v) ? 'vid-tipo--dvh' : ''}`}>
+                                              {esDvh(v) ? 'DVH' : 'Simple'}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {b ? (
+                                            <span className="vid-capas vid-capas--edicion">
+                                              {(b.dvh ? (['comp1', 'camara', 'comp2'] as const) : (['comp1'] as const)).map((capa) => (
+                                                <span key={capa} className={`vid-capa-sel ${capa === 'camara' ? 'vid-capa-sel--camara' : ''}`}>
+                                                  <SelectBuscable
+                                                    id={`vid-${v.id}-${capa}`}
+                                                    valor={b[capa]}
+                                                    opciones={opcionesDe(capa, b[capa])}
+                                                    placeholder={TITULO_CAPA[capa]}
+                                                    cargando={!opciones}
+                                                    textoCargando="…"
+                                                    disabled={guardandoEsta}
+                                                    falta={!b[capa].trim()}
+                                                    onElegir={(valor) => escribir(o.id, v.id, capa, valor)}
+                                                  />
+                                                </span>
+                                              ))}
+                                            </span>
+                                          ) : esDvh(v) ? (
+                                            <span className="vid-capas" title="Vidrio 1 · Cámara · Vidrio 2">
+                                              <span className="vid-capa">{v.comp1 || '—'}</span>
+                                              <span className="vid-capa vid-capa--camara">{v.camara || '—'}</span>
+                                              <span className="vid-capa">{v.comp2 || '—'}</span>
+                                            </span>
+                                          ) : (
+                                            <span className="vid-capas">
+                                              <span className="vid-capa">{composicion(v)}</span>
+                                            </span>
+                                          )}
+                                        </td>
+                                        {enEdicion && escritos[v.id] ? (
+                                          <>
+                                            {(['ancho', 'alto', 'cantidad'] as const).map((campo) => {
+                                              const valor = escritos[v.id][campo]
+                                              const ok = campo === 'cantidad' ? cantidadValida(valor) : medidaValida(valor)
+                                              return (
+                                                <td key={campo}>
+                                                  <input
+                                                    className={`vid-input ${ok ? '' : 'vid-input--mal'}`}
+                                                    inputMode="numeric"
+                                                    value={valor}
+                                                    disabled={guardandoEsta}
+                                                    onChange={(e) => escribir(o.id, v.id, campo, e.target.value)}
+                                                    aria-label={`${campo === 'cantidad' ? 'Cantidad' : campo === 'ancho' ? 'Ancho' : 'Alto'} de ${v.modelo || 'el vidrio'}`}
+                                                  />
+                                                </td>
+                                              )
+                                            })}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <td className="vid-num">{v.ancho || '—'}</td>
+                                            <td className="vid-num">{v.alto || '—'}</td>
+                                            <td className="vid-cant">
+                                              {v.cantidad ?? <span className="vid-falta">Sin cantidad</span>}
+                                            </td>
+                                          </>
+                                        )}
+                                      </tr>
+                                    )
+                                  })}
                                 </tbody>
                               </table>
                             </td>

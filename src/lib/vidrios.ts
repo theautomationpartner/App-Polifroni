@@ -55,6 +55,13 @@ export const mm = (s: string): number => Number(String(s).replace(/\./g, '').rep
 /** Una medida escrita a mano: mm enteros, con o sin punto de miles ("843", "1013", "1.013"). */
 export const medidaValida = (s: string): boolean => /^(\d+|\d{1,3}(\.\d{3})+)$/.test(s.trim()) && mm(s) > 0
 
+/**
+ * Las capas de un vidrio editado: el Comp 1 siempre; en un DVH también la Cámara y el Comp 2 (un
+ * DVH sin una de ellas sale incompleto en la orden de compra).
+ */
+export const capasValidas = (b: { dvh: boolean; comp1: string; camara: string; comp2: string }): boolean =>
+  !!b.comp1.trim() && (!b.dvh || (!!b.camara.trim() && !!b.comp2.trim()))
+
 /** Una cantidad escrita a mano: un entero de 1 en adelante. */
 export const cantidadValida = (s: string): boolean => /^\d+$/.test(s.trim()) && Number(s) >= 1
 
