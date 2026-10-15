@@ -248,7 +248,7 @@ un `text_xxxxx` suelto.
   Sobre la barra blanca no se veía, así que se invierte por CSS: es monocromo puro, y al invertirlo
   queda negro limpio. Con el archivo en oscuro, se borra el `filter: invert(1)` de `.marca-img`.
 
-## Área Presupuesto: Crear y Cargar Presupuestos
+## Área Presupuesto: Crear Nuevo Presupuesto
 
 Tablero 📄 Presupuestos (9984126961): un ítem por cliente o constructor —la "bolsa"— y un subelemento
 (9984270591) por cada presupuesto enviado. Tres etapas:

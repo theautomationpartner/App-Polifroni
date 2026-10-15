@@ -29,7 +29,7 @@ export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Pro
   { id: 'vidrios', titulo: 'SOLICITUD DE CORTES DE VIDRIO', proceso: 'obras' },
   /* Agenda: una sola operación, el calendario, donde se crean y se gestionan los turnos. */
   { id: 'calendario', titulo: 'AGENDA DE TURNOS', proceso: 'agenda' },
-  { id: 'presupuestos', titulo: 'CREAR Y CARGAR PRESUPUESTOS', proceso: 'presupuesto' },
+  { id: 'presupuestos', titulo: 'CREAR NUEVO PRESUPUESTO', proceso: 'presupuesto' },
   { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
   { id: 'facturar', titulo: 'FACTURAR UNA OBRA', proceso: 'gestionObras' },
 ]
