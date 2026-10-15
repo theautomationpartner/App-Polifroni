@@ -25,12 +25,12 @@ export const indiceDe = (paso: Paso): number => Math.max(0, PASOS.indexOf(paso))
 export const OPERACIONES: readonly { id: Operacion; titulo: string; proceso: Proceso }[] = [
   { id: 'enviar', titulo: 'CARGAR Y ENVIAR ORDENES DE PRODUCCION', proceso: 'obras' },
   { id: 'consultar', titulo: 'CONSULTAR ORDENES DE PRODUCCION', proceso: 'obras' },
-  { id: 'editar', titulo: 'EDITAR ORDENES DE PRODUCCION', proceso: 'obras' },
+  { id: 'editar', titulo: 'EDITAR ORDENES DE PRODUCCION PVC', proceso: 'obras' },
   { id: 'vidrios', titulo: 'SOLICITUD DE CORTES DE VIDRIO', proceso: 'obras' },
   /* Agenda: una sola operación, el calendario, donde se crean y se gestionan los turnos. */
   { id: 'calendario', titulo: 'AGENDA DE TURNOS', proceso: 'agenda' },
   { id: 'presupuestos', titulo: 'CREAR NUEVO PRESUPUESTO', proceso: 'presupuesto' },
-  { id: 'gestionarPresupuestos', titulo: 'CONSULTAR Y GESTIONAR PRESUPUESTOS', proceso: 'presupuesto' },
+  { id: 'gestionarPresupuestos', titulo: 'CONSULTAR PRESUPUESTOS NO GANADOS', proceso: 'presupuesto' },
   { id: 'facturar', titulo: 'FACTURAR UNA OBRA', proceso: 'gestionObras' },
 ]
 

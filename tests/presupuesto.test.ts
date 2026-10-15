@@ -30,6 +30,7 @@ import {
   importeDe,
   nombreBolsa,
   pasaFiltroBolsa,
+  seLista,
   tipoObraDe,
   colorTipoCarpinteria,
   formatoImporte,
@@ -147,23 +148,22 @@ assert.ok(yaEnviado('Enviado') && !yaEnviado('') && !yaEnviado('Enviar'))
   const pdf = { assetId: '1' }
   const sinEnviar = { estadoEnvio: '', confirmacion: '', pdf }
   const enviado = { estadoEnvio: 'Enviado', confirmacion: '', pdf }
-  assert.deepEqual(accionesPresupuesto('Solicitud de Presupuesto', sinEnviar), { envio: 'enviar', confirmar: true, perder: true, ganar: false })
-  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', enviado), { envio: 'reenviar', confirmar: true, perder: true, ganar: false }, 'ya salió: Reenviar')
+  assert.deepEqual(accionesPresupuesto('Solicitud de Presupuesto', sinEnviar), { envio: 'enviar', confirmar: true, ganar: false })
+  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', enviado), { envio: 'reenviar', confirmar: true, ganar: false }, 'ya salió: Reenviar')
   assert.equal(accionesPresupuesto('Presupuesto vencido', enviado).confirmar, false, 'vencido: no se confirma')
-  assert.equal(accionesPresupuesto('Presupuesto vencido', enviado).perder, true, 'vencido: sí se pierde')
-  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, pdf: null }), { envio: null, confirmar: false, perder: true, ganar: false }, 'sin PDF')
+  assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, pdf: null }), { envio: null, confirmar: false, ganar: false }, 'sin PDF')
   for (const c of ['Confirmado', 'Rechazado', 'Error de Confirmacion']) {
-    assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, confirmacion: c }), { envio: null, confirmar: false, perder: false, ganar: false }, c)
+    assert.deepEqual(accionesPresupuesto('Presupuesto Enviado', { ...enviado, confirmacion: c }), { envio: null, confirmar: false, ganar: false }, c)
   }
-  assert.deepEqual(accionesPresupuesto('Ganado', enviado), { envio: null, confirmar: false, perder: false, ganar: false }, 'bolsa recién ganada')
+  assert.deepEqual(accionesPresupuesto('Ganado', enviado), { envio: null, confirmar: false, ganar: false }, 'bolsa recién ganada')
   /* Confirmado por WhatsApp: la bolsa "Confirmado - Pend de Cerrar" se gana con el total (15/10/2026). */
   const pendCerrar = 'Confirmado - Pend de Cerrar'
-  assert.deepEqual(accionesPresupuesto(pendCerrar, { ...enviado, confirmacion: 'Confirmado' }), { envio: null, confirmar: false, perder: false, ganar: true })
+  assert.deepEqual(accionesPresupuesto(pendCerrar, { ...enviado, confirmacion: 'Confirmado' }), { envio: null, confirmar: false, ganar: true })
   assert.equal(accionesPresupuesto('Presupuesto Enviado', { ...enviado, confirmacion: 'Confirmado' }).ganar, false, 'sin la etiqueta, no')
   assert.equal(accionesPresupuesto('Ganado', { ...enviado, confirmacion: 'Confirmado' }).ganar, false, 'ya ganado')
-  assert.deepEqual(accionesPresupuesto(pendCerrar, enviado), { envio: 'reenviar', confirmar: false, perder: true, ganar: false }, 'otro de la misma bolsa: ya hay uno confirmado')
+  assert.deepEqual(accionesPresupuesto(pendCerrar, enviado), { envio: 'reenviar', confirmar: false, ganar: false }, 'otro de la misma bolsa: ya hay uno confirmado')
   /* Gana uno solo: con la bolsa Ganada (por otro), los demás ya no se confirman. */
-  assert.deepEqual(accionesPresupuesto('Ganado', sinEnviar), { envio: null, confirmar: false, perder: false, ganar: false })
+  assert.deepEqual(accionesPresupuesto('Ganado', sinEnviar), { envio: null, confirmar: false, ganar: false })
 }
 
 /* La consulta lista TODAS las bolsas; las pestañas filtran por su estado (15/10/2026). */
@@ -173,8 +173,8 @@ assert.ok(yaEnviado('Enviado') && !yaEnviado('') && !yaEnviado('Enviar'))
   assert.deepEqual(en('todos'), estados)
   assert.deepEqual(en('enGestion'), ['Presupuesto Enviado', 'Confirmado - Pend de Cerrar', 'Presupuesto vencido', ''])
   assert.deepEqual(en('paraCerrar'), ['Confirmado - Pend de Cerrar'])
-  assert.deepEqual(en('ganados'), ['Ganado'])
-  assert.deepEqual(en('perdidos'), ['Perdido'])
+  /* La lista no trae las Ganadas, las Perdidas ni las vencidas (15/10/2026). */
+  assert.deepEqual(estados.filter(seLista), ['Presupuesto Enviado', 'Confirmado - Pend de Cerrar', ''])
   assert.ok(!gestionable('Ganado') && !gestionable('Perdido') && gestionable('Presupuesto Enviado'), '«+Nuevo» no en una Ganada o Perdida')
 }
 

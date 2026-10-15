@@ -23,6 +23,7 @@ import {
   leerPresupuestoGestion,
   leerPresupuestosDeBolsa,
   listarPresupuestosGestion,
+  marcarBolsaPerdida,
   mondayHabilitado,
   registrarEnvioGestion,
   responderPresupuesto,
@@ -36,7 +37,7 @@ import {
   FichaPresupuesto,
   ModalConfirmarPresupuesto,
   ModalGanarPresupuesto,
-  ModalPerderPresupuesto,
+  ModalPerderBolsa,
   SituacionChip,
   fechaCorta,
   type AccionFila,
@@ -82,15 +83,15 @@ type Subs = PresupuestoEnviado[] | 'cargando' | 'error'
  * tipo, color, el PDF y su estado. Un click en un presupuesto abre su ficha.
  *
  * En la bolsa:
- *  - +NUEVO: otro presupuesto para la bolsa (`ModalNuevoPresupuesto`). No en una Ganada o Perdida.
+ *  - +NUEVO: otro presupuesto para la bolsa (`ModalNuevoPresupuesto`). No en una Ganada.
+ *  - PERDIDO: la bolsa pasa a "Perdido" y sale de la lista (no se listan las Perdidas ni las vencidas).
  * En cada presupuesto:
  *  - ENVIAR / REENVIAR (según si ya salió): despliega la fila con el bloque de envío.
  *  - CONFIRMAR: con el total pactado, la dirección y el coordinador; la bolsa queda Ganada. Gana uno
  *    solo: los demás de la bolsa ya no se confirman.
  *  - GANAR: el que el cliente confirmó por WhatsApp ("Confirmado - Pend de Cerrar"), con el total.
- *  - PERDIDO: lo mismo que "Rechazar" del enlace (sólo ese presupuesto).
  *
- * Confirmar, Ganar y Perdido los hace el servidor, por el mismo camino que el enlace.
+ * Confirmar y Ganar los hace el servidor, por el mismo camino que el enlace.
  */
 export function GestionarPresupuestosView() {
   const { usuario, accionEnCurso } = useApp()
@@ -106,7 +107,8 @@ export function GestionarPresupuestosView() {
   const [subs, setSubs] = useState<Record<string, Subs>>({})
 
   const [ficha, setFicha] = useState<FilaGestion | null>(null)
-  const [modal, setModal] = useState<{ accion: 'confirmar' | 'perder' | 'ganar'; fila: FilaGestion } | null>(null)
+  const [modal, setModal] = useState<{ accion: 'confirmar' | 'ganar'; fila: FilaGestion } | null>(null)
+  const [perdiendo, setPerdiendo] = useState<PresupuestoGestion | null>(null)
   const [nuevo, setNuevo] = useState<PresupuestoGestion | null>(null)
   const [envio, setEnvio] = useState<EnvioAbierto | null>(null)
   const [cerrando, setCerrando] = useState<string | null>(null)
@@ -225,36 +227,27 @@ export function GestionarPresupuestosView() {
     }
   }
 
-  /* ── Confirmar / Ganar / Perdido: lo mismo que el enlace, en el servidor ──────────────────────── */
+  /* ── Confirmar / Ganar: lo mismo que el enlace, en el servidor ──────────────────────── */
 
   const responder = async (f: FilaGestion, r: RespuestaPresupuesto) => {
     setModal(null)
     setFicha(null)
     setAviso(null)
-    const gana = r.tipo !== 'rechazar'
     setTrabajando({
       id: f.p.id,
-      titulo:
-        r.tipo === 'confirmar' ? 'Confirmando el presupuesto...' : r.tipo === 'ganar' ? 'Ganando el presupuesto...' : 'Dando el presupuesto por perdido...',
-      detalle: gana
-        ? 'El presupuesto queda Ganado, con su tipo, color, total y PDF. La obra y su registro en la cuenta corriente se crean enseguida.'
-        : 'El presupuesto queda Rechazado.',
+      titulo: r.tipo === 'confirmar' ? 'Confirmando el presupuesto...' : 'Ganando el presupuesto...',
+      detalle: 'El presupuesto queda Ganado, con su tipo, color, total y PDF. La obra y su registro en la cuenta corriente se crean enseguida.',
     })
     try {
       await responderPresupuesto(f.p.id, r, usuario?.name ?? '')
-      if (gana) {
-        /* La bolsa quedó Ganada: gana uno solo, sus otros presupuestos ya no se confirman. */
-        actualizar(
-          f.bolsa.id,
-          f.p.id,
-          { confirmacion: 'Confirmado' },
-          { estado: ETIQUETA_GANADO, colorEstado: '#00c875', total: r.total, ubicacionObra: r.ubicacion },
-        )
-        setAviso(`${f.p.nombre} de ${f.bolsa.nombre} quedó Ganado. La obra y su registro en la cuenta corriente se están creando.`)
-      } else {
-        actualizar(f.bolsa.id, f.p.id, { confirmacion: 'Rechazado', motivo: r.motivo })
-        setAviso(`${f.p.nombre} de ${f.bolsa.nombre} quedó Rechazado.`)
-      }
+      /* La bolsa quedó Ganada: gana uno solo, sus otros presupuestos ya no se confirman. */
+      actualizar(
+        f.bolsa.id,
+        f.p.id,
+        { confirmacion: 'Confirmado' },
+        { estado: ETIQUETA_GANADO, colorEstado: '#00c875', total: r.total, ubicacionObra: r.ubicacion },
+      )
+      setAviso(`${f.p.nombre} de ${f.bolsa.nombre} quedó Ganado. La obra y su registro en la cuenta corriente se están creando.`)
     } catch (e) {
       if (e instanceof RespuestaRechazada && e.yaRespondido) {
         /* Ya respondió el cliente por el enlace u otro usuario: se trae cómo quedó. */
@@ -265,11 +258,31 @@ export function GestionarPresupuestosView() {
         setBloqueo({ titulo: r.tipo === 'ganar' ? 'El presupuesto ya no se puede ganar' : 'El presupuesto ya tiene respuesta', texto: e.message })
       } else {
         setBloqueo({
-          titulo:
-            r.tipo === 'confirmar' ? 'No se pudo confirmar el presupuesto' : r.tipo === 'ganar' ? 'No se pudo ganar el presupuesto' : 'No se pudo dar por perdido',
+          titulo: r.tipo === 'confirmar' ? 'No se pudo confirmar el presupuesto' : 'No se pudo ganar el presupuesto',
           texto: e instanceof Error ? e.message : 'Probá de nuevo en unos segundos.',
         })
       }
+    } finally {
+      setTrabajando(null)
+    }
+  }
+
+  /** Da la bolsa por perdida: pasa a "Perdido" en Monday y sale de la lista. */
+  const perder = async (b: PresupuestoGestion) => {
+    setPerdiendo(null)
+    setAviso(null)
+    setTrabajando({
+      id: b.id,
+      titulo: 'Dando el presupuesto por perdido...',
+      detalle: 'El presupuesto queda Perdido y deja de aparecer en esta lista.',
+    })
+    try {
+      await marcarBolsaPerdida(b.id)
+      setLista((l) => (l ?? []).filter((x) => x.id !== b.id))
+      if (abierta === b.id) setAbierta(null)
+      setAviso(`${b.nombre} quedó Perdido.`)
+    } catch {
+      setBloqueo({ titulo: 'No se pudo dar por perdido', texto: 'No se pudo actualizar el presupuesto en Monday. Probá de nuevo en unos segundos.' })
     } finally {
       setTrabajando(null)
     }
@@ -334,7 +347,7 @@ export function GestionarPresupuestosView() {
             <span className="ag-trabajando">
               <i className="fas fa-circle-notch spin" /> Actualizando…
             </span>
-          ) : !acciones.envio && !acciones.confirmar && !acciones.perder && !acciones.ganar ? null : (
+          ) : !acciones.envio && !acciones.confirmar && !acciones.ganar ? null : (
             <div className="ag-acciones">
               {acciones.envio && (
                 <button
@@ -365,11 +378,6 @@ export function GestionarPresupuestosView() {
               {acciones.ganar && (
                 <button type="button" className="ag-acc ag-acc--ok" disabled={ocupado} onClick={() => accion(f, 'ganar')}>
                   <i className="fas fa-trophy" /> Ganar
-                </button>
-              )}
-              {acciones.perder && (
-                <button type="button" className="ag-acc ag-acc--cancel" disabled={ocupado} onClick={() => accion(f, 'perder')}>
-                  <i className="fas fa-thumbs-down" /> Perdido
                 </button>
               )}
             </div>
@@ -491,8 +499,8 @@ export function GestionarPresupuestosView() {
     <section className="view paso-layout obras-v2 anticipos-v2 agenda-v2 presupuesto-v2">
       <PasoHeader />
       <PasoTitulo
-        titulo="Consultar y Gestionar Presupuestos"
-        descripcion="Todos los presupuestos, con su estado y su total pactado. Tocá uno para ver sus presupuestos enviados: envialos o reenvialos, confirmalos, ganá los que el cliente confirmó o dalos por perdidos. Con «+ Nuevo» le cargás y enviás otro."
+        titulo="Consultar Presupuestos No Ganados"
+        descripcion="Lista completo de todos los presupuestos que aun no se ganaron. Podes reenviar, confirmar o dar por perdido cualquiera de ellos"
         sinNumero
       />
 
@@ -631,18 +639,32 @@ export function GestionarPresupuestosView() {
                             {b.total !== null ? <span className="ant-nro">{formatoImporte(b.total)}</span> : <span className="ant-sd">—</span>}
                           </td>
                           <td className="ant-col-cen ag-col-acc" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="ant-reenviar pres-nuevo"
-                              disabled={ocupado || !admiteNuevo}
-                              title={admiteNuevo ? 'Cargar y enviar otro presupuesto' : `El presupuesto está ${b.estado}: no se le cargan otros`}
-                              onClick={() => {
-                                setAviso(null)
-                                setNuevo(b)
-                              }}
-                            >
-                              <i className="fas fa-plus" /> Nuevo
-                            </button>
+                            <div className="ag-acciones">
+                              <button
+                                type="button"
+                                className="ant-reenviar pres-nuevo"
+                                disabled={ocupado || !admiteNuevo}
+                                title={admiteNuevo ? 'Cargar y enviar otro presupuesto' : `El presupuesto está ${b.estado}: no se le cargan otros`}
+                                onClick={() => {
+                                  setAviso(null)
+                                  setNuevo(b)
+                                }}
+                              >
+                                <i className="fas fa-plus" /> Nuevo
+                              </button>
+                              <button
+                                type="button"
+                                className="ag-acc ag-acc--cancel pres-perdido"
+                                disabled={ocupado || !admiteNuevo}
+                                title={admiteNuevo ? 'Dar el presupuesto por perdido' : `El presupuesto está ${b.estado}: no se da por perdido`}
+                                onClick={() => {
+                                  setAviso(null)
+                                  setPerdiendo(b)
+                                }}
+                              >
+                                <i className="fas fa-thumbs-down" /> Perdido
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {abiertaB && presupuestosDe(b)}
@@ -650,6 +672,14 @@ export function GestionarPresupuestosView() {
                     )
                   })
                 )}
+                {/* Hasta completar la página: la tabla no cambia de alto al buscar, filtrar o llegar a la última. */}
+                {Array.from({ length: POR_PAGINA - Math.max(1, lista === null ? 0 : visibles.length) }, (_, i) => (
+                  <tr key={`relleno-${i}`} className="pres-fila-relleno" aria-hidden="true">
+                    <td colSpan={COLUMNAS}>
+                      <span className="pres-relleno-alto" />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -698,13 +728,7 @@ export function GestionarPresupuestosView() {
           onGanar={(d) => void responder(modal.fila, { tipo: 'ganar', ...d })}
         />
       )}
-      {modal?.accion === 'perder' && (
-        <ModalPerderPresupuesto
-          fila={modal.fila}
-          onClose={() => setModal(null)}
-          onConfirmar={(motivo) => void responder(modal.fila, { tipo: 'rechazar', motivo })}
-        />
-      )}
+      {perdiendo && <ModalPerderBolsa bolsa={perdiendo} onClose={() => setPerdiendo(null)} onConfirmar={() => void perder(perdiendo)} />}
       {nuevo && (
         <ModalNuevoPresupuesto
           bolsa={nuevo}

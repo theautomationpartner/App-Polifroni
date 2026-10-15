@@ -687,11 +687,33 @@
   width: 150px;
 }
 .presupuesto-v2 .pres-tabla--bolsas col.pres-w-acc {
-  width: 140px;
+  width: 250px;
+}
+.presupuesto-v2 .pres-tabla--bolsas .ag-acciones {
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+.presupuesto-v2 .pres-tabla--bolsas .pres-perdido {
+  white-space: nowrap;
 }
 .presupuesto-v2 .pres-tabla--bolsas .ant-col-der,
 .presupuesto-v2 .pres-tabla--bolsas thead th.ant-col-der {
   text-align: right;
+}
+/* La tabla tiene siempre el alto de una página llena: las filas que faltan van vacías, con el
+   mismo alto que una fila con su botón "+ Nuevo". El aviso (leyendo, sin resultados, error) ocupa
+   una fila de ese mismo alto. */
+.presupuesto-v2 .pres-tabla--bolsas tr.pres-fila-relleno td {
+  border-bottom-color: transparent;
+  background: transparent;
+}
+.presupuesto-v2 .pres-tabla--bolsas .pres-relleno-alto {
+  display: block;
+  height: 32px;
+}
+.presupuesto-v2 .pres-tabla--bolsas td.ant-aviso {
+  padding: 12px;
+  line-height: 32px;
 }
 .presupuesto-v2 .pres-chev {
   font-size: 11px;
@@ -739,13 +761,49 @@
   max-height: 94vh;
   overflow-y: auto;
 }
+/* El ícono y el título en un renglón, centrados; el cuerpo y las acciones ocupan todo el ancho. */
+.modal-box.pres-modal-nuevo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 12px;
+}
+.modal-box.pres-modal-nuevo > .modal-icon,
+.modal-box.pres-modal-nuevo > .modal-title {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.modal-box.pres-modal-nuevo > .modal-icon {
+  font-size: 26px;
+}
+.modal-box.pres-modal-nuevo > .modal-body,
+.modal-box.pres-modal-nuevo > .modal-actions {
+  flex: 0 0 100%;
+}
 .modal-box.pres-modal-nuevo .pres-nuevo-grid {
-  margin-top: 12px;
+  margin: 16px 0 0;
   text-align: left;
 }
-.modal-box.pres-modal-nuevo .pres-nuevo-grid > .card {
+/* Los datos y el envío en una sola card: la del envío pierde su marco y queda del otro lado de la
+   línea divisoria, igual que la lista en la etapa 2. */
+.presupuesto-v2 .pres-unido > .pres-unido-envio {
+  padding-left: 24px;
+  border-left: 1px solid #e2e8f0;
+  min-width: 0;
+}
+.presupuesto-v2 .pres-unido-envio > .card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
   margin: 0;
 }
-.modal-box.pres-modal-nuevo .pres-nuevo-estado {
-  margin-top: 14px;
+@media (max-width: 1100px) {
+  .presupuesto-v2 .pres-unido > .pres-unido-envio {
+    padding-left: 0;
+    padding-top: 24px;
+    border-left: 0;
+    border-top: 1px solid #e2e8f0;
+  }
 }

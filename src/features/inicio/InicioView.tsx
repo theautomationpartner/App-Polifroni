@@ -153,7 +153,7 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   /* La consulta es una sola pantalla: una etapa. */
   consultar: { icono: 'fa-table-list', titulo: 'Consultar Órdenes de Producción', etapas: 1 },
   /* La orden, el dibujo nuevo de HETMO y el envío de la OP final nueva. */
-  editar: { icono: 'fa-pen-ruler', titulo: 'Editar Órdenes de Producción', etapas: PASOS.length },
+  editar: { icono: 'fa-pen-ruler', titulo: 'Editar Órdenes de Producción PVC', etapas: PASOS.length },
   vidrios: { icono: 'fa-border-all', titulo: 'Solicitud de Cortes de Vidrio', etapas: PASOS.length },
   /* Una sola pantalla: la tabla de las órdenes enviadas al taller. */
   /* El calendario es una sola pantalla: el turno nuevo y su gestión se abren en ventanas. */
@@ -161,7 +161,7 @@ const TARJETA_OPERACION: Record<Operacion, { icono: string; titulo: string; etap
   /* Tres etapas: a quién es, los presupuestos a enviar y su envío. */
   presupuestos: { icono: 'fa-file-invoice-dollar', titulo: 'Crear Nuevo Presupuesto', etapas: 3 },
   /* Una sola pantalla, como la consulta de órdenes y la de turnos. */
-  gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar y Gestionar Presupuestos', etapas: 1 },
+  gestionarPresupuestos: { icono: 'fa-list-check', titulo: 'Consultar Presupuestos No Ganados', etapas: 1 },
   /* El cliente y su cuenta, las obras a facturar, y la emisión con su envío. */
   facturar: { icono: 'fa-file-invoice', titulo: 'Facturar una Obra', etapas: 3 },
 }

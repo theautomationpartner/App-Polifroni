@@ -158,7 +158,14 @@ export const ETIQUETA_PERDIDO = 'Perdido'
 export const ETIQUETA_PEND_CERRAR = 'Confirmado - Pend de Cerrar'
 const ETIQUETA_VENCIDO = 'Presupuesto vencido'
 
-/** ¿La bolsa en este estado se gestiona (sus presupuestos y "+Nuevo")? Todas menos las Ganadas y las Perdidas. */
+/**
+ * ¿La bolsa se lista en Consultar Presupuestos No Ganados (regla del usuario, 15/10/2026)? No las
+ * Ganadas, las Perdidas ni las vencidas: ya no se gestionan.
+ */
+export const seLista = (etiqueta: string): boolean =>
+  ![ETIQUETA_GANADO, ETIQUETA_PERDIDO, ETIQUETA_VENCIDO].some((e) => e.toLowerCase() === etiqueta.trim().toLowerCase())
+
+/** ¿La bolsa en este estado se gestiona (sus presupuestos, "+Nuevo" y "Perdido")? Todas menos las Ganadas y las Perdidas. */
 export const gestionable = (etiqueta: string): boolean => ![ETIQUETA_GANADO, ETIQUETA_PERDIDO].includes(etiqueta.trim())
 
 /**
@@ -186,13 +193,14 @@ export const yaEnviado = (estadoEnvio: string): boolean => estadoEnvio.trim() ==
  *  - Ganar: el que el cliente confirmó por WhatsApp, con la bolsa "Confirmado - Pend de Cerrar" (falta
  *    el total pactado).
  *  - Con uno que todavía no tiene respuesta: Enviar (si nunca salió) o Reenviar (si ya salió), con el
- *    PDF; Confirmar, con el PDF y si la bolsa no está vencida ni ya tiene uno confirmado; Perdido.
+ *    PDF; Confirmar, con el PDF y si la bolsa no está vencida ni ya tiene uno confirmado.
+ *  - "Perdido" ya no es de un presupuesto: es de la bolsa (regla del usuario, 15/10/2026).
  */
 export function accionesPresupuesto(
   estadoBolsa: string,
   p: { estadoEnvio: string; confirmacion: string; pdf: unknown },
-): { envio: 'enviar' | 'reenviar' | null; confirmar: boolean; perder: boolean; ganar: boolean } {
-  const nada = { envio: null, confirmar: false, perder: false, ganar: false }
+): { envio: 'enviar' | 'reenviar' | null; confirmar: boolean; ganar: boolean } {
+  const nada = { envio: null, confirmar: false, ganar: false }
   const pendCerrar = estadoBolsa.trim() === ETIQUETA_PEND_CERRAR
   const s = situacionDe(p.confirmacion)
   if (s === 'confirmado') return { ...nada, ganar: pendCerrar }
@@ -201,31 +209,26 @@ export function accionesPresupuesto(
   return {
     envio: p.pdf ? (yaEnviado(p.estadoEnvio) ? 'reenviar' : 'enviar') : null,
     confirmar: !!p.pdf && ganable(estadoBolsa) && !pendCerrar,
-    perder: true,
     ganar: false,
   }
 }
 
 /**
  * Las pestañas de la consulta, por el estado de la BOLSA (regla del usuario, 15/10/2026: se listan
- * todas las bolsas). "En gestión": las que no están Ganadas ni Perdidas.
+ * todas las bolsas menos las Perdidas y las vencidas). "En gestión": las que no están Ganadas.
  */
-export type FiltroBolsa = 'todos' | 'enGestion' | 'paraCerrar' | 'ganados' | 'perdidos'
+export type FiltroBolsa = 'todos' | 'enGestion' | 'paraCerrar'
 
 export const FILTROS_BOLSA: readonly { id: FiltroBolsa; titulo: string }[] = [
   { id: 'todos', titulo: 'Todos' },
   { id: 'enGestion', titulo: 'En gestión' },
   { id: 'paraCerrar', titulo: 'Pend. de cerrar' },
-  { id: 'ganados', titulo: 'Ganados' },
-  { id: 'perdidos', titulo: 'Perdidos' },
 ]
 
 export function pasaFiltroBolsa(filtro: FiltroBolsa, estado: string): boolean {
   const e = estado.trim()
   if (filtro === 'enGestion') return gestionable(e)
   if (filtro === 'paraCerrar') return e === ETIQUETA_PEND_CERRAR
-  if (filtro === 'ganados') return e === ETIQUETA_GANADO
-  if (filtro === 'perdidos') return e === ETIQUETA_PERDIDO
   return true
 }
 

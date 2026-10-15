@@ -250,21 +250,18 @@ export function ModalConfirmarPresupuesto({
 }
 
 /**
- * Dar un presupuesto por perdido (regla del usuario, 13/10/2026): lo mismo que "Rechazar" del enlace.
- * El presupuesto queda Rechazado, con el motivo si se escribe (opcional). La bolsa y sus otros
- * presupuestos no cambian.
+ * Dar la bolsa por perdida (regla del usuario, 15/10/2026): su estado pasa a "Perdido" y deja de
+ * listarse en la consulta. Sus presupuestos no se tocan.
  */
-export function ModalPerderPresupuesto({
-  fila: f,
+export function ModalPerderBolsa({
+  bolsa,
   onClose,
   onConfirmar,
 }: {
-  fila: FilaGestion
+  bolsa: PresupuestoGestion
   onClose: () => void
-  onConfirmar: (motivo: string) => void
+  onConfirmar: () => void
 }) {
-  const uid = useId()
-  const [motivo, setMotivo] = useState('')
   return (
     <Modal
       title="¿Dar el presupuesto por perdido?"
@@ -276,28 +273,19 @@ export function ModalPerderPresupuesto({
           <button type="button" className="btn btn-out" onClick={onClose}>
             Volver
           </button>
-          <button type="button" className="btn btn-danger" onClick={() => onConfirmar(motivo.trim())}>
+          <button type="button" className="btn btn-danger" onClick={onConfirmar}>
             <i className="fas fa-thumbs-down" /> Sí, dar por perdido
           </button>
         </>
       }
     >
-      <Clave f={f} />
-      <p className="modal-nota">
-        Este presupuesto queda <strong>Rechazado</strong>. Los demás presupuestos del mismo cliente no cambian.
+      <p className="modal-clave">
+        {bolsa.nombre}
+        <span className="ag-clave-fecha">{[bolsa.idPresupuesto, bolsa.arquitecto?.nombre].filter(Boolean).join(' · ')}</span>
       </p>
-      <label className="campo-l" htmlFor={`${uid}-motivo`}>
-        Motivo <span className="med-l-sub">opcional</span>
-      </label>
-      <textarea
-        id={`${uid}-motivo`}
-        className="motivo-in"
-        rows={3}
-        maxLength={1000}
-        placeholder="Ej.: el cliente eligió otro proveedor"
-        value={motivo}
-        onChange={(e) => setMotivo(e.target.value)}
-      />
+      <p className="modal-nota">
+        El presupuesto queda <strong>Perdido</strong> y deja de aparecer en esta lista.
+      </p>
     </Modal>
   )
 }
@@ -349,7 +337,7 @@ export function ModalGanarPresupuesto({
   )
 }
 
-export type AccionFila = 'enviar' | 'reenviar' | 'confirmar' | 'perder' | 'ganar'
+export type AccionFila = 'enviar' | 'reenviar' | 'confirmar' | 'ganar'
 
 /** El recordatorio de los 5 días, dicho para el usuario. */
 function textoRecordatorio(estado: string): { texto: string; ok: boolean | null } {
@@ -448,7 +436,7 @@ export function FichaPresupuesto({
         </dd>
       </dl>
       <div className="ag-ficha-acciones">
-        {!envio && !acciones.confirmar && !acciones.perder && !acciones.ganar ? (
+        {!envio && !acciones.confirmar && !acciones.ganar ? (
           <span className="ant-sd">Este presupuesto ya no admite acciones.</span>
         ) : (
           <>
@@ -465,11 +453,6 @@ export function FichaPresupuesto({
             {acciones.ganar && (
               <button type="button" className="ag-acc ag-acc--ok" onClick={() => onAccion('ganar')}>
                 <i className="fas fa-trophy" /> Ganar
-              </button>
-            )}
-            {acciones.perder && (
-              <button type="button" className="ag-acc ag-acc--cancel" onClick={() => onAccion('perder')}>
-                <i className="fas fa-thumbs-down" /> Perdido
               </button>
             )}
           </>
