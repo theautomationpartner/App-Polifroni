@@ -73,21 +73,22 @@ export function puedeEntrar(
  * Consultar órdenes de producción: qué ve y qué puede hacer cada rol
  * ──────────────────────────────────────────────────────────────────────────────── */
 
-/** Qué órdenes trae la consulta: las pendientes de confirmar, las sin estado y las del taller. */
+/** Qué órdenes trae la consulta. */
 export interface VistaConsulta {
-  pendientes: boolean
-  sinEtiqueta: boolean
+  /** Todas las que siguen en juego: menos las completadas y las canceladas. */
+  activas: boolean
+  /** Sólo las enviadas al taller. */
   taller: boolean
 }
 
 /**
- * Qué órdenes ve cada rol en la consulta. Admin: todas (pendientes de confirmar, sin enviar y en el
- * taller). Produccion: SÓLO las enviadas al taller. Con los dos teams, la suma: lo del admin.
+ * Qué órdenes ve cada rol en la consulta. Admin: todas menos las completadas y las canceladas.
+ * Produccion: SÓLO las enviadas al taller. Con los dos teams, la suma: lo del admin.
  */
 export function vistaConsulta(roles: readonly Rol[] | null | undefined): VistaConsulta {
   const admin = (roles ?? []).includes('admin')
   const produccion = (roles ?? []).includes('produccion')
-  return { pendientes: admin, sinEtiqueta: admin, taller: admin || produccion }
+  return { activas: admin, taller: !admin && produccion }
 }
 
 export type AccionConsulta = 'enviar' | 'reenviar' | 'confirmar' | 'cancelar' | 'finalizar'
@@ -103,13 +104,20 @@ export type AccionConsulta = 'enviar' | 'reenviar' | 'confirmar' | 'cancelar' | 
  */
 export function accionesConsulta(
   roles: readonly Rol[] | null | undefined,
-  orden: { estadoOrden: EstadoOrden; estado: string },
+  orden: { estadoOrden: EstadoOrden; estado: string; estadoEnvio?: string },
 ): AccionConsulta[] {
   const admin = (roles ?? []).includes('admin')
   const produccion = (roles ?? []).includes('produccion')
   const acciones: AccionConsulta[] = []
+  const enJuego = orden.estadoOrden !== 'completada' && orden.estadoOrden !== 'cancelada'
+  const envio = (orden.estadoEnvio ?? '').trim()
   if (admin) {
-    if (admite(orden.estadoOrden, 'reenviar')) acciones.push('reenviar')
+    /* `🤖Estado de Envio OP` manda: "Enviada" se reenvía y "Pend de Enviar" se envía, esté en el
+       estado que esté (una OP editada conserva el estado de la anterior). Sin ese dato —órdenes de
+       antes de la columna— decide el estado de la OP. */
+    if (enJuego && envio === 'Enviada') acciones.push('reenviar')
+    else if (enJuego && envio === 'Pend de Enviar') acciones.push('enviar')
+    else if (admite(orden.estadoOrden, 'reenviar')) acciones.push('reenviar')
     else if (!orden.estado.trim() || admite(orden.estadoOrden, 'enviar')) acciones.push('enviar')
     if (orden.estadoOrden === 'pendiente') acciones.push('confirmar')
     if (admite(orden.estadoOrden, 'cancelar')) acciones.push('cancelar')
@@ -126,7 +134,7 @@ export const TITULO_FILTRO: Record<FiltroConsulta, string> = {
   todas: 'Todas',
   pendientes: 'Enviadas pend. de confirmar',
   taller: 'Enviadas al taller',
-  pendEnviar: 'Generadas pend. de enviar',
+  pendEnviar: 'Pendientes de enviar',
 }
 
 /**
@@ -134,9 +142,10 @@ export const TITULO_FILTRO: Record<FiltroConsulta, string> = {
  * que todavía no se enviaron (con "Generada Pend de Enviar" o sin estado). Otra cosa —una que se
  * canceló o se finalizó recién— no cae en ninguno: sólo se ve en "Todas".
  */
-export function categoriaConsulta(o: { estadoOrden: EstadoOrden }): Exclude<FiltroConsulta, 'todas'> | null {
+export function categoriaConsulta(o: { estadoOrden: EstadoOrden; estadoEnvio?: string }): Exclude<FiltroConsulta, 'todas'> | null {
   if (o.estadoOrden === 'pendiente') return 'pendientes'
   if (o.estadoOrden === 'taller') return 'taller'
+  if ((o.estadoEnvio ?? '').trim() === 'Pend de Enviar') return 'pendEnviar'
   if (o.estadoOrden === 'generada' || o.estadoOrden === 'borrador') return 'pendEnviar'
   return null
 }

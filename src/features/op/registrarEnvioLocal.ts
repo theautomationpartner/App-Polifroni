@@ -9,6 +9,7 @@ import {
   guardarRecordatorio,
   setEstado,
   itemDe,
+  setEstadoEnvioOrden,
   setEstadoOrden,
 } from '@/services/monday'
 import { fechaRecordatorio } from '@/lib/recordatorio'
@@ -31,10 +32,17 @@ export async function registrarEnvioLocal(
   obra: Obra,
   ordenId: string,
   envio: EnvioLocal,
+  /**
+   * Pasar la OP a "Pend de Confirmar". Sí para una orden recién generada o cargada; NO para una que
+   * ya estaba confirmada o en el taller (una OP editada conserva el estado de la anterior): el envío
+   * no la saca de ahí, sólo queda "Enviada".
+   */
+  { cambiarEstado = true }: { cambiarEstado?: boolean } = {},
 ): Promise<void> {
   /* La clave primero: sin ella el enlace que ya le llegó al cliente no encuentra la OP. */
   await guardarClaveOrden(ordenId, envio.clave)
-  await setEstadoOrden(ordenId, ESTADO_OP.enviada)
+  if (cambiarEstado) await setEstadoOrden(ordenId, ESTADO_OP.enviada)
+  await setEstadoEnvioOrden(ordenId, 'enviada').catch((e) => console.warn('[envio] no se pudo marcar la OP como enviada', e))
   /* Es el PRIMER envío de la orden: el recordatorio va 5 días después de que salió el mensaje. */
   await guardarRecordatorio(ordenId, fechaRecordatorio(new Date(envio.cuando)))
   if (envio.confirmador) await guardarConfirmador(ordenId, envio.confirmador)

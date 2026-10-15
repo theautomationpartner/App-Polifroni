@@ -15,7 +15,7 @@ import { getUrlArchivo, subirArchivo } from './obras'
 import { byId, type MondayItem } from './parse'
 import { cabecerasPropias, mondayApi, verificarRespuesta } from './sdk'
 import { ETIQUETA_OP, INDICE_OP, estadoDeOrden, etiquetaOp, indiceDeEtiqueta, indiceDeValor, type EstadoOrden } from '@/lib/estadosOp'
-import { filasSubelementos, modeloDeSubelemento } from '@/lib/subelementosOp'
+import { conMm, filasSubelementos, modeloDeSubelemento, normalizarComponente, sinMm } from '@/lib/subelementosOp'
 import type { DatosAbertura } from '@/features/op/observaciones'
 import { SOLICITADOS } from '@/lib/vidrios'
 import type { ArchivoObra } from '@/types'
@@ -38,7 +38,7 @@ export const COL_OP = {
   /** 🤖N OP HETMO (text): "número-versión" del listado HETMO, lo devuelve la generación. */
   nOpHetmo: 'text_mm7g5hbe',
   /** 🤖Estado De Envio OP a Cliente (status): Enviando... | Enviada | Error De Envio | NO enviada. */
-  estadoEnvio: 'color_mm7hdg10',
+  estadoEnvio: 'color_mm7xz58j',
   /** 🤖Estado de Envio OP al Taller (status): Enviando... | Enviado | Error de Envio. Lo escribe el
       escenario del taller (la app le pasa la columna en `columnId`). */
   estadoEnvioTaller: 'color_mm7qjqgr',
@@ -66,18 +66,19 @@ export const COL_OP = {
   tieneVidrios: 'boolean_mm7xcvcn',
 } as const
 
-/** Etiquetas de `Estado De Envio OP`, tal cual están en el tablero. */
+/**
+ * `🤖Estado de Envio OP`: si la OP final ya le llegó al cliente o constructor. "Pend de Enviar" la
+ * deja una orden registrada sin enviar (generada, cargada o editada); "Enviada", el envío confirmado.
+ * Se escribe por ÍNDICE (el nombre puede cambiar en el tablero).
+ */
 export const ESTADO_ENVIO_OP = {
-  enviando: 'Enviando...',
   enviada: 'Enviada',
-  error: 'Error De Envio',
+  pendiente: 'Pend de Enviar',
 } as const
 
-/** Colores de esas etiquetas en el tablero, para pintarlas igual en la app. */
-export const COLOR_ENVIO_OP: Record<string, string> = {
-  'Enviando...': '#fdab3d',
-  Enviada: '#00c875',
-  'Error De Envio': '#df2f4a',
+export const INDICE_ENVIO_OP: Record<keyof typeof ESTADO_ENVIO_OP, number> = {
+  enviada: 1,
+  pendiente: 5,
 }
 
 /**
@@ -332,6 +333,52 @@ export async function crearSubelementos(
   await insertarSubelementos(ordenId, filasDeSubelementos(aberturas, vidrios))
 }
 
+/** Las columnas desplegables de los componentes del vidrio. */
+const COLS_COMPONENTE = [COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2] as const
+
+let opcionesEnCurso: Promise<Record<string, string[]>> | null = null
+
+/**
+ * Las opciones de Vidrio Comp 1, Cámara y Vidrio Comp 2, leídas del tablero de subelementos (una
+ * vez por sesión): así una opción que se agregue en Monday se usa sin tocar la app.
+ */
+export function opcionesVidrio(): Promise<Record<string, string[]>> {
+  opcionesEnCurso ??= mondayApi<{ boards: { columns: { id: string; settings_str: string }[] }[] }>(
+    `query { boards(ids: [${BOARD_SUB_ORDENES}]) { columns(ids: ${JSON.stringify(COLS_COMPONENTE)}) { id settings_str } } }`,
+  ).then((d) =>
+    Object.fromEntries(
+      (d.boards[0]?.columns ?? []).map((c) => {
+        const etiquetas = (JSON.parse(c.settings_str || '{}') as { labels?: { name?: string }[] | Record<string, string> }).labels
+        const nombres = Array.isArray(etiquetas) ? etiquetas.map((e) => String(e?.name ?? '')) : Object.values(etiquetas ?? {})
+        return [c.id, nombres.filter(Boolean)]
+      }),
+    ),
+  )
+  opcionesEnCurso.catch(() => {
+    opcionesEnCurso = null
+  })
+  return opcionesEnCurso
+}
+
+/**
+ * Las filas con cada componente escrito como la opción que ya existe en su columna ("4 gris" →
+ * "4 GRIS"): con `create_labels_if_missing` un valor escrito distinto creaba una opción duplicada.
+ * Si las opciones no se pueden leer, las filas van como estaban.
+ */
+async function conOpcionesDelTablero(filas: FilaMonday[]): Promise<FilaMonday[]> {
+  const opciones = await opcionesVidrio().catch(() => null)
+  if (!opciones) return filas
+  return filas.map((f) => {
+    const valores = { ...f.valores }
+    for (const col of COLS_COMPONENTE) {
+      const v = valores[col] as { labels?: string[] } | undefined
+      const leido = v?.labels?.[0]
+      if (leido) valores[col] = { labels: [normalizarComponente(leido, opciones[col] ?? [])] }
+    }
+    return { ...f, valores }
+  })
+}
+
 /** Una fila de subelemento lista para Monday: su nombre y sus columnas (ids de `COL_OBS`). */
 export interface FilaMonday {
   nombre: string
@@ -342,7 +389,8 @@ export interface FilaMonday {
  * Crea los subelementos de una OP, en tandas de 10 por mutación (alias). No borra los que hubiera:
  * eso lo hace `crearSubelementos` antes de llamarla.
  */
-export async function insertarSubelementos(ordenId: string, filas: FilaMonday[]): Promise<void> {
+export async function insertarSubelementos(ordenId: string, filasLeidas: FilaMonday[]): Promise<void> {
+  const filas = await conOpcionesDelTablero(filasLeidas)
   for (let desde = 0; desde < filas.length; desde += 10) {
     const tanda = filas.slice(desde, desde + 10)
     const variables: Record<string, unknown> = { padre: ordenId }
@@ -370,14 +418,14 @@ export function filasDeSubelementos(
     if (v.observacion) valores[COL_OBS.texto] = { text: v.observacion }
     if (v.descripcion) valores[COL_OBS.nombre] = v.descripcion
     if (v.color) valores[COL_OBS.color] = v.color
-    if (v.anchoAbertura) valores[COL_OBS.anchoAbertura] = v.anchoAbertura
-    if (v.altoAbertura) valores[COL_OBS.altoAbertura] = v.altoAbertura
+    if (v.anchoAbertura) valores[COL_OBS.anchoAbertura] = conMm(v.anchoAbertura)
+    if (v.altoAbertura) valores[COL_OBS.altoAbertura] = conMm(v.altoAbertura)
     if (v.cantidadAberturas != null) valores[COL_OBS.cantidadAberturas] = String(v.cantidadAberturas)
     if (v.comp1) valores[COL_OBS.comp1] = etiqueta(v.comp1)
     if (v.camara) valores[COL_OBS.camara] = etiqueta(v.camara)
     if (v.comp2) valores[COL_OBS.comp2] = etiqueta(v.comp2)
-    if (v.ancho) valores[COL_OBS.ancho] = v.ancho
-    if (v.alto) valores[COL_OBS.alto] = v.alto
+    if (v.ancho) valores[COL_OBS.ancho] = conMm(v.ancho)
+    if (v.alto) valores[COL_OBS.alto] = conMm(v.alto)
     if (v.cantidad != null) valores[COL_OBS.cantidad] = String(v.cantidad)
     return { nombre, valores }
   })
@@ -493,8 +541,8 @@ export async function guardarLinkOrden(ordenId: string, url: string): Promise<vo
 }
 
 /** Mueve el estado de envío de la OP ("Enviando..." → "Enviada" o "Error De Envio"). */
-export async function setEstadoEnvioOrden(ordenId: string, etiqueta: string): Promise<void> {
-  await cambiarColumnas(ordenId, { [COL_OP.estadoEnvio]: { label: etiqueta } })
+export async function setEstadoEnvioOrden(ordenId: string, estado: keyof typeof ESTADO_ENVIO_OP): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.estadoEnvio]: { index: INDICE_ENVIO_OP[estado] } })
 }
 
 /** Una OP tal como la muestran el envío, el taller y la consulta. */
@@ -584,6 +632,10 @@ function urlDeLink(valorJson: string | null | undefined): string {
   }
 }
 
+/** "Enviada" / "Pend de Enviar" según el índice de `🤖Estado de Envio OP`. */
+const envioDeIndice = (indice: number | null): string | null =>
+  indice === INDICE_ENVIO_OP.enviada ? ESTADO_ENVIO_OP.enviada : indice === INDICE_ENVIO_OP.pendiente ? ESTADO_ENVIO_OP.pendiente : null
+
 /** Una columna checkbox tildada: su valor es `{"checked":"true",…}`; destildada, vacío o "false". */
 function tildada(valorJson: string | null | undefined): boolean {
   try {
@@ -615,7 +667,8 @@ function aResumen(i: ItemOrden): ResumenOrden {
     medidoPor: t(COL_OP.medidoPor),
     fechaMedicion: t(COL_OP.fechaMedicion),
     observacion: t(COL_OP.observacion),
-    estadoEnvio: t(COL_OP.estadoEnvio),
+    /* Por índice, con el nombre de la app (el del tablero puede cambiar). */
+    estadoEnvio: envioDeIndice(indiceDeValor(c[COL_OP.estadoEnvio]?.value)) ?? t(COL_OP.estadoEnvio),
     envioTaller: t(COL_OP.estadoEnvioTaller),
     confirmador: t(COL_OP.confirmador),
     clave: t(COL_OP.clave),
@@ -685,6 +738,13 @@ export async function listarOrdenes({
   soloPendientes = false,
   sinEtiqueta = false,
   enTaller = false,
+  activas = false,
+}: {
+  soloPendientes?: boolean
+  sinEtiqueta?: boolean
+  enTaller?: boolean
+  /** Todas, menos las completadas y las canceladas. */
+  activas?: boolean
 } = {}): Promise<ResumenOrden[]> {
   type Pagina = { cursor: string | null; items: ItemOrden[] }
   const todas: ItemOrden[] = []
@@ -692,6 +752,7 @@ export async function listarOrdenes({
   const vacias = { column_id: COL_OP.estado, compare_value: [], operator: 'is_empty' }
   const pendEnviar = { column_id: COL_OP.estado, compare_value: [INDICE_PEND_ENVIAR], operator: 'any_of' }
   const taller = { column_id: COL_OP.estado, compare_value: [INDICE_TALLER], operator: 'any_of' }
+  if (activas) return listarActivas()
   const reglas = [...(soloPendientes ? [pendientes] : []), ...(sinEtiqueta ? [vacias, pendEnviar] : []), ...(enTaller ? [taller] : [])]
   const q = reglas.length > 1 ? { rules: reglas, operator: 'or' } : reglas.length ? { rules: reglas } : {}
   const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
@@ -717,6 +778,37 @@ export async function listarOrdenes({
       (sinEtiqueta && (!o.estado.trim() || o.estado.trim() === ETIQUETA_OP.generada)) ||
       (enTaller && o.estadoOrden === 'taller'),
   )
+}
+
+/**
+ * Las OP que siguen en juego: todas menos las completadas y las canceladas (las filtra Monday por el
+ * índice de `🤖Estado OP`; se confirma con el estado leído). Las sin estado también vienen.
+ */
+async function listarActivas(): Promise<ResumenOrden[]> {
+  type Pagina = { cursor: string | null; items: ItemOrden[] }
+  const q = {
+    rules: [{ column_id: COL_OP.estado, compare_value: [INDICE_OP.completada, INDICE_OP.cancelada], operator: 'not_any_of' }],
+  }
+  const todas: ItemOrden[] = []
+  const d = await mondayApi<{ boards: { items_page: Pagina }[] }>(
+    `query ($q: ItemsQuery) { boards(ids: [${BOARD_ORDENES}]) { items_page(limit: 200, query_params: $q) { cursor items { ${CAMPOS_RESUMEN} } } } }`,
+    { q },
+  )
+  let pagina: Pagina | undefined = d.boards[0]?.items_page
+  todas.push(...(pagina?.items ?? []))
+  for (let n = 0; pagina?.cursor && n < 20; n++) {
+    const sig: { next_items_page: Pagina } = await mondayApi(
+      `query ($c: String!) { next_items_page(limit: 200, cursor: $c) { cursor items { ${CAMPOS_RESUMEN} } } }`,
+      { c: pagina.cursor },
+    )
+    pagina = sig.next_items_page
+    todas.push(...(pagina?.items ?? []))
+  }
+  return todas
+    .filter(vigente)
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .map(aResumen)
+    .filter((o) => o.estadoOrden !== 'completada' && o.estadoOrden !== 'cancelada')
 }
 
 /** Tablero de las cuentas corrientes dadas de baja: una cuenta que vive acá está INACTIVA. */
@@ -924,6 +1016,10 @@ export interface VidrioDeOrden {
 /** Las medidas y la cantidad corregidas de un vidrio (un subelemento con datos de vidrio). */
 export interface CambioVidrio {
   id: string
+  /** Las capas, opciones de sus columnas desplegables (ver `opcionesVidrio`), sólo si cambiaron:
+      una que no se tocó no se reescribe. En un vidrio simple la Cámara y el Comp 2 van vacías y se
+      borran, y así deja de ser DVH (ver `esDvh`). */
+  capas?: { comp1: string; camara: string; comp2: string }
   /** En mm, tal cual se escribe ("843", "1.013"): la columna es de texto. */
   ancho: string
   alto: string
@@ -931,8 +1027,8 @@ export interface CambioVidrio {
 }
 
 /**
- * Corrige el ancho, el alto y la cantidad de los vidrios de una OP, en sus subelementos. Va en
- * tandas de 10 cambios por mutación (alias), como `crearSubelementos`.
+ * Corrige las capas, el ancho, el alto y la cantidad de los vidrios de una OP, en sus
+ * subelementos. Va en tandas de 10 cambios por mutación (alias), como `crearSubelementos`.
  */
 export async function actualizarVidrios(cambios: CambioVidrio[]): Promise<void> {
   for (let desde = 0; desde < cambios.length; desde += 10) {
@@ -941,9 +1037,16 @@ export async function actualizarVidrios(cambios: CambioVidrio[]): Promise<void> 
     const firma: string[] = []
     const cuerpo = tanda.map((c, k) => {
       variables[`i${k}`] = c.id
+      /* Una capa vacía se borra de la columna (`null`). */
+      const capa = (v: string) => (v.trim() ? { labels: [v.trim()] } : null)
       variables[`v${k}`] = JSON.stringify({
-        [COL_OBS.ancho]: c.ancho,
-        [COL_OBS.alto]: c.alto,
+        ...(c.capas && {
+          [COL_OBS.comp1]: capa(c.capas.comp1),
+          [COL_OBS.camara]: capa(c.capas.camara),
+          [COL_OBS.comp2]: capa(c.capas.comp2),
+        }),
+        [COL_OBS.ancho]: conMm(c.ancho),
+        [COL_OBS.alto]: conMm(c.alto),
         [COL_OBS.cantidad]: String(c.cantidad),
       })
       firma.push(`$i${k}: ID!`, `$v${k}: JSON!`)
@@ -981,8 +1084,8 @@ export async function vidriosDeOrdenes(ordenIds: string[]): Promise<Record<strin
           comp1: t(COL_OBS.comp1),
           camara: t(COL_OBS.camara),
           comp2: t(COL_OBS.comp2),
-          ancho: t(COL_OBS.ancho),
-          alto: t(COL_OBS.alto),
+          ancho: sinMm(t(COL_OBS.ancho)),
+          alto: sinMm(t(COL_OBS.alto)),
           cantidad: t(COL_OBS.cantidad) && Number.isFinite(cant) ? cant : null,
         }
       })

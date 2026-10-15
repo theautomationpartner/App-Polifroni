@@ -1,5 +1,5 @@
 import { registrarNumero } from '@/services/numeracion'
-import { completarOrden, renombrarOrdenEmitida, subirEtmoAOrden, terminarVisita } from '@/services/monday'
+import { completarOrden, renombrarOrdenEmitida, setEstadoEnvioOrden, subirEtmoAOrden, terminarVisita } from '@/services/monday'
 import type { BorradorOp } from '@/state/appState'
 import type { Obra } from '@/types'
 import { abrirOrdenDeObra } from './ordenDeObra'
@@ -66,6 +66,9 @@ export async function registrarAluminio({
 
   if (borrador.envio) {
     await registrarEnvioLocal(obra, id, borrador.envio)
+  } else {
+    /* Registrada sin enviar: se envía después desde "Consultar órdenes". */
+    await setEstadoEnvioOrden(id, 'pendiente').catch((e) => console.warn('[aluminio] no se pudo marcar la OP como pendiente de enviar', e))
   }
 
   await registrarNumero('Aluminio', nro).catch((e) => console.warn('[aluminio] no se pudo actualizar la numeración', e))

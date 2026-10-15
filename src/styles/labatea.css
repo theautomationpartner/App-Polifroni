@@ -2673,16 +2673,17 @@
   table-layout: fixed;
 }
 .anticipos-v2 .vid-sub .vid-w-modelo {
-  width: 16%;
-}
-.anticipos-v2 .vid-sub .vid-w-tipo {
   width: 12%;
 }
+.anticipos-v2 .vid-sub .vid-w-tipo {
+  width: 15%;
+}
+/* La composición es la más ancha: en edición lleva los tres desplegables de un DVH. */
 .anticipos-v2 .vid-sub .vid-w-comp {
-  width: 26%;
+  width: 37%;
 }
 .anticipos-v2 .vid-sub .vid-w-med {
-  width: 16%;
+  width: 11%;
 }
 .anticipos-v2 .vid-sub .vid-w-cant {
   width: 14%;
@@ -3060,4 +3061,168 @@
 .anticipos-v2 .ant-confirmar:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Editar OP: qué hacer con las aberturas de la orden que no están en el dibujo nuevo. */
+.ed-fuera {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #f3d9a4;
+  border-radius: 10px;
+  background: #fffaeb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+.ed-fuera legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #7a4d06;
+}
+.ed-fuera-op {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e3e7f0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.ed-fuera-op input {
+  margin-top: 3px;
+  accent-color: var(--marca);
+}
+.ed-fuera-op span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+}
+.ed-fuera-op small {
+  font-size: 12.5px;
+  color: #64748b;
+}
+.ed-fuera-op--on {
+  border-color: var(--marca);
+  box-shadow: 0 0 0 1px var(--marca);
+}
+.ed-fuera-op--quita {
+  background: #fff5f5;
+}
+
+/* ── Solicitud de cortes · el tipo y las capas de un vidrio en edición ── */
+/* Los desplegables abren su lista hacia afuera: en edición la tabla y sus celdas no recortan (la
+   tabla fija corta lo que sobra de cada celda). Sin el recorte, las esquinas redondeadas van en las
+   celdas de las puntas. */
+.anticipos-v2 .ant-tabla-wrap:has(.vid-sub--edicion) {
+  overflow: visible;
+}
+.anticipos-v2 .vid-sub.vid-sub--edicion {
+  overflow: visible;
+}
+.anticipos-v2 .ant-tabla .vid-sub--edicion td {
+  overflow: visible;
+}
+.anticipos-v2 .vid-sub--edicion thead th:first-child {
+  border-top-left-radius: 10px;
+}
+.anticipos-v2 .vid-sub--edicion thead th:last-child {
+  border-top-right-radius: 10px;
+}
+.anticipos-v2 .vid-sub--edicion tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 10px;
+}
+.anticipos-v2 .vid-sub--edicion tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 10px;
+}
+/* Simple / DVH: dos botones pegados, el elegido en bordó. */
+.anticipos-v2 .vid-tipo-sel {
+  display: inline-flex;
+  height: var(--vid-alto-input);
+  border: 1px solid var(--marca-borde);
+  border-radius: 6px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.anticipos-v2 .vid-tipo-op {
+  padding: 0 10px;
+  border: 0;
+  background: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-secondary);
+  cursor: pointer;
+}
+.anticipos-v2 .vid-tipo-op + .vid-tipo-op {
+  border-left: 1px solid var(--marca-borde);
+}
+.anticipos-v2 .vid-tipo-op:hover:not(:disabled):not(.vid-tipo-op--on) {
+  background: var(--marca-suave);
+}
+.anticipos-v2 .vid-tipo-op--on {
+  background: var(--marca);
+  color: #fff;
+}
+.anticipos-v2 .vid-tipo-op:disabled {
+  cursor: not-allowed;
+}
+/* Las capas: un desplegable por capa, la cámara más angosta. */
+.anticipos-v2 .vid-capas--edicion {
+  display: flex;
+  width: 100%;
+  gap: 4px;
+}
+.anticipos-v2 .vid-capa-sel {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.anticipos-v2 .vid-capa-sel--camara {
+  flex: 0 0 64px;
+}
+/* El desplegable de la app (`SelectBuscable`) en chico, del alto de los inputs, y en bordó como en
+   los formularios (ver `.carga-grid`). */
+.anticipos-v2 .vid-sub {
+  --tint-input: #fff;
+  --tint-input-bd: var(--marca-borde);
+}
+.anticipos-v2 .vid-sub .med-input {
+  height: var(--vid-alto-input);
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.anticipos-v2 .vid-sub .med-sel-btn {
+  gap: 4px;
+}
+.anticipos-v2 .vid-sub .med-sel-btn > i {
+  font-size: 10px;
+  color: var(--marca);
+}
+.anticipos-v2 .vid-sub .med-input:hover:not(:disabled) {
+  border-color: var(--marca-apagada);
+}
+.anticipos-v2 .vid-sub .med-sel-btn[aria-expanded='true'] {
+  border-color: var(--marca);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(137, 38, 60, 0.12);
+}
+.anticipos-v2 .vid-sub .med-sel--falta .med-input {
+  border-color: #c0273c;
+}
+.anticipos-v2 .vid-sub .med-menu {
+  text-align: left;
+  white-space: normal;
+}
+.anticipos-v2 .vid-sub .med-op--activo {
+  background: var(--marca-suave);
+}
+.anticipos-v2 .vid-sub .med-op--elegido {
+  color: var(--marca);
 }
