@@ -44,6 +44,8 @@ export function EditarBuscarView() {
   const [vista, setVista] = useState<OrdenEditable | null>(edicion.orden)
   const [sinOrden, setSinOrden] = useState(false)
   const [noEncontrada, setNoEncontrada] = useState(false)
+  /** Se quiso seguir con una orden de Aluminio: el dibujo nuevo de HETMO es sólo de PVC. */
+  const [esAluminio, setEsAluminio] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -94,6 +96,11 @@ export function EditarBuscarView() {
   const continuar = () => {
     if (!enFicha) {
       setSinOrden(true)
+      return
+    }
+    /* Sólo PVC: la de Aluminio no tiene orden de HETMO (su OP final es el PDF que se subió). */
+    if (!/pvc/i.test(enFicha.tipo)) {
+      setEsAluminio(true)
       return
     }
     void lecturaBase(enFicha).catch(() => {})
@@ -194,6 +201,14 @@ export function EditarBuscarView() {
         </button>
       </div>
 
+      {esAluminio && enFicha && (
+        <AvisoModal titulo="Esta orden es de Aluminio" onClose={() => setEsAluminio(false)}>
+          La carga de un nuevo dibujo de HETMO es sólo para las órdenes de PVC. La orden{' '}
+          {enFicha.numero ? `N° ${enFicha.numero}` : enFicha.nombre} es de {enFicha.tipo || 'Aluminio'}: elegí una orden de PVC para
+          editarla.
+        </AvisoModal>
+      )}
+
       {sinOrden && (
         <AvisoModal titulo="Falta elegir una orden" onClose={() => setSinOrden(false)}>
           Para continuar tenés que buscar y elegir la orden de producción que vas a editar.
@@ -201,7 +216,7 @@ export function EditarBuscarView() {
       )}
       {noEncontrada && (
         <AvisoModal titulo="Orden no encontrada" onClose={() => setNoEncontrada(false)}>
-          No hay una orden de PVC editable con ese número, obra o cliente. Las canceladas y las que ya
+          No hay una orden editable con ese número, obra o cliente. Las canceladas y las que ya
           tienen la producción completada no se pueden editar.
         </AvisoModal>
       )}
@@ -244,8 +259,8 @@ function FichaOrden({ orden: o, onVerPdf }: { orden: OrdenEditable | null; onVer
             </>
           ) : (
             <>
-              {/* El verde de PVC, como la etiqueta Tipo de la obra en el tablero. */}
-              <span className="obra-tipo" style={{ background: '#00c875' }}>
+              {/* El verde de PVC, como la etiqueta Tipo de la obra en el tablero; Aluminio, en azul. */}
+              <span className="obra-tipo" style={{ background: /pvc/i.test(o.tipo) ? '#00c875' : '#579bfc' }}>
                 {o.tipo || 'PVC'}
               </span>
               <div className="status-indicator">

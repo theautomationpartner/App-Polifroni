@@ -58,13 +58,14 @@ const COLS_VIDRIO = [COL_OBS.comp1, COL_OBS.camara, COL_OBS.comp2, COL_OBS.ancho
 const tieneVidrio = (s: SubelementoOrden) => COLS_VIDRIO.some((c) => s.textos[c])
 
 /**
- * Las OP que se pueden editar: las de PVC que no están canceladas ni con la producción completada
- * (ni a medio cargar). Las de Aluminio no: su OP final es el PDF que se subió, no hay lectura que
- * volver a armar. Cada una con el cliente de su obra (de la cuenta corriente vinculada).
+ * Las OP de la búsqueda de "Editar": las que no están canceladas ni con la producción completada (ni
+ * a medio cargar), de PVC y de Aluminio. Las de Aluminio se listan pero no se editan: su OP final es
+ * el PDF que se subió, no hay lectura de HETMO que volver a armar (lo frena `EditarBuscarView`).
+ * Cada una con el cliente de su obra (de la cuenta corriente vinculada).
  */
 export async function ordenesEditables(): Promise<OrdenEditable[]> {
   const todas = (await listarOrdenes()).filter(
-    (o) => /pvc/i.test(o.tipo) && o.estadoOrden !== 'cancelada' && o.estadoOrden !== 'completada' && o.estadoOrden !== 'borrador',
+    (o) => o.estadoOrden !== 'cancelada' && o.estadoOrden !== 'completada' && o.estadoOrden !== 'borrador',
   )
   const cuentas = await cuentasDeObras(todas.map((o) => o.obraId)).catch(() => ({}) as Awaited<ReturnType<typeof cuentasDeObras>>)
   return todas.map((o) => ({ ...o, cliente: cuentas[o.obraId]?.cliente ?? '', aberturas: null, vidrios: null }))
