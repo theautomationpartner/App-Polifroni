@@ -61,7 +61,7 @@ function Campo({
     <div className="med-campo">
       <label className="med-l" htmlFor={`${uid}-c`}>
         {ROTULO_ALTA[clave]}
-        {clave === 'nombre' || clave === 'cuit' ? ' *' : ''}
+        {clave === 'nombre' || clave === 'cuit' || clave === 'celular' ? ' *' : ''}
       </label>
       {opciones ? (
         <SelectBuscable
