@@ -2465,6 +2465,11 @@
   font-weight: 700;
   color: var(--marca);
 }
+/* Orden sin vidrios: en rojo, aunque la fila esté apagada. */
+.anticipos-v2 .vid-sin {
+  font-weight: 600;
+  color: var(--red);
+}
 /* Etapa 3: el resumen de la orden de compra a la izquierda y sus cortes a la derecha. */
 .obras-v2 .vid-solicitud {
   align-items: stretch;

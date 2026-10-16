@@ -643,7 +643,7 @@ export function VidriosSeleccionView() {
                             {enAlta ? (
                               <span className="vid-cuenta">Cargando vidrios</span>
                             ) : sinVidrios ? (
-                              <span className="ant-sd">Sin vidrios</span>
+                              <span className="vid-sin">Sin vidrios</span>
                             ) : (
                               <span className="vid-abrir" aria-hidden="true">
                                 <span className="vid-cuenta">
