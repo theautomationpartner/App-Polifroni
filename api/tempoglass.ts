@@ -3,6 +3,7 @@
  *
  *   POST {
  *     nombre: "IDOP-053 - PVC 2282",            la obra, con su nombre EXACTO en Tempoglass
+ *     ubicacion: "Av. Marconi 1155",            para crearla allá si no existe (puede ir vacía)
  *     comentario: "…", fecha: "2026-10-22",     la cabecera del pedido
  *     archivo: { nombre, base64 },              la planilla con el formato de Tempoglass
  *     esperado: { renglones, piezas },          lo que tiene que quedar cargado
@@ -34,6 +35,8 @@ const entero = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && 
 /** El cuerpo, validado campo por campo. `null` si algo falta o no tiene la forma esperada. */
 export function leerDatos(c: Record<string, unknown>): DatosCargaPedido | null {
   const nombre = texto(c.nombre, 120)
+  /* La ubicación puede venir vacía: la obra de Monday puede no tenerla cargada. */
+  const ubicacion = typeof c.ubicacion === 'string' ? c.ubicacion.trim().slice(0, 255) : ''
   const comentario = texto(c.comentario, 500)
   const fecha = typeof c.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.fecha) ? c.fecha : null
   const a = (c.archivo ?? {}) as Record<string, unknown>
@@ -59,7 +62,7 @@ export function leerDatos(c: Record<string, unknown>): DatosCargaPedido | null {
     retomar = { pedido, idIntObra, obra }
   }
 
-  return { nombre, comentario, fecha, archivo: { nombre: nombreArchivo, datos }, esperado: { renglones, piezas }, retomar }
+  return { nombre, ubicacion, comentario, fecha, archivo: { nombre: nombreArchivo, datos }, esperado: { renglones, piezas }, retomar }
 }
 
 export default async function handler(req: Pedido, res: ServerResponse): Promise<void> {

@@ -12,6 +12,7 @@ export type EstadoRobot =
   | { fase: 'logueado' }
   | { fase: 'buscando'; nombre: string }
   | { fase: 'obraSeleccionada'; nombre: string; id: string }
+  | { fase: 'creandoObra'; nombre: string }
   | { fase: 'creandoPedido' }
   | { fase: 'pedidoCreado'; pedido: string }
   | { fase: 'importando'; pedido: string }
@@ -30,7 +31,8 @@ export function estadoDeAvance(a: AvanceTempoglass): EstadoRobot {
     case 'creandoPedido':
       return { fase: a.etapa }
     case 'buscando':
-      return { fase: 'buscando', nombre: a.nombre }
+    case 'creandoObra':
+      return { fase: a.etapa, nombre: a.nombre }
     case 'obraSeleccionada':
       return { fase: 'obraSeleccionada', nombre: a.obra.nombre, id: a.idIntObra }
     case 'pedidoCreado':
@@ -50,7 +52,7 @@ const FALLA_DEL_PASO: Record<string, string> = {
   login: 'No se pudo iniciar sesión en Tempoglass',
   obras: 'No se pudo abrir Obras en Tempoglass',
   buscar: 'No se encontró la obra en Tempoglass',
-  obra: 'No se pudo abrir la obra en Tempoglass',
+  obra: 'No se pudo abrir o crear la obra en Tempoglass',
   pedido: 'No se pudo crear el pedido en Tempoglass',
   importar: 'No se pudo importar la planilla en Tempoglass',
   cerrar: 'No se pudo cerrar el pedido en Tempoglass',

@@ -9,7 +9,6 @@ import {
   faltantesPedido,
   hoyIso,
   nombreObraTempoglass,
-  OBRA_PRUEBA_TEMPOGLASS,
   type DatosPedidoTempoglass,
 } from '@/lib/tempoglass'
 import { consolidar, type Corte } from '@/lib/vidrios'
@@ -212,11 +211,15 @@ export function VidriosSolicitudView() {
       }
       setRobot(estadoDeAvance(a))
     }
+    const op = opsSolicitud.find((o) => o.id === idsOps[0])
+    if (!op) return setRobot({ fase: 'error', texto: 'No se encontraron los datos de la OP para cargar el pedido' })
     const correr = () =>
       cargarPedidoTempoglass(
         {
-          /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
-          nombre: OBRA_PRUEBA_TEMPOGLASS,
+          /* La obra en Tempoglass lleva el nombre de la OP ("IDOP-097 - PVC 2326"): si no existe,
+             el robot la crea con ese nombre y la ubicación de la obra en Monday. */
+          nombre: nombreObraTempoglass(op),
+          ubicacion: obra.ubicacion,
           comentario: pedido.comentario.trim(),
           fecha: pedido.fecha,
           archivo: archivoPlanilla,

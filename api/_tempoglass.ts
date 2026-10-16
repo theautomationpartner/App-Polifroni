@@ -605,6 +605,40 @@ export async function abrirObra(sesion: Sesion, obra: ObraTempoglass): Promise<{
 }
 
 /**
+ * Crea la obra en Tempoglass ("Nueva Obra" → `/obra/create` → Guardar): un formulario clásico de
+ * Laravel (`POST /obra` con `_token`, `nombre` y `descripcion`), no Livewire.
+ *
+ * Los dos campos son obligatorios allá: `nombre` (hasta 128) y `descripcion`, que es la ubicación
+ * —calle, domicilio—. La ubicación sale de la obra en Monday; si allá está vacía, va el nombre, para
+ * no frenar el pedido por un dato que Tempoglass sólo usa de referencia.
+ *
+ * Si Tempoglass no la acepta, vuelve al formulario con el motivo: se dice cuál.
+ */
+export async function crearObra(sesion: Sesion, nombre: string, ubicacion: string): Promise<void> {
+  const formulario = await abrirPantalla(sesion, '/obra/create', 'obra')
+  const token = tokenDeFormulario(formulario.html) ?? formulario.csrf
+  const res = await sesion.pedir('/obra', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', referer: `${BASE}/obra/create` },
+    body: new URLSearchParams({
+      _token: token,
+      nombre: nombre.toUpperCase().slice(0, 128),
+      descripcion: (ubicacion.trim() || nombre).toUpperCase().slice(0, 255),
+    }).toString(),
+  })
+  /* Si no contesta, no se sabe si se creó: el reintento vuelve a BUSCAR antes de crear. */
+  if (res.status === 419) throw new ErrorTempoglass('obra', 'Tempoglass rechazó el token del formulario de la obra (419).', true)
+  if (res.status !== 302 && !res.ok) {
+    throw new ErrorTempoglass('obra', `Crear la obra respondió HTTP ${res.status}.`, statusReintentable(res.status))
+  }
+  /* Rechazada: Laravel vuelve al formulario con los errores. */
+  if (/\/obra\/create\b/.test(res.headers.get('location') ?? '')) {
+    const avisos = avisosDePagina((await abrirPantalla(sesion, '/obra/create', 'obra')).html)
+    throw new ErrorTempoglass('obra', `Tempoglass no aceptó la obra nueva${avisos.length ? `: ${avisos.join(' · ')}` : '.'}`)
+  }
+}
+
+/**
  * Crea el pedido: "Agregar Pedido" en la obra, comentario y fecha de entrega, y "Confirmar". Devuelve
  * el número de pedido (el de `/dvhpedidorenglon/<pedido>`).
  *
@@ -772,6 +806,7 @@ export type AvanceTempoglass =
   | { etapa: 'logueado' }
   | { etapa: 'buscando'; nombre: string }
   | { etapa: 'obraSeleccionada'; obra: ObraTempoglass; idIntObra: string }
+  | { etapa: 'creandoObra'; nombre: string }
   | { etapa: 'creandoPedido' }
   /** El pedido ya existe en Tempoglass: si algo falla después, se retoma desde acá, sin crear otro. */
   | { etapa: 'pedidoCreado'; pedido: string }
@@ -857,8 +892,10 @@ export async function buscarObraTempoglass(
 /* ── El pedido entero ───────────────────────────────────────────────────────────────────────── */
 
 export interface DatosCargaPedido {
-  /** El nombre EXACTO de la obra en Tempoglass. */
+  /** El nombre EXACTO de la obra en Tempoglass. Si no existe, se crea con este nombre. */
   nombre: string
+  /** La ubicación de la obra (Monday), para crearla en Tempoglass si no existe. */
+  ubicacion: string
   comentario: string
   /** Fecha de entrega sugerida, `YYYY-MM-DD`. */
   fecha: string
@@ -878,9 +915,9 @@ export interface PedidoCargado {
 }
 
 /**
- * El recorrido completo: entrar, buscar la obra por su nombre exacto, abrirla (su Id.Int.Obra),
- * crear el pedido (comentario + fecha), importar la planilla, verificar que entró todo y cerrar el
- * pedido.
+ * El recorrido completo: entrar, buscar la obra por su nombre exacto —y crearla si no existe—,
+ * abrirla (su Id.Int.Obra), crear el pedido (comentario + fecha), importar la planilla, verificar
+ * que entró todo y cerrar el pedido.
  *
  * Cada reintento entra de cero con un login nuevo, pero retoma desde lo que ya quedó hecho: una vez
  * que el pedido existe, no se vuelve a crear; la importación y el cierre se fijan antes si ya se
@@ -904,9 +941,19 @@ export async function cargarPedidoTempoglass(
       if (!pedido) {
         const pantalla = await abrirObras(sesion)
         avisar({ etapa: 'buscando', nombre: datos.nombre })
-        const resultados = await buscarEnObras(sesion, pantalla, datos.nombre)
-        const encontrada = obraExacta(resultados, datos.nombre)
-        if (!encontrada) throw new ErrorTempoglass('buscar', `No existe la obra «${datos.nombre}» en Tempoglass.`)
+        let encontrada = obraExacta(await buscarEnObras(sesion, pantalla, datos.nombre), datos.nombre)
+        /* Si no existe, se crea con ese nombre ("Nueva Obra") y se la vuelve a buscar: se sigue con
+           la que quedó allá. Un reintento vuelve a BUSCAR antes de crear, así que una creación que
+           llegó pero no contestó no deja dos obras. */
+        if (!encontrada) {
+          avisar({ etapa: 'creandoObra', nombre: datos.nombre })
+          await crearObra(sesion, datos.nombre, datos.ubicacion)
+          const otra = await abrirObras(sesion)
+          encontrada = obraExacta(await buscarEnObras(sesion, otra, datos.nombre), datos.nombre)
+          if (!encontrada) {
+            throw new ErrorTempoglass('obra', `Se creó la obra «${datos.nombre}» pero no aparece en el buscador de Tempoglass.`)
+          }
+        }
         const enObra = await abrirObra(sesion, encontrada)
         obra = encontrada
         idIntObra = enObra.idInt

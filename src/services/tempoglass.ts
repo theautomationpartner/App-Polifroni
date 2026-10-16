@@ -21,6 +21,8 @@ export type AvanceTempoglass =
   | { etapa: 'logueado' }
   | { etapa: 'buscando'; nombre: string }
   | { etapa: 'obraSeleccionada'; obra: ObraTempoglass; idIntObra: string }
+  /** La obra no existía en Tempoglass: se está creando con el nombre de la OP. */
+  | { etapa: 'creandoObra'; nombre: string }
   | { etapa: 'creandoPedido' }
   /** El pedido ya existe en Tempoglass: un reintento lo retoma, no crea otro. */
   | { etapa: 'pedidoCreado'; pedido: string }
@@ -36,8 +38,10 @@ export type ResultadoTempoglass =
   | { etapa: 'error'; paso: string; mensaje: string }
 
 export interface PedidoParaTempoglass {
-  /** El nombre EXACTO de la obra en Tempoglass. */
+  /** El nombre EXACTO de la obra en Tempoglass. Si no existe, el robot la crea con este nombre. */
   nombre: string
+  /** La ubicación de la obra en Monday, para crearla allá si no existe. Puede ir vacía. */
+  ubicacion: string
   comentario: string
   /** `YYYY-MM-DD`. */
   fecha: string
@@ -65,6 +69,7 @@ export async function cargarPedidoTempoglass(
     headers: await cabecerasPropias({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       nombre: p.nombre,
+      ubicacion: p.ubicacion,
       comentario: p.comentario,
       fecha: p.fecha,
       archivo: { nombre: p.archivo.name, base64: await base64(p.archivo) },

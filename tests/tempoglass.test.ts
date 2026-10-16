@@ -53,6 +53,7 @@ import {
 assert.equal(nombreObraTempoglass({ idOp: 'IDOP-053', tipo: 'PVC', numero: '2282' }), 'IDOP-053 - PVC 2282')
 assert.equal(nombreObraTempoglass({ idOp: 'IDOP-066', tipo: 'Aluminio', numero: 'A3010' }), 'IDOP-066 - Aluminio A3010')
 assert.equal(nombreObraTempoglass({ idOp: ' IDOP-101 ', tipo: 'PVC', numero: '2.331' }), 'IDOP-101 - PVC 2331', 'sin puntos ni espacios')
+assert.equal(nombreObraTempoglass({ idOp: 'IDOP-110', tipo: 'PVC', numero: 'TEST' }), 'IDOP-110 - PVC TEST', 'el N° «TEST» de las obras de test va tal cual')
 
 // ── Login y CSRF ─────────────────────────────────────────────────────────────────────────────────
 const login = `<html><head><meta name="csrf-token" content="CSRF123"></head><body>
@@ -175,12 +176,16 @@ const fallaQue = (reintentable: boolean) => new ErrorTempoglass('obras', 'sesió
  * Un Tempoglass de mentira: cada ruta contesta lo que diga `guion`, una respuesta por llamada (la
  * última se repite). Registra las llamadas para verificar que cada reintento ENTRA DE NUEVO.
  */
+/** Lo que recibió el Tempoglass simulado en cada envío de formulario, por ruta ("POST /obra"). */
+const enviados: Record<string, string[]> = {}
 function simular(guion: Record<string, (() => Response)[]>) {
   const llamadas: string[] = []
   const usadas: Record<string, number> = {}
+  for (const k of Object.keys(enviados)) delete enviados[k]
   globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
     const ruta = `${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`
     llamadas.push(ruta)
+    if (typeof init?.body === 'string') (enviados[ruta] ??= []).push(init.body)
     const lista = guion[ruta]
     if (!lista) throw new Error(`ruta no simulada: ${ruta}`)
     const i = Math.min(usadas[ruta] ?? 0, lista.length - 1)
@@ -370,6 +375,7 @@ const pedidoBien = {
 }
 const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = {}) => ({
   nombre: 'IDOP-053 - PVC 2282 TEST',
+  ubicacion: 'Av. Marconi 1155, Tandil',
   comentario: 'Pedido de prueba',
   fecha: '2026-10-22',
   archivo: { nombre: 'PedidoDVH.xlsx', datos: new Uint8Array([1, 2, 3]) },
@@ -463,13 +469,79 @@ const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = 
   assert.equal(r.renglones, 2)
 }
 {
-  // No existe la obra: no se crea nada.
-  const llamadas = simular({ ...pedidoBien, 'POST /livewire/message/obra-table': [json({ effects: { html: tabla } })] })
+  // La obra no existe, se crea, pero después no aparece en el buscador: se frena, sin pedido.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/obra-table': [json({ effects: { html: tabla } })],
+    'GET /obra/create': [html('<meta name="csrf-token" content="X"><form><input type="hidden" name="_token" value="T"></form>')],
+    'POST /obra': [redirigir('/obra')],
+  })
   await assert.rejects(
     cargarPedidoTempoglass(datosPedido({ nombre: 'IDOP-999 - PVC 1' }), () => {}, rapido),
-    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'buscar' && !e.reintentable,
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'obra' && /no aparece en el buscador/.test(e.message),
   )
   assert.equal(llamadas.filter((l) => l.includes('dvhpedido')).length, 0)
+}
+
+// ── La obra no existe en Tempoglass: se crea con el nombre de la OP y se sigue con ella ──────────
+const sinResultados = json({ effects: { html: tabla.replace(/<tbody>[\s\S]*<\/tbody>/, '<tbody></tbody>') } })
+const formObraNueva = html(`<meta name="csrf-token" content="CSRF-OBRA"><form id="create-obra-form" method="post" action="https://tempoglass.ar/obra">
+  <input type="hidden" name="_token" value="TOKEN-OBRA"><input id="nombre" name="nombre"><input id="descripcion" name="descripcion"></form>`)
+{
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/obra-table': [sinResultados, json({ effects: { html: tablaReal } })],
+    'GET /obra/create': [formObraNueva],
+    'POST /obra': [redirigir('/obra')],
+  })
+  const avisos: AvanceTempoglass[] = []
+  const r = await cargarPedidoTempoglass(datosPedido(), (a) => avisos.push(a), rapido)
+  assert.equal(r.pedido, '4938', 'se creó la obra y se siguió con el pedido')
+  assert.ok(avisos.some((a) => a.etapa === 'creandoObra'))
+  const cuerpo = new URLSearchParams(enviados['POST /obra']![0])
+  assert.deepEqual(
+    { token: cuerpo.get('_token'), nombre: cuerpo.get('nombre'), descripcion: cuerpo.get('descripcion') },
+    { token: 'TOKEN-OBRA', nombre: 'IDOP-053 - PVC 2282 TEST', descripcion: 'AV. MARCONI 1155, TANDIL' },
+    'nombre de la OP y la ubicación de Monday',
+  )
+  assert.equal(llamadas.filter((l) => l === 'POST /obra').length, 1)
+}
+{
+  // Sin ubicación en Monday: como Tempoglass la exige, va el nombre.
+  simular({
+    ...pedidoBien,
+    'POST /livewire/message/obra-table': [sinResultados, json({ effects: { html: tablaReal } })],
+    'GET /obra/create': [formObraNueva],
+    'POST /obra': [redirigir('/obra')],
+  })
+  await cargarPedidoTempoglass(datosPedido({ ubicacion: '  ' }), () => {}, rapido)
+  assert.equal(new URLSearchParams(enviados['POST /obra']![0]).get('descripcion'), 'IDOP-053 - PVC 2282 TEST')
+}
+{
+  // Tempoglass rechaza la obra nueva (vuelve al formulario): se dice por qué y no se crea pedido.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/obra-table': [sinResultados],
+    'GET /obra/create': [formObraNueva, html(`<meta name="csrf-token" content="X"><ul class="text-red-600"><li>El nombre ya existe.</li></ul>`)],
+    'POST /obra': [redirigir('/obra/create')],
+  })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'obra' && /El nombre ya existe/.test(e.message),
+  )
+  assert.equal(llamadas.filter((l) => l.includes('dvhpedido')).length, 0)
+}
+{
+  // Crear la obra no contesta, pero llegó: el reintento BUSCA antes y la encuentra; no crea otra.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/obra-table': [sinResultados, json({ effects: { html: tablaReal } })],
+    'GET /obra/create': [formObraNueva],
+    'POST /obra': [caida],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'POST /obra').length, 1, 'una sola obra creada')
 }
 
 // ── La falla real del 16/10: la pantalla de la obra carga sus datos DESPUÉS (wire:init) ───────────
