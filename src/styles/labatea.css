@@ -2541,6 +2541,26 @@
   font-weight: 600;
   color: #b45309;
 }
+/* La cabecera del pedido de Tempoglass (comentario y fecha), dentro del resumen, arriba de Generar. */
+.obras-v2 .vid-pedido {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.obras-v2 .vid-pedido-comentario {
+  resize: vertical;
+  min-height: 56px;
+  font-family: inherit;
+}
+.obras-v2 .vid-pedido--falta .med-input {
+  border-color: var(--red);
+}
+.obras-v2 .vid-pedido-aviso {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--red);
+}
 /* En el pie, al lado de "Volver": por dónde va el robot de Tempoglass (ver `EstadoRobot`). El
    `margin-right: auto` lo pega a "Volver" y deja "Finalizar Operación" a la derecha. */
 .obras-v2 .vid-robot {

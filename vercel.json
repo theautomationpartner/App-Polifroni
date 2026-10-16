@@ -38,7 +38,7 @@
       "maxDuration": 60
     },
     "api/tempoglass.ts": {
-      "maxDuration": 60
+      "maxDuration": 180
     },
     "api/confirmar.ts": {
       "maxDuration": 120

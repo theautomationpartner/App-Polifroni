@@ -27,6 +27,8 @@ export const COL_OP = {
   nroPvc: 'numeric_mm7ep0eq',
   nroAluminio: 'text_mm7gjg24',
   idOp: 'pulse_id_mm7e9nvx',
+  /** Id.Int.Obra de Tempoglass (text): lo deja el robot al cargar el pedido de vidrios. */
+  idObraTempoglass: 'text_mm86fm09',
   obra: 'board_relation_mm7e604m',
   etmo: 'file_mm7g9dnc',
   opFinal: 'file_mm7g7emd',
@@ -892,12 +894,27 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
  * puede reintentar entera.
  */
 /**
- * Guarda en la OP la orden de compra recién generada (`Generar Orden Compra Vidrio`). Se reemplaza
- * la anterior: volver a generar no deja dos Excel.
+ * Guarda en la OP la orden de compra recién generada (`Generar Orden Compra Vidrio`): la orden de
+ * compra y la planilla que se importa en Tempoglass. Se reemplazan las anteriores: volver a generar
+ * no deja archivos repetidos.
  */
-export async function guardarOrdenCompraGenerada(ordenId: string, ordenCompra: File): Promise<void> {
+export async function guardarOrdenCompraGenerada(ordenId: string, archivos: File[]): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.ordenCompraGenerada]: { clear_all: true } }).catch(() => {})
-  await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraGenerada, ordenCompra)
+  for (const archivo of archivos) await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraGenerada, archivo)
+}
+
+/** El "Id.Int.Obra" de Tempoglass que quedó en la OP (`text_mm86fm09`), o '' si todavía no se cargó. */
+export async function idObraTempoglassDeOrden(ordenId: string): Promise<string> {
+  const d = await mondayApi<{ items: { column_values: { text: string | null }[] }[] }>(
+    `query ($id: [ID!]) { items(ids: $id) { column_values(ids: ["${COL_OP.idObraTempoglass}"]) { text } } }`,
+    { id: [ordenId] },
+  )
+  return d.items[0]?.column_values[0]?.text?.trim() ?? ''
+}
+
+/** Deja en la OP el "Id.Int.Obra" de Tempoglass: la marca de que su pedido ya se cargó allá. */
+export async function guardarIdObraTempoglass(ordenId: string, idIntObra: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.idObraTempoglass]: idIntObra })
 }
 
 export async function registrarSolicitudVidrios(ordenId: string, ordenCompra: File): Promise<void> {

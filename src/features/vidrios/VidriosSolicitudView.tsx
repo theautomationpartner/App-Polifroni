@@ -1,24 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
 import { useObra } from '@/features/obras/useObra'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
-import { OBRA_PRUEBA_TEMPOGLASS } from '@/lib/tempoglass'
+import {
+  faltantesPedido,
+  hoyIso,
+  nombreObraTempoglass,
+  OBRA_PRUEBA_TEMPOGLASS,
+  type DatosPedidoTempoglass,
+} from '@/lib/tempoglass'
 import { consolidar, type Corte } from '@/lib/vidrios'
 import {
   comoUsuario,
+  crearOrdenCompraVidrios,
+  guardarIdObraTempoglass,
   guardarOrdenCompraGenerada,
+  idObraTempoglassDeOrden,
   ordenesDeObra,
   registrarSolicitudVidrios,
   vidriosDeOrdenes,
+  type ResumenOrden,
 } from '@/services/monday'
-import { buscarObraTempoglass } from '@/services/tempoglass'
+import { cargarPedidoTempoglass, type AvanceTempoglass, type ObraTempoglass } from '@/services/tempoglass'
 import { useApp, useDispatch } from '@/state/hooks'
 import { CortesOrdenCompra } from './CortesOrdenCompra'
 import { ordenCompraExcel } from './ordenCompraExcel'
-import { errorDelPaso, EstadoRobotPill, robotEnCurso, type EstadoRobot } from './EstadoRobot'
+import { errorDelPaso, estadoDeAvance, EstadoRobotPill, robotEnCurso, type EstadoRobot } from './EstadoRobot'
+import { pedidoTempoglassExcel } from './pedidoTempoglassExcel'
 import { ResumenOrdenCompra } from './ResumenOrdenCompra'
 
 /**
@@ -28,10 +39,12 @@ import { ResumenOrdenCompra } from './ResumenOrdenCompra'
  * piezas sumadas—. A la izquierda, el resumen de la orden de compra con sus acciones (generar el
  * Excel, descargarlo y abrir Tempoglass); a la derecha, los cortes que lleva, del mismo alto.
  *
- * Tempoglass no tiene una API pública: es un sistema web con usuario y contraseña. "Generar orden de
- * compra" arma el Excel (ver `ordenCompraExcel`), lo guarda en cada OP (`Generar Orden Compra
- * Vidrio`) y llama al robot de Tempoglass (`api/_tempoglass.ts`), que por ahora entra y busca la
- * obra; el pedido todavía se carga a mano en su sistema, que se abre desde acá.
+ * Tempoglass no tiene una API pública: es un sistema web con usuario y contraseña. Con el comentario
+ * y la fecha de entrega completos, "Generar orden de compra" arma la orden de compra (ver
+ * `ordenCompraExcel`) y la planilla con el formato de Tempoglass (`pedidoTempoglassExcel`), guarda
+ * las dos en la OP (`Generar Orden Compra Vidrio`) y el robot (`api/_tempoglass.ts`) carga el pedido
+ * allá: busca la obra, crea el pedido, importa la planilla y lo cierra. Al final queda el Id.Int.Obra
+ * en la OP y un ítem en 🪞 Orden de Compra Vidrios.
  *
  * "Finalizar Operación" sube el Excel de la orden de compra a cada OP que entra en ella
  * (`🤖Orden de Compra de Vidrios`) y deja su `🤖Estado Vidrios` en "Solicitados": así no vuelven a
@@ -58,6 +71,19 @@ export function VidriosSolicitudView() {
   const robotOcupado = robotEnCurso(robot)
   /** El Excel que ya quedó guardado en las OP: si es el actual, "Reintentar" no lo vuelve a subir. */
   const [guardadoEnOp, setGuardadoEnOp] = useState<Blob | null>(null)
+  /** La cabecera del pedido en Tempoglass, que se completa antes de generar. */
+  const [pedido, setPedido] = useState<DatosPedidoTempoglass>({ comentario: '', fecha: '' })
+  /** La planilla con el formato de Tempoglass, la que importa el robot. */
+  const [planilla, setPlanilla] = useState<File | null>(null)
+  /** Las OP de la solicitud (las que tienen vidrios), con sus datos. */
+  const [opsSolicitud, setOpsSolicitud] = useState<ResumenOrden[]>([])
+  /* Lo que ya quedó hecho en Tempoglass y Monday, para que un reintento retome y no repita: la obra
+     elegida, el pedido creado (`retomar`), el pedido terminado (`cargado`) y el ítem de 🪞. Son refs:
+     los avisos del robot llegan en medio de una función que sigue corriendo. */
+  const obraTempoglass = useRef<{ obra: ObraTempoglass; idIntObra: string } | null>(null)
+  const retomar = useRef<{ pedido: string; obra: ObraTempoglass; idIntObra: string } | null>(null)
+  const cargado = useRef<{ pedido: string; idIntObra: string; renglones: number } | null>(null)
+  const itemOc = useRef<string | null>(null)
   const [finalizando, setFinalizando] = useState(false)
   const [errorFinal, setErrorFinal] = useState(false)
 
@@ -74,6 +100,7 @@ export function VidriosSolicitudView() {
         setCortes(consolidar(lista))
         const conVidrios = vidriosOps.filter((id) => (porOp[id] ?? []).length > 0)
         setIdsOps(conVidrios)
+        setOpsSolicitud(ops.filter((o) => conVidrios.includes(o.id)))
         setNombresOps(conVidrios.map(nombre))
         /* El N° de la OP, PVC o Aluminio ("A…"); sin número, su id. */
         setNumerosOps(conVidrios.map((id) => ops.find((o) => o.id === id)?.numero.trim() || nombre(id)))
@@ -95,16 +122,25 @@ export function VidriosSolicitudView() {
   const total = (cortes ?? []).reduce((n, c) => n + c.cantidad, 0)
 
   const nombreExcel = `Orden de compra vidrios - ${obra.nombre}.xlsx`.replace(/[\\/:*?"<>|]+/g, ' ')
+  const nombrePlanilla = `PedidoDVH - ${nombresOps.join(', ') || obra.nombre}.xlsx`.replace(/[\\/:*?"<>|]+/g, ' ')
   const armarExcel = () => ordenCompraExcel({ obra: obra.nombre, ordenes: numerosOps, cortes: cortes ?? [] })
 
+  /** Arma la orden de compra (para leer) y la planilla con el formato de Tempoglass (para importar). */
+  const armarArchivos = async (): Promise<{ orden: Blob; planilla: File }> => {
+    const [orden, planilla] = await Promise.all([armarExcel(), pedidoTempoglassExcel(cortes ?? [])])
+    return { orden, planilla: new File([planilla], nombrePlanilla, { type: planilla.type }) }
+  }
+
   const generar = async () => {
+    if (faltantesPedido(pedido).length) return
     setGenerando(true)
     setErrorExcel(false)
     setRobot(null)
-    let blob: Blob
+    let archivos: { orden: Blob; planilla: File }
     try {
-      blob = await armarExcel()
-      setExcel(blob)
+      archivos = await armarArchivos()
+      setExcel(archivos.orden)
+      setPlanilla(archivos.planilla)
     } catch {
       setExcel(null)
       setErrorExcel(true)
@@ -112,42 +148,77 @@ export function VidriosSolicitudView() {
     } finally {
       setGenerando(false)
     }
-    void guardarYBuscar(blob)
+    void guardarYCargar(archivos.orden, archivos.planilla)
   }
 
-  /** Guarda la orden generada en cada OP y, ya guardada, llama al robot de Tempoglass. Si Monday
-      falla, el robot no corre: lo que se carga allá tiene que ser lo que quedó registrado acá. */
-  const guardarYBuscar = async (blob: Blob) => {
+  /**
+   * Guarda en la OP la orden de compra y la planilla de Tempoglass y, ya guardadas, el robot carga
+   * el pedido allá. Si Monday falla, el robot no corre: lo que se carga en Tempoglass tiene que ser
+   * lo que quedó registrado acá.
+   */
+  const guardarYCargar = async (orden: Blob, archivoPlanilla: File) => {
     setRobot({ fase: 'guardando' })
     try {
-      const archivo = new File([blob], nombreExcel, { type: blob.type })
-      await Promise.all(idsOps.map((id) => guardarOrdenCompraGenerada(id, archivo)))
-      setGuardadoEnOp(blob)
+      const archivoOrden = new File([orden], nombreExcel, { type: orden.type })
+      await Promise.all(idsOps.map((id) => guardarOrdenCompraGenerada(id, [archivoOrden, archivoPlanilla])))
+      setGuardadoEnOp(orden)
     } catch (e) {
       console.warn('[vidrios] no se pudo guardar la orden de compra en las OP', e)
       setRobot({ fase: 'error', texto: 'No se pudo guardar la orden de compra en la OP' })
       return
     }
-    await buscarEnTempoglass()
+
+    /* Un pedido de Tempoglass es de UNA OP: su obra allá lleva el nombre de esa OP. */
+    if (idsOps.length !== 1) {
+      setRobot({
+        fase: 'error',
+        texto: `El robot carga el pedido de una sola OP y esta orden junta ${idsOps.length}: cargalo a mano en Tempoglass.`,
+      })
+      return
+    }
+    /* Nunca dos pedidos para la misma OP: si ya tiene el Id.Int.Obra, su pedido ya se cargó. */
+    if (!retomar.current) {
+      try {
+        const yaCargado = await idObraTempoglassDeOrden(idsOps[0]!)
+        if (yaCargado) {
+          setRobot({ fase: 'error', texto: `Esta OP ya tiene su pedido cargado en Tempoglass (Id.Int.Obra ${yaCargado}): no se carga otro.` })
+          return
+        }
+      } catch (e) {
+        console.warn('[vidrios] no se pudo verificar si la OP ya tiene pedido en Tempoglass', e)
+        setRobot({ fase: 'error', texto: 'No se pudo verificar en Monday si esta OP ya tiene pedido en Tempoglass' })
+        return
+      }
+    }
+    await cargarEnTempoglass(archivoPlanilla)
   }
 
   /**
    * Corre el robot y muestra cada aviso en vivo en el pie. El servidor ya reintenta lo que se
    * arregla con un login nuevo; acá se cubre lo que el servidor no puede: que el pedido mismo no
-   * llegue o se corte a mitad (la red del usuario, un corte de Vercel). Eso se reintenta UNA vez
-   * más, sin preguntar: el robot sólo lee, así que repetirlo no puede dejar nada duplicado.
+   * llegue o se corte a mitad (la red del usuario, un corte de Vercel). Eso se reintenta UNA vez,
+   * RETOMANDO el pedido si ya se había creado: nunca se crea otro.
    */
-  const buscarEnTempoglass = async () => {
+  const cargarEnTempoglass = async (archivoPlanilla: File) => {
+    const alAvanzar = (a: AvanceTempoglass) => {
+      if (a.etapa === 'obraSeleccionada') obraTempoglass.current = { obra: a.obra, idIntObra: a.idIntObra }
+      if (a.etapa === 'pedidoCreado' && obraTempoglass.current) {
+        retomar.current = { pedido: a.pedido, ...obraTempoglass.current }
+      }
+      setRobot(estadoDeAvance(a))
+    }
     const correr = () =>
-      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
-      buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS, (avance) =>
-        setRobot(
-          avance.etapa === 'buscando'
-            ? { fase: 'buscando', nombre: avance.nombre }
-            : avance.etapa === 'reintentando'
-              ? { fase: 'reintentando', intento: avance.intento, de: avance.de, motivo: avance.motivo }
-              : { fase: avance.etapa },
-        ),
+      cargarPedidoTempoglass(
+        {
+          /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
+          nombre: OBRA_PRUEBA_TEMPOGLASS,
+          comentario: pedido.comentario.trim(),
+          fecha: pedido.fecha,
+          archivo: archivoPlanilla,
+          esperado: { renglones: (cortes ?? []).length, piezas: total },
+          retomar: retomar.current ?? undefined,
+        },
+        alAvanzar,
       )
     setRobot({ fase: 'sesion' })
     try {
@@ -157,20 +228,58 @@ export function VidriosSolicitudView() {
         await new Promise((listo) => setTimeout(listo, 2000))
         return correr()
       })
-      if (r.etapa === 'error') setRobot(errorDelPaso(r.paso, r.mensaje))
-      else if (r.encontrada) setRobot({ fase: 'seleccionada', nombre: r.encontrada.nombre, id: r.encontrada.id })
-      else setRobot({ fase: 'noEncontrada', nombre: r.buscado })
+      if (r.etapa === 'error') return setRobot(errorDelPaso(r.paso, r.mensaje))
+      cargado.current = { pedido: r.pedido, idIntObra: r.idIntObra, renglones: r.renglones }
+      await registrarEnMonday()
     } catch (e) {
       console.warn('[vidrios] el robot de Tempoglass no respondió', e)
       setRobot(errorDelPaso('conexion', 'no se pudo hablar con el robot. Revisá la conexión.'))
     }
   }
 
-  /** "Reintentar" del pie: repite sólo lo que falló. Si el Excel ya quedó en las OP, no se resube. */
-  const reintentar = () => {
-    if (!excel || robotOcupado) return
-    void (guardadoEnOp === excel ? buscarEnTempoglass() : guardarYBuscar(excel))
+  /**
+   * El pedido ya está cargado y cerrado en Tempoglass: se registra en Monday. El Id.Int.Obra en la OP
+   * y el ítem en 🪞 Orden de Compra Vidrios. El ítem se crea UNA vez: un reintento no lo repite.
+   */
+  const registrarEnMonday = async () => {
+    const c = cargado.current
+    const op = opsSolicitud.find((o) => o.id === idsOps[0])
+    if (!c || !op) return
+    setRobot({ fase: 'registrando' })
+    try {
+      await guardarIdObraTempoglass(op.id, c.idIntObra)
+      if (!itemOc.current) {
+        itemOc.current = await crearOrdenCompraVidrios({
+          nombre: nombreObraTempoglass(op),
+          idIntObra: c.idIntObra,
+          obraId: obra.id,
+          ordenId: op.id,
+          fechaColocacion: pedido.fecha,
+          fechaPedido: hoyIso(),
+        })
+      }
+      setRobot({ fase: 'listo', pedido: c.pedido, renglones: c.renglones })
+    } catch (e) {
+      console.warn('[vidrios] el pedido quedó en Tempoglass pero no se registró en Monday', e)
+      setRobot({ fase: 'error', texto: `El pedido ${c.pedido} quedó cargado en Tempoglass, pero no se pudo registrar en Monday` })
+    }
   }
+
+  /** "Reintentar" del pie: retoma desde lo que falló, sin repetir lo que ya quedó hecho. */
+  const reintentar = () => {
+    if (!excel || !planilla || robotOcupado) return
+    if (cargado.current) return void registrarEnMonday()
+    void (guardadoEnOp === excel ? cargarEnTempoglass(planilla) : guardarYCargar(excel, planilla))
+  }
+
+  /* Una vez creado el pedido en Tempoglass, "Generar" no se vuelve a habilitar: crearía otro. */
+  const bloqueoGenerar = robotOcupado
+    ? 'Esperá a que termine el robot de Tempoglass'
+    : robot?.fase === 'listo'
+      ? 'El pedido ya se cargó en Tempoglass'
+      : retomar.current
+        ? `El pedido ${retomar.current.pedido} ya se creó en Tempoglass: usá «Reintentar» para terminarlo`
+        : null
 
   const descargar = () => {
     if (!excel) return
@@ -223,7 +332,9 @@ export function VidriosSolicitudView() {
           generando={generando}
           generada={!!excel}
           error={errorExcel}
-          ocupado={robotOcupado}
+          pedido={pedido}
+          onPedido={(cambio) => setPedido((p) => ({ ...p, ...cambio }))}
+          bloqueo={bloqueoGenerar}
           onGenerar={() => void generar()}
           onDescargar={descargar}
         />

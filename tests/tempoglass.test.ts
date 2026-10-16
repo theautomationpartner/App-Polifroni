@@ -15,9 +15,21 @@
  * (`npm run test:tempoglass`).
  */
 import assert from 'node:assert/strict'
-import { nombreObraTempoglass } from '../src/lib/tempoglass'
+import {
+  COLUMNAS_PEDIDO_TEMPOGLASS,
+  faltantesPedido,
+  filasPedidoTempoglass,
+  hoyIso,
+  nombreObraTempoglass,
+  referenciaDeCorte,
+} from '../src/lib/tempoglass'
+import type { Corte } from '../src/lib/vidrios'
 import {
   buscarObraTempoglass,
+  cargarPedidoTempoglass,
+  idIntDeObra,
+  pedidoDeDireccion,
+  renglonesDePedido,
   componenteDeTabla,
   conReintentos,
   csrfDePagina,
@@ -267,6 +279,180 @@ process.env.TEMPOGLASS_PASSWORD = 'secreta'
     (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'credenciales',
   )
   assert.equal(llamadas.length, 0)
+}
+
+// ── La planilla que se importa (formato de la "planilla modelo" PedidoDVH) ───────────────────────
+assert.deepEqual([...COLUMNAS_PEDIDO_TEMPOGLASS], ['CANTIDAD', 'Ancho', 'Alto', 'Componente 1', 'Camara', 'Componente 2', 'Referencia', 'Comentario'])
+const corte = (o: Partial<Corte>): Corte => ({
+  composicion: '3+3/9/4', dvh: true, comp1: '3+3', camara: '9', comp2: '4', ancho: '839', alto: '1.742',
+  cantidad: 2, origen: ['IDOP-097 · V4'], sinCantidad: false, ...o,
+})
+assert.deepEqual(filasPedidoTempoglass([corte({})]), [[2, 839, 1742, '3+3', 9, 4, 'V4', '']], 'medidas en mm, números como número, el modelo como referencia')
+assert.deepEqual(filasPedidoTempoglass([corte({ comp1: '3 BRONCE', comp2: '10 TEMPLADO' })])[0]!.slice(3, 6), ['3 BRONCE', 9, '10 TEMPLADO'])
+assert.equal(referenciaDeCorte(['IDOP-097 · V4', 'IDOP-097 · V1', 'IDOP-097 · V4']), 'V4, V1', 'sin repetir')
+assert.equal(referenciaDeCorte(['IDOP-097 · V4', 'IDOP-098 · V1']), 'IDOP-097 V4, IDOP-098 V1', 'de varias OP, con la OP')
+
+// ── Comentario y fecha: los dos obligatorios ─────────────────────────────────────────────────────
+assert.deepEqual(faltantesPedido({ comentario: 'Entrega urgente', fecha: '2026-10-22' }, '2026-10-16'), [])
+assert.deepEqual(faltantesPedido({ comentario: '  ', fecha: '' }, '2026-10-16'), ['el comentario', 'la fecha de entrega'])
+assert.deepEqual(faltantesPedido({ comentario: 'x', fecha: '2026-10-15' }, '2026-10-16'), ['una fecha de entrega que no sea pasada'])
+assert.equal(hoyIso(new Date('2026-10-17T02:00:00Z')), '2026-10-16', 'hoy en Argentina, no en UTC')
+
+// ── Lo que se lee de cada pantalla, con el HTML real de Tempoglass ───────────────────────────────
+const tablaReal = `<table class="min-w-full"><thead class="bg-gray-50"><tr>
+  <th scope="col"><button wire:click="sortBy('nombre')"><span>Nombre</span></button></th>
+  <th scope="col"><button wire:click="sortBy('descripcion')"><span>Descripción</span></button></th>
+  <th scope="col"><button wire:click="sortBy('id')"><span>Id.</span></button></th></tr></thead>
+  <tbody><tr class="cursor-pointer" wire:key="row-0">
+    <td onclick="window.open('https://tempoglass.ar/obra/4715', '_self')">
+        IDOP-053 - PVC 2282 TEST
+    </td>
+    <td onclick="window.open('https://tempoglass.ar/obra/4715', '_self')">UBICACION DELA OBRA</td>
+    <td onclick="window.open('https://tempoglass.ar/obra/4715', '_self')">4715</td></tr></tbody></table>`
+assert.deepEqual(filasDeObras(tablaReal), [
+  { id: '4715', nombre: 'IDOP-053 - PVC 2282 TEST', descripcion: 'UBICACION DELA OBRA', url: 'https://tempoglass.ar/obra/4715' },
+])
+assert.equal(idIntDeObra('<input id="id" type="text" readonly="" class="x" placeholder="4715">'), '4715')
+assert.equal(idIntDeObra('<input id="id" type="text" placeholder="">'), null)
+assert.equal(pedidoDeDireccion('https://tempoglass.ar/dvhpedidorenglon/4938'), '4938')
+assert.equal(pedidoDeDireccion('https://tempoglass.ar/obra/4715'), null)
+
+const detalle = (filas: [string, number][]) => `<table><thead><tr><th>ID</th><th>CANTIDAD</th><th>ANCHO/ALTO (MM)</th>
+  <th>COMP.</th><th>REFERENCIA</th><th>COMENTARIO</th><th>ESTADO</th></tr></thead><tbody>
+  ${filas.map(([id, n]) => `<tr><td>${id}</td><td>${n}</td><td>1000 x 1000</td><td>3 / 6 / 3 ESPEJO</td><td>V1</td><td>Ejemplo</td><td>PENDIENTE</td></tr>`).join('')}
+  </tbody></table>`
+assert.deepEqual(renglonesDePedido(detalle([['18228', 1], ['18229', 10]])), [{ id: '18228', cantidad: 1 }, { id: '18229', cantidad: 10 }])
+assert.deepEqual(renglonesDePedido('<p class="text-red-600">Aún no hay productos ingresados.</p>'), [])
+
+// ── El pedido entero contra un Tempoglass simulado ───────────────────────────────────────────────
+process.env.TEMPOGLASS_PASSWORD = 'secreta'
+/** Una pantalla con un componente Livewire que dibuja `cuerpo`. */
+const conComponente = (nombre: string, data: unknown, cuerpo: string) =>
+  `<meta name="csrf-token" content="CSRF-${nombre}"><div wire:id="${nombre}" wire:initial-data="${datos(data, nombre)}">${cuerpo}</div>`
+const pantallaObra = html(conComponente('obra-show', { obra: { id: 4715 } }, '<input id="id" readonly placeholder="4715"><button wire:click="addPedido">Agregar Pedido</button>'))
+const pantallaPedidoNuevo = html(conComponente('dvh-pedido', { pedido: { detalle: '', fecha_entrega: '' } }, '<textarea wire:model="pedido.detalle"></textarea><button wire:click="saveCabecera">Confirmar</button>'))
+const BOTON_CERRAR = `<button wire:click="$toggle('confirmCloseOrder')">Cerrar Pedido</button>`
+const renglonPedido = (filas: [string, number][], abierto = true) =>
+  html(conComponente('dvh-pedido-renglon', { confirmCloseOrder: false }, `<div>Pedido 4938</div>${abierto ? BOTON_CERRAR : ''}${detalle(filas)}`))
+const dosRenglones: [string, number][] = [['18228', 1], ['18229', 10]]
+const redirige = (a: string) => json({ effects: { html: null, redirect: `https://tempoglass.ar${a}` }, serverMemo: { checksum: 'c2' } })
+
+const pedidoBien = {
+  ...bien,
+  'POST /livewire/message/obra-table': [json({ effects: { html: tablaReal } })],
+  'GET /obra/4715': [pantallaObra],
+  'POST /livewire/message/obra-show': [redirige('/dvhpedido/4715')],
+  'GET /dvhpedido/4715': [pantallaPedidoNuevo],
+  'POST /livewire/message/dvh-pedido': [redirige('/dvhpedidorenglon/4938')],
+  'GET /dvhpedidorenglon/4938': [renglonPedido([]), renglonPedido(dosRenglones), renglonPedido(dosRenglones), renglonPedido(dosRenglones, false)],
+  'POST /importpedido': [redirigir('/dvhpedidorenglon/4938')],
+  'POST /livewire/message/dvh-pedido-renglon': [
+    json({ effects: { html: `${BOTON_CERRAR}<div class="modal"><button wire:click="closeOrder">Sí, cerrar</button></div>` }, serverMemo: { data: { confirmCloseOrder: true } } }),
+    json({ effects: { html: '' }, serverMemo: {} }),
+  ],
+}
+const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = {}) => ({
+  nombre: 'IDOP-053 - PVC 2282 TEST',
+  comentario: 'Pedido de prueba',
+  fecha: '2026-10-22',
+  archivo: { nombre: 'PedidoDVH.xlsx', datos: new Uint8Array([1, 2, 3]) },
+  esperado: { renglones: 2, piezas: 11 },
+  ...o,
+})
+{
+  // Todo bien: obra, pedido, planilla y cierre, con cada aviso en orden.
+  const llamadas = simular(pedidoBien)
+  const avisos: { etapa: string }[] = []
+  const r = await cargarPedidoTempoglass(datosPedido(), (a) => avisos.push(a), rapido)
+  assert.deepEqual(r, { obra: filasDeObras(tablaReal)[0], idIntObra: '4715', pedido: '4938', renglones: 2 })
+  assert.deepEqual(etapas(avisos), ['sesion', 'logueado', 'buscando', 'obraSeleccionada', 'creandoPedido', 'pedidoCreado', 'importando', 'importado', 'cerrando'])
+  assert.equal(llamadas.filter((l) => l === 'POST /importpedido').length, 1)
+}
+{
+  // La subida del archivo no contesta, pero llegó: el reintento ve los renglones y NO sube otra vez.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /importpedido': [caida],
+    'GET /dvhpedidorenglon/4938': [renglonPedido([]), renglonPedido(dosRenglones), renglonPedido(dosRenglones), renglonPedido(dosRenglones, false)],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'POST /importpedido').length, 1, 'una sola subida')
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1, 'un solo pedido')
+}
+{
+  // "Confirmar" no contesta: no se sabe si se creó → NO se reintenta (nunca dos pedidos).
+  const llamadas = simular({ ...pedidoBien, 'POST /livewire/message/dvh-pedido': [caida] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'pedido' && !e.reintentable && /revisalo allá/.test(e.message),
+  )
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1)
+}
+{
+  // Tempoglass rechaza la cabecera (validación): se dice por qué.
+  simular({
+    ...pedidoBien,
+    'POST /livewire/message/dvh-pedido': [json({ effects: { html: '' }, serverMemo: { errors: { 'pedido.fecha_entrega': ['La fecha es obligatoria.'] } } })],
+  })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'pedido' && /La fecha es obligatoria/.test(e.message),
+  )
+}
+{
+  // La importación entra incompleta: se frena y se dice cuánto quedó.
+  simular({ ...pedidoBien, 'GET /dvhpedidorenglon/4938': [renglonPedido([]), renglonPedido([['18228', 1]])] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'importar' && /1 renglones y 1 piezas; se esperaban 2 y 11/.test(e.message),
+  )
+}
+{
+  // Tempoglass no carga nada y muestra un aviso: el aviso se ve en el error.
+  simular({
+    ...pedidoBien,
+    'GET /dvhpedidorenglon/4938': [renglonPedido([]), html(`<meta name="csrf-token" content="X"><div class="alert">El archivo no tiene el formato correcto</div>`)],
+  })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'importar' && /formato correcto/.test(e.message),
+  )
+}
+{
+  // Se pierde la sesión DESPUÉS de crear el pedido: el reintento entra de nuevo y sigue con ESE pedido.
+  const llamadas = simular({
+    ...pedidoBien,
+    'GET /dvhpedidorenglon/4938': [redirigir('/login'), renglonPedido([]), renglonPedido(dosRenglones), renglonPedido(dosRenglones), renglonPedido(dosRenglones, false)],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'POST /login').length, 2, 'volvió a entrar')
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1, 'sin crear otro pedido')
+}
+{
+  // Retomar un pedido ya creado (desde la app): ni busca la obra ni crea otro.
+  const llamadas = simular(pedidoBien)
+  const retomar = { pedido: '4938', obra: filasDeObras(tablaReal)[0]!, idIntObra: '4715' }
+  const r = await cargarPedidoTempoglass(datosPedido({ retomar }), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'GET /obra').length, 0, 'no buscó la obra')
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 0, 'no creó pedido')
+}
+{
+  // Un pedido ya cerrado (sin "Cerrar Pedido"): cerrar es no hacer nada.
+  simular({ ...pedidoBien, 'GET /dvhpedidorenglon/4938': [renglonPedido(dosRenglones, false)] })
+  const r = await cargarPedidoTempoglass(datosPedido({ retomar: { pedido: '4938', obra: filasDeObras(tablaReal)[0]!, idIntObra: '4715' } }), () => {}, rapido)
+  assert.equal(r.renglones, 2)
+}
+{
+  // No existe la obra: no se crea nada.
+  const llamadas = simular({ ...pedidoBien, 'POST /livewire/message/obra-table': [json({ effects: { html: tabla } })] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido({ nombre: 'IDOP-999 - PVC 1' }), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'buscar' && !e.reintentable,
+  )
+  assert.equal(llamadas.filter((l) => l.includes('dvhpedido')).length, 0)
 }
 
 console.log('tempoglass: ok')

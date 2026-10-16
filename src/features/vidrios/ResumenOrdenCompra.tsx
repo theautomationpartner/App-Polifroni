@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
+import { faltantesPedido, hoyIso, type DatosPedidoTempoglass } from '@/lib/tempoglass'
 import type { Corte } from '@/lib/vidrios'
 
 /** El sistema de pedidos del proveedor de vidrio. */
@@ -26,8 +27,11 @@ export interface ResumenOrdenCompraProps {
   generando: boolean
   generada: boolean
   error: boolean
-  /** Se está guardando la orden en la OP o corre el robot de Tempoglass (ver `EstadoRobot`). */
-  ocupado: boolean
+  /** La cabecera del pedido en Tempoglass: comentario y fecha de entrega. Los dos obligatorios. */
+  pedido: DatosPedidoTempoglass
+  onPedido: (cambio: Partial<DatosPedidoTempoglass>) => void
+  /** Por qué no se puede generar ahora (corre el robot, …), o `null`. */
+  bloqueo: string | null
   onGenerar: () => void
   onDescargar: () => void
 }
@@ -36,8 +40,8 @@ export interface ResumenOrdenCompraProps {
  * El resumen de la orden de compra de vidrios: quién la emite, para qué obra y qué órdenes, cuántos
  * cortes y piezas lleva; y sus acciones. "Generar orden de compra" arma el Excel en la app,
  * "Descargar Excel" baja el que se generó y "Abrir Tempoglass" lleva al sistema del proveedor.
- * Generada la orden, se guarda en cada OP y el robot de Tempoglass busca la obra: cómo va se ve en
- * el pie de la etapa (`EstadoRobot`).
+ * Generada la orden, se guarda en la OP y el robot carga el pedido en Tempoglass con el comentario y
+ * la fecha de acá: cómo va se ve en el pie de la etapa (`EstadoRobot`).
  */
 export function ResumenOrdenCompra({
   emisor,
@@ -47,10 +51,16 @@ export function ResumenOrdenCompra({
   generando,
   generada,
   error,
-  ocupado,
+  pedido,
+  onPedido,
+  bloqueo,
   onGenerar,
   onDescargar,
 }: ResumenOrdenCompraProps) {
+  const uid = useId()
+  /* Los campos se marcan en rojo recién después de intentar generar: antes, vacíos es lo normal. */
+  const [marcar, setMarcar] = useState(false)
+  const faltan = faltantesPedido(pedido)
   const lista = cortes ?? []
   const piezas = lista.reduce((n, c) => n + c.cantidad, 0)
   const dvh = lista.filter((c) => c.dvh).length
@@ -102,14 +112,60 @@ export function ResumenOrdenCompra({
         </p>
       )}
 
+      <hr className="rsep" />
+
+      {/* La cabecera del pedido en Tempoglass: se completa ANTES de generar, porque generar dispara
+          el robot que la carga allá. */}
+      <div className="vid-pedido">
+        <div className={`med-campo${marcar && !pedido.comentario.trim() ? ' vid-pedido--falta' : ''}`}>
+          <label className="med-l" htmlFor={`${uid}-comentario`}>
+            Comentario del pedido *
+          </label>
+          <textarea
+            id={`${uid}-comentario`}
+            className="med-input vid-pedido-comentario"
+            rows={2}
+            maxLength={500}
+            value={pedido.comentario}
+            placeholder="Cualquier comentario u observación para identificar este pedido en Tempoglass"
+            disabled={!!bloqueo}
+            onChange={(e) => onPedido({ comentario: e.target.value })}
+          />
+        </div>
+        <div className={`med-campo${marcar && faltan.some((f) => f.includes('fecha')) ? ' vid-pedido--falta' : ''}`}>
+          <label className="med-l" htmlFor={`${uid}-fecha`}>
+            Fecha de entrega / colocación *
+          </label>
+          <input
+            id={`${uid}-fecha`}
+            type="date"
+            className="med-input"
+            min={hoyIso()}
+            value={pedido.fecha}
+            disabled={!!bloqueo}
+            onChange={(e) => onPedido({ fecha: e.target.value })}
+          />
+        </div>
+        {marcar && faltan.length > 0 && (
+          <p className="vid-pedido-aviso" role="alert">
+            <i className="fas fa-circle-exclamation" /> Para generar la orden falta {faltan.join(' y ')}.
+          </p>
+        )}
+      </div>
+
       <button
         type="button"
         className="btn-generar btn-mayus"
-        onClick={onGenerar}
-        /* Mientras se guarda o busca, no se regenera: dos tandas cruzadas dejarían un Excel viejo. */
-        disabled={generando || !lista.length || ocupado}
+        onClick={() => {
+          /* Con datos incompletos no se genera: se marcan los campos que faltan. */
+          if (faltan.length) return setMarcar(true)
+          setMarcar(false)
+          onGenerar()
+        }}
+        /* Mientras corre el robot, no se regenera: dos tandas cruzadas cargarían dos pedidos. */
+        disabled={generando || !lista.length || !!bloqueo}
         aria-busy={generando}
-        title={generada ? 'Tocá para volver a generar la orden de compra' : undefined}
+        title={bloqueo ?? (generada ? 'Tocá para volver a generar la orden de compra' : undefined)}
         style={
           generada
             ? { backgroundColor: 'var(--green)', color: '#fff' }
