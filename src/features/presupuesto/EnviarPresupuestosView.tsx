@@ -3,6 +3,7 @@ import { FinalizarOperacion, type TextosFinalizar } from '@/features/shared/Fina
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { etiquetaPaso } from '@/lib/pasos'
+import { nombreBolsa } from '@/lib/presupuesto'
 import { useApp, useDispatch } from '@/state/hooks'
 import { EnviarPresupuesto } from './EnviarPresupuesto'
 import { registrarPresupuesto } from './registrar'
@@ -54,11 +55,14 @@ export function EnviarPresupuestosView() {
         <FinalizarOperacion
           detalle={para || undefined}
           textos={TEXTOS_FINALIZAR}
+          /* El nombre del ítem se pregunta sólo si todavía no se creó (un reintento reusa el que quedó). */
+          nombreItem={enviado && !presupuesto.bolsaId ? nombreBolsa(cliente, arquitecto) : undefined}
           registrar={
             enviado
-              ? () =>
+              ? (nombre) =>
                   registrarPresupuesto({
                     borrador: presupuesto,
+                    nombre,
                     creadoPor: usuario?.id ?? null,
                     avanzar: (cambios) => dispatch({ type: 'setPresupuesto', cambios }),
                   })

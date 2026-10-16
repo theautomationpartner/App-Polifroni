@@ -26,10 +26,13 @@ import type { BorradorPresupuesto, PresupuestoCargado } from './borrador'
  */
 export async function registrarPresupuesto({
   borrador,
+  nombre,
   creadoPor,
   avanzar,
 }: {
   borrador: BorradorPresupuesto
+  /** El nombre del ítem, si el usuario lo cambió; si no, el del cliente (o el del constructor). */
+  nombre?: string
   /** El usuario logueado: queda en 🤖Creado por de la bolsa nueva. */
   creadoPor: string | null
   avanzar: (cambios: Partial<BorradorPresupuesto>) => void
@@ -41,7 +44,7 @@ export async function registrarPresupuesto({
 
   let bolsaId = borrador.bolsaId
   if (!bolsaId) {
-    bolsaId = await crearBolsa({ nombre: nombreBolsa(cliente, arquitecto), cliente, arquitecto, enviarA, creadoPor })
+    bolsaId = await crearBolsa({ nombre: nombre?.trim() || nombreBolsa(cliente, arquitecto), cliente, arquitecto, enviarA, creadoPor })
     avanzar({ bolsaId })
   }
 
