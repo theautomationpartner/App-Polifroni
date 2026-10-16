@@ -229,6 +229,8 @@ export interface RespuestaLivewire {
   redirect: string | null
   /** Errores de validación por campo (`pedido.fecha_entrega: ["…"]`). */
   errores: string[]
+  /** Lo demás que contestó (eventos, avisos del componente): para que un error diga QUÉ respondió. */
+  otros: string
 }
 
 const normalizar = (s: string) => s.replace(/\s+/g, ' ').trim().toUpperCase()
@@ -328,6 +330,33 @@ export function renglonesDePedido(html: string): RenglonTempoglass[] {
       })
   })
   return renglones
+}
+
+/** Un pedido de la lista de pedidos de Tempoglass ("Pedidos (Todos)"). */
+export interface PedidoListado {
+  id: string
+  obra: string
+  detalle: string
+}
+
+/**
+ * Los pedidos de la lista "Pedidos (Todos)" (`/cliente.pedido.index/9999`), los más nuevos primero:
+ * número (del link a su detalle), obra y detalle (el comentario).
+ *
+ * Columnas, vistas en la lista real: Id | Obra | Descripción de la obra | Detalle | Emisión | Estado.
+ */
+export function pedidosDeLista(html: string): PedidoListado[] {
+  const $ = cheerio.load(html)
+  const lista: PedidoListado[] = []
+  $('table tbody tr').each((_, tr) => {
+    const id = /dvhpedidorenglon\/(\d+)/.exec($.html(tr))?.[1]
+    const celdas = $(tr)
+      .children('td')
+      .map((_, td) => $(td).text().replace(/\s+/g, ' ').trim())
+      .get()
+    if (id && celdas.length >= 4) lista.push({ id, obra: celdas[1] ?? '', detalle: celdas[3] ?? '' })
+  })
+  return lista
 }
 
 /** Los avisos que muestra la página (errores de validación, mensajes de la importación). */
@@ -505,7 +534,7 @@ export async function mensajeLivewire(
     throw new ErrorTempoglass(paso, `Tempoglass respondió HTTP ${res.status}.`, reintentable)
   }
   const cuerpo = (await res.json().catch(() => null)) as {
-    effects?: { html?: string | null; redirect?: string | null }
+    effects?: { html?: string | null; redirect?: string | null; [k: string]: unknown }
     serverMemo?: { data?: Record<string, unknown>; errors?: Record<string, string[]>; [k: string]: unknown }
   } | null
   if (!cuerpo) throw new ErrorTempoglass(paso, 'Tempoglass no devolvió una respuesta de Livewire.')
@@ -517,10 +546,43 @@ export async function mensajeLivewire(
     else componente.serverMemo[clave] = valor
   }
   const errores = Object.entries(memo.errors ?? {}).flatMap(([campo, msgs]) => msgs.map((m) => `${campo}: ${m}`))
-  return { html: cuerpo.effects?.html ?? null, redirect: cuerpo.effects?.redirect ?? null, errores }
+  const { html: _h, redirect: _r, ...resto } = cuerpo.effects ?? {}
+  const avisos = cuerpo.effects?.html ? avisosDePagina(cuerpo.effects.html) : []
+  const otros = [
+    Object.keys(resto).length ? `respuesta: ${JSON.stringify(resto).slice(0, 300)}` : '',
+    avisos.length ? `avisos: ${avisos.join(' · ').slice(0, 300)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return { html: cuerpo.effects?.html ?? null, redirect: cuerpo.effects?.redirect ?? null, errores, otros }
 }
 
-/** Abre una pantalla de Tempoglass ya logueado. Un 302 es la sesión perdida: se reintenta entero. */
+/**
+ * La pausa entre un intento y otro de leer una pantalla que todavía no terminó de cargar. Se puede
+ * cambiar (los tests la hacen instantánea).
+ */
+export const ritmo = { pausaMs: 1500, esperar: (ms: number) => new Promise<void>((listo) => setTimeout(listo, ms)) }
+
+/**
+ * Abre una pantalla y, si todavía no muestra lo que se necesita (`lista`), espera un momento y la
+ * vuelve a abrir, como quien espera a que termine de cargar. Devuelve la última que vio: si sigue
+ * sin estar lista, el que la pidió dice qué faltaba.
+ */
+export async function abrirHasta(
+  sesion: Sesion,
+  ruta: string,
+  paso: PasoTempoglass,
+  lista: (p: Pantalla) => boolean,
+  intentos = 4,
+): Promise<Pantalla> {
+  let pantalla = await abrirPantalla(sesion, ruta, paso)
+  for (let i = 1; i < intentos && !lista(pantalla); i++) {
+    await ritmo.esperar(ritmo.pausaMs * i)
+    pantalla = await abrirPantalla(sesion, ruta, paso)
+  }
+  return pantalla
+}
+
 /** Una pantalla de Tempoglass ya dibujada del todo: lo que vería una persona en el navegador. */
 export interface Pantalla {
   ruta: string
@@ -587,7 +649,7 @@ const rutaDe = (url: string) => (url.startsWith('/') ? url : new URL(url, BASE).
 /** Abre la obra (el clic en su fila) y lee su "Id.Int.Obra". */
 export async function abrirObra(sesion: Sesion, obra: ObraTempoglass): Promise<{ idInt: string; pantalla: Pantalla }> {
   const ruta = obra.url ? rutaDe(obra.url) : `/obra/${obra.id}`
-  const pantalla = await abrirPantalla(sesion, ruta, 'obra')
+  const pantalla = await abrirHasta(sesion, ruta, 'obra', (p) => idIntDeObra(p.html) !== null)
   /* El Id.Int.Obra es el número de la obra en Tempoglass: el del campo de la pantalla, y el mismo de
      su dirección (`/obra/4715`) y de la columna Id. de la tabla. Si el campo no lo trae (lo arma la
      página en el navegador), vale el de la dirección. Si los dos están y no coinciden, algo cambió:
@@ -647,7 +709,7 @@ export async function crearObra(sesion: Sesion, nombre: string, ubicacion: strin
  */
 export async function crearPedido(
   sesion: Sesion,
-  obra: { idInt: string; pantalla: Pantalla },
+  obra: { idInt: string; pantalla: Pantalla; nombre: string },
   datos: { comentario: string; fecha: string },
 ): Promise<string> {
   /* "Agregar Pedido": lleva al formulario del pedido nuevo (`/dvhpedido/<obra>`). No crea nada. */
@@ -661,28 +723,65 @@ export async function crearPedido(
     if (r.redirect) rutaPedido = rutaDe(r.redirect)
   }
 
-  const formulario = await abrirPantalla(sesion, rutaPedido, 'pedido')
+  /* El formulario, ya cargado: con su "Confirmar". Si todavía no lo muestra, se espera y se reabre. */
+  const formulario = await abrirHasta(sesion, rutaPedido, 'pedido', (p) => !!componenteConAccion(p.componentes, 'saveCabecera'))
   const componente = componenteConAccion(formulario.componentes, 'saveCabecera')
   if (!componente) {
     throw new ErrorTempoglass('pedido', `El formulario del pedido no tiene el botón Confirmar. Trae → ${describirPantalla(formulario)}`)
   }
 
-  const r = await mensajeLivewire(
-    sesion,
-    formulario.csrf,
-    componente,
-    [escribir('pedido.detalle', datos.comentario), escribir('pedido.fecha_entrega', datos.fecha), tocar('saveCabecera')],
-    { paso: 'pedido', referer: rutaPedido, ambiguo: true },
-  )
-  if (r.errores.length) throw new ErrorTempoglass('pedido', `Tempoglass no aceptó el pedido: ${r.errores.join(' · ')}`)
-  const pedido = pedidoDeDireccion(r.redirect)
-  if (!pedido) {
-    throw new ErrorTempoglass(
-      'pedido',
-      'Tempoglass no devolvió el número de pedido al confirmar. Revisá la obra en Tempoglass antes de reintentar.',
+  /* Los pedidos que la obra YA tiene, antes de confirmar: así se reconoce el nuevo si Tempoglass no
+     devuelve su número. */
+  const antes = new Set((await pedidosDeObra(sesion, obra.nombre)).map((p) => p.id))
+
+  let r: RespuestaLivewire | null = null
+  let sinRespuesta = ''
+  try {
+    r = await mensajeLivewire(
+      sesion,
+      formulario.csrf,
+      componente,
+      [escribir('pedido.detalle', datos.comentario), escribir('pedido.fecha_entrega', datos.fecha), tocar('saveCabecera')],
+      { paso: 'pedido', referer: rutaPedido, ambiguo: true },
     )
+  } catch (e) {
+    /* Un 419 (rechazado antes de ejecutar) se reintenta entero. Lo demás —no contestó, 5xx— es
+       "no se sabe si se creó": se averigua en la lista, abajo. */
+    if (!(e instanceof ErrorTempoglass) || e.reintentable) throw e
+    sinRespuesta = e.message
   }
-  return pedido
+  if (r?.errores.length) throw new ErrorTempoglass('pedido', `Tempoglass no aceptó el pedido: ${r.errores.join(' · ')}`)
+  const directo = pedidoDeDireccion(r?.redirect)
+  if (directo) return directo
+
+  /* Tempoglass no devolvió el número (o no contestó): se espera a que lo registre y se busca el
+     pedido NUEVO de la obra en la lista. Si hay uno, es ése; si hay varios, el del comentario. */
+  for (let i = 1; i <= 4; i++) {
+    await ritmo.esperar(ritmo.pausaMs * i)
+    const nuevos = (await pedidosDeObra(sesion, obra.nombre)).filter((p) => !antes.has(p.id))
+    if (nuevos.length === 1) return nuevos[0]!.id
+    if (nuevos.length > 1) {
+      const delComentario = nuevos.filter((p) => normalizar(p.detalle) === normalizar(datos.comentario))
+      if (delComentario.length === 1) return delComentario[0]!.id
+      throw new ErrorTempoglass(
+        'pedido',
+        `La obra tiene ${nuevos.length} pedidos nuevos (${nuevos.map((p) => p.id).join(', ')}): revisalos en Tempoglass.`,
+      )
+    }
+  }
+  const contesto = r
+    ? [r.redirect ? `fue a ${r.redirect}` : 'sin redirección', r.otros].filter(Boolean).join(' · ')
+    : 'no contestó'
+  throw new ErrorTempoglass(
+    'pedido',
+    `Tempoglass no creó el pedido${sinRespuesta ? ` (${sinRespuesta})` : ''}. Al confirmar → ${contesto}`,
+  )
+}
+
+/** Los pedidos de una obra en la lista de Tempoglass, los más nuevos primero. */
+async function pedidosDeObra(sesion: Sesion, nombreObra: string): Promise<PedidoListado[]> {
+  const lista = await abrirPantalla(sesion, '/cliente.pedido.index/9999', 'pedido')
+  return pedidosDeLista(lista.html).filter((p) => normalizar(p.obra) === normalizar(nombreObra))
 }
 
 /**
@@ -717,7 +816,7 @@ export async function importarPlanilla(
     if (res.status !== 302 && !res.ok) {
       throw new ErrorTempoglass('importar', `Subir el archivo respondió HTTP ${res.status}.`, statusReintentable(res.status))
     }
-    const despues = await abrirPantalla(sesion, ruta, 'importar')
+    const despues = await abrirHasta(sesion, ruta, 'importar', (p) => renglonesDePedido(p.html).length >= esperado.renglones)
     renglones = renglonesDePedido(despues.html)
     if (renglones.length === 0) {
       const avisos = avisosDePagina(despues.html).filter((a) => !/aún no hay productos|presione agregar/i.test(a))
@@ -772,7 +871,7 @@ export async function cerrarPedido(sesion: Sesion, pedido: string): Promise<void
   })
   if (r.errores.length) throw new ErrorTempoglass('cerrar', `Tempoglass no cerró el pedido: ${r.errores.join(' · ')}`)
 
-  const despues = await abrirPantalla(sesion, ruta, 'cerrar')
+  const despues = await abrirHasta(sesion, ruta, 'cerrar', (p) => !pedidoAbierto(p.html))
   if (pedidoAbierto(despues.html)) throw new ErrorTempoglass('cerrar', 'El pedido sigue abierto después de cerrarlo.')
 }
 
@@ -960,7 +1059,7 @@ export async function cargarPedidoTempoglass(
         avisar({ etapa: 'obraSeleccionada', obra, idIntObra })
 
         avisar({ etapa: 'creandoPedido' })
-        pedido = await crearPedido(sesion, enObra, datos)
+        pedido = await crearPedido(sesion, { ...enObra, nombre: encontrada.nombre }, datos)
         avisar({ etapa: 'pedidoCreado', pedido })
       }
 

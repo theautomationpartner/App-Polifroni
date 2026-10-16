@@ -29,6 +29,7 @@ import {
   buscarObraTempoglass,
   cargarPedidoTempoglass,
   ofreceCerrar,
+  ritmo,
   pedidoAbierto,
   wireInitDe,
   type AvanceTempoglass,
@@ -120,6 +121,8 @@ assert.ok(!esBloqueoPorIntentos('Estas credenciales no coinciden con nuestros re
 
 // ── conReintentos ────────────────────────────────────────────────────────────────────────────────
 const rapido: OpcionesReintento = { intentos: 3, esperaMs: () => 0, plazoMs: 60_000, esperar: async () => {} }
+/* Las pausas de "esperar a que cargue" (`abrirHasta`, la lista de pedidos), instantáneas en los tests. */
+ritmo.esperar = async () => {}
 const fallaQue = (reintentable: boolean) => new ErrorTempoglass('obras', 'sesión perdida', reintentable)
 
 {
@@ -361,8 +364,16 @@ const renglonPedido = (filas: [string, number][], abierto = true, conCerrar = fi
 const dosRenglones: [string, number][] = [['18228', 1], ['18229', 10]]
 const redirige = (a: string) => json({ effects: { html: null, redirect: `https://tempoglass.ar${a}` }, serverMemo: { checksum: 'c2' } })
 
+/** La lista "Pedidos (Todos)" de Tempoglass, como la real: Id | Obra | Descripción | Detalle | Emisión | Estado. */
+const listaPedidos = (pedidos: [string, string, string][]) =>
+  html(`<meta name="csrf-token" content="L"><table><thead><tr><th>Id</th><th>Obra</th><th>Descripción</th><th>Detalle</th><th>Emisión</th><th>Estado</th></tr></thead><tbody>
+  ${pedidos.map(([id, obra, detalle]) => `<tr onclick="window.open('https://tempoglass.ar/dvhpedidorenglon/${id}', '_self')"><td>${id}</td><td>${obra}</td><td>UBICACION</td><td>${detalle}</td><td>2026-10-16</td><td>Pendiente</td></tr>`).join('')}
+  </tbody></table>`)
+const OTROS_PEDIDOS: [string, string, string][] = [['4904', 'MATHEU CECILIA', '29/10/26'], ['4892', 'IDOP-053 - PVC 2282 TEST', 'viejo']]
+
 const pedidoBien = {
   ...bien,
+  'GET /cliente.pedido.index/9999': [listaPedidos(OTROS_PEDIDOS)],
   'POST /livewire/message/obra-table': [json({ effects: { html: tablaReal } })],
   'GET /obra/4715': [pantallaObra],
   'POST /livewire/message/obra-show': [redirige('/dvhpedido/4715')],
@@ -404,13 +415,63 @@ const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = 
   assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1, 'un solo pedido')
 }
 {
-  // "Confirmar" no contesta: no se sabe si se creó → NO se reintenta (nunca dos pedidos).
-  const llamadas = simular({ ...pedidoBien, 'POST /livewire/message/dvh-pedido': [caida] })
+  // "Confirmar" no contesta, pero el pedido se creó: aparece en la lista y se sigue con ÉSE.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/dvh-pedido': [caida],
+    'GET /cliente.pedido.index/9999': [listaPedidos(OTROS_PEDIDOS), listaPedidos([['4938', 'IDOP-053 - PVC 2282 TEST', 'Pedido de prueba'], ...OTROS_PEDIDOS])],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1, 'un solo Confirmar')
+}
+{
+  // LA FALLA DE LA APP: "Confirmar" contesta sin el número. Se espera y se lo busca en la lista.
+  simular({
+    ...pedidoBien,
+    'POST /livewire/message/dvh-pedido': [json({ effects: { html: '<div>ok</div>' }, serverMemo: {} })],
+    'GET /cliente.pedido.index/9999': [
+      listaPedidos(OTROS_PEDIDOS),
+      listaPedidos(OTROS_PEDIDOS), // todavía no aparece: se espera
+      listaPedidos([['4938', 'IDOP-053 - PVC 2282 TEST', 'Pedido de prueba'], ...OTROS_PEDIDOS]),
+    ],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938', 'lo encontró en la lista al reintentar')
+}
+{
+  // "Confirmar" sin número y el pedido nunca aparece: se frena diciendo qué contestó Tempoglass.
+  const llamadas = simular({
+    ...pedidoBien,
+    'POST /livewire/message/dvh-pedido': [json({ effects: { html: '<div class="alert">La fecha de entrega no es válida</div>', dispatches: [{ event: 'alerta' }] }, serverMemo: {} })],
+  })
   await assert.rejects(
     cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
-    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'pedido' && !e.reintentable && /revisalo allá/.test(e.message),
+    (e: unknown) =>
+      e instanceof ErrorTempoglass && e.paso === 'pedido' && !e.reintentable &&
+      /no creó el pedido/.test(e.message) && /La fecha de entrega no es válida/.test(e.message) && /alerta/.test(e.message),
   )
-  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1)
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/dvh-pedido').length, 1, 'no insiste con Confirmar')
+}
+{
+  // Pantallas lentas: la obra sin el Id.Int.Obra y el formulario sin "Confirmar" la primera vez.
+  const llamadas = simular({
+    ...pedidoBien,
+    'GET /obra/4715': [html(conComponente('obra-show', {}, '<div class="cargando"></div>')), pantallaObra],
+    'GET /dvhpedido/4715': [html(conComponente('dvh-pedido', {}, '<div class="cargando"></div>')), pantallaPedidoNuevo],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.pedido, '4938')
+  assert.equal(llamadas.filter((l) => l === 'GET /dvhpedido/4715').length, 2, 'esperó y reabrió el formulario')
+}
+{
+  // La importación tarda: los renglones aparecen recién en la tercera lectura del detalle.
+  simular({
+    ...pedidoBien,
+    'GET /dvhpedidorenglon/4938': [renglonPedido([]), renglonPedido([]), renglonPedido([['18228', 1]]), renglonPedido(dosRenglones), renglonPedido(dosRenglones), renglonPedido(dosRenglones, false)],
+  })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.renglones, 2)
 }
 {
   // Tempoglass rechaza la cabecera (validación): se dice por qué.
