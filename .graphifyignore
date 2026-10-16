@@ -1,0 +1,14 @@
+# Lo que graphify NO indexa. Se suma a lo que ya excluye .gitignore.
+# El grafo es sólo del código de la app: nada de builds, grabaciones ni configuración local.
+dist/
+node_modules/
+public/
+graphify-out/
+cdp-*/
+.agents/
+.claude/
+*.mp4
+llamada.txt
+skills-lock.json
+package-lock.json
+pdfco-api-logs.csv

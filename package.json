@@ -20,6 +20,7 @@
     "test:confirmar": "esbuild tests/confirmar.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/confirmar.test.mjs && node node_modules/.cache/confirmar.test.mjs",
     "test:facturacion": "esbuild tests/facturacion.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/facturacion.test.mjs && node node_modules/.cache/facturacion.test.mjs",
     "test:equipos": "esbuild tests/equipos.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/equipos.test.mjs && node node_modules/.cache/equipos.test.mjs",
+    "test:tempoglass": "esbuild tests/tempoglass.test.ts --bundle --platform=node --format=esm --packages=external --tsconfig=tsconfig.json --outfile=node_modules/.cache/tempoglass.test.mjs && node node_modules/.cache/tempoglass.test.mjs",
     "test:seguridad": "npm run test:portero && npm run test:guard && npm run test:whitelist && npm run test:mfa && npm run test:equipos"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "@fullcalendar/react": "^6.1.21",
     "@react-pdf/renderer": "^4.9.0",
     "@vercel/functions": "3.9.9",
+    "cheerio": "^1.2.0",
     "exceljs": "^4.4.0",
     "jsonwebtoken": "^9.0.3",
     "monday-sdk-js": "^1.0.0-beta",

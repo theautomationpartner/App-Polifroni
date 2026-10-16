@@ -123,7 +123,17 @@ export const esAdmin = (sesion: Sesion): boolean => Boolean(sesion.roles?.includ
  * La lectura con IA y la numeración son de la carga de OP, que es sólo del admin.
  */
 /** `facturas`: guardar en Drive la factura de obra emitida. Sólo admin (no está en ningún rol de abajo). */
-export type Ruta = 'escribir' | 'obras' | 'whatsapp' | 'subir' | 'finalizar' | 'ia' | 'numeracion' | 'facturas'
+/** `tempoglass`: el robot del proveedor de vidrio (solicitud de cortes). Sólo admin, como `facturas`. */
+export type Ruta =
+  | 'escribir'
+  | 'obras'
+  | 'whatsapp'
+  | 'subir'
+  | 'finalizar'
+  | 'ia'
+  | 'numeracion'
+  | 'facturas'
+  | 'tempoglass'
 
 const RUTAS_DEL_ROL: Record<Exclude<Rol, 'admin'>, readonly Ruta[]> = {
   produccion: ['finalizar'],

@@ -891,6 +891,15 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
  * el Excel repetido. El estado va al final: si la subida falla, la OP sigue "Pend de Solicitar" y se
  * puede reintentar entera.
  */
+/**
+ * Guarda en la OP la orden de compra recién generada (`Generar Orden Compra Vidrio`). Se reemplaza
+ * la anterior: volver a generar no deja dos Excel.
+ */
+export async function guardarOrdenCompraGenerada(ordenId: string, ordenCompra: File): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.ordenCompraGenerada]: { clear_all: true } }).catch(() => {})
+  await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraGenerada, ordenCompra)
+}
+
 export async function registrarSolicitudVidrios(ordenId: string, ordenCompra: File): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.ordenCompraVidrios]: { clear_all: true } }).catch(() => {})
   await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraVidrios, ordenCompra)

@@ -2,3 +2,4 @@
 # trabaje. Sin esto, cada commit desde Windows convierte los archivos a CRLF y el diff siguiente
 # muestra el archivo entero como cambiado.
 * text=auto eol=lf
+graphify-out/graph.json merge=graphify

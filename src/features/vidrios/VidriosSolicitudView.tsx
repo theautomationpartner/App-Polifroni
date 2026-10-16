@@ -5,12 +5,20 @@ import { useObra } from '@/features/obras/useObra'
 import { PasoHeader, PasoTitulo } from '@/features/shared/PasoHeader'
 import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
+import { OBRA_PRUEBA_TEMPOGLASS } from '@/lib/tempoglass'
 import { consolidar, type Corte } from '@/lib/vidrios'
-import { comoUsuario, ordenesDeObra, registrarSolicitudVidrios, vidriosDeOrdenes } from '@/services/monday'
+import {
+  comoUsuario,
+  guardarOrdenCompraGenerada,
+  ordenesDeObra,
+  registrarSolicitudVidrios,
+  vidriosDeOrdenes,
+} from '@/services/monday'
+import { buscarObraTempoglass } from '@/services/tempoglass'
 import { useApp, useDispatch } from '@/state/hooks'
 import { CortesOrdenCompra } from './CortesOrdenCompra'
 import { ordenCompraExcel } from './ordenCompraExcel'
-import { ResumenOrdenCompra } from './ResumenOrdenCompra'
+import { ResumenOrdenCompra, type EstadoTempoglass } from './ResumenOrdenCompra'
 
 /**
  * Solicitud de cortes de vidrio · Etapa 3: la orden de compra al proveedor.
@@ -19,9 +27,10 @@ import { ResumenOrdenCompra } from './ResumenOrdenCompra'
  * piezas sumadas—. A la izquierda, el resumen de la orden de compra con sus acciones (generar el
  * Excel, descargarlo y abrir Tempoglass); a la derecha, los cortes que lleva, del mismo alto.
  *
- * Tempoglass no tiene una API pública: es un sistema web con usuario y contraseña (investigado el
- * 02/10/2026). Hasta tener una integración, la orden de compra se genera en Excel (ver
- * `ordenCompraExcel`) y se carga a mano en su sistema, que se abre desde acá.
+ * Tempoglass no tiene una API pública: es un sistema web con usuario y contraseña. "Generar orden de
+ * compra" arma el Excel (ver `ordenCompraExcel`), lo guarda en cada OP (`Generar Orden Compra
+ * Vidrio`) y llama al robot de Tempoglass (`api/_tempoglass.ts`), que por ahora entra y busca la
+ * obra; el pedido todavía se carga a mano en su sistema, que se abre desde acá.
  *
  * "Finalizar Operación" sube el Excel de la orden de compra a cada OP que entra en ella
  * (`🤖Orden de Compra de Vidrios`) y deja su `🤖Estado Vidrios` en "Solicitados": así no vuelven a
@@ -43,6 +52,8 @@ export function VidriosSolicitudView() {
   const [excel, setExcel] = useState<Blob | null>(null)
   const [generando, setGenerando] = useState(false)
   const [errorExcel, setErrorExcel] = useState(false)
+  const [guardado, setGuardado] = useState<'subiendo' | 'ok' | 'error' | null>(null)
+  const [tempoglass, setTempoglass] = useState<EstadoTempoglass | null>(null)
   const [finalizando, setFinalizando] = useState(false)
   const [errorFinal, setErrorFinal] = useState(false)
 
@@ -85,13 +96,43 @@ export function VidriosSolicitudView() {
   const generar = async () => {
     setGenerando(true)
     setErrorExcel(false)
+    setGuardado(null)
+    setTempoglass(null)
+    let blob: Blob
     try {
-      setExcel(await armarExcel())
+      blob = await armarExcel()
+      setExcel(blob)
     } catch {
       setExcel(null)
       setErrorExcel(true)
+      return
     } finally {
       setGenerando(false)
+    }
+    void guardarYBuscar(blob)
+  }
+
+  /** Guarda la orden generada en cada OP y, ya guardada, llama al robot de Tempoglass. Si Monday
+      falla, el robot no corre: lo que se carga allá tiene que ser lo que quedó registrado acá. */
+  const guardarYBuscar = async (blob: Blob) => {
+    setGuardado('subiendo')
+    try {
+      const archivo = new File([blob], nombreExcel, { type: blob.type })
+      await Promise.all(idsOps.map((id) => guardarOrdenCompraGenerada(id, archivo)))
+      setGuardado('ok')
+    } catch (e) {
+      console.warn('[vidrios] no se pudo guardar la orden de compra en las OP', e)
+      setGuardado('error')
+      return
+    }
+
+    setTempoglass({ estado: 'buscando' })
+    try {
+      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
+      setTempoglass({ estado: 'listo', busqueda: await buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS) })
+    } catch (e) {
+      console.warn('[vidrios] el robot de Tempoglass no respondió', e)
+      setTempoglass({ estado: 'listo', busqueda: { ok: false, paso: 'conexion', mensaje: 'No se pudo llamar al robot.' } })
     }
   }
 
@@ -146,6 +187,8 @@ export function VidriosSolicitudView() {
           generando={generando}
           generada={!!excel}
           error={errorExcel}
+          guardado={guardado}
+          tempoglass={tempoglass}
           onGenerar={() => void generar()}
           onDescargar={descargar}
         />
