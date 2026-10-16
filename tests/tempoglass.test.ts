@@ -25,8 +25,12 @@ import {
 } from '../src/lib/tempoglass'
 import type { Corte } from '../src/lib/vidrios'
 import {
+  accionYParametros,
   buscarObraTempoglass,
   cargarPedidoTempoglass,
+  ofreceCerrar,
+  wireInitDe,
+  type AvanceTempoglass,
   idIntDeObra,
   pedidoDeDireccion,
   renglonesDePedido,
@@ -453,6 +457,56 @@ const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = 
     (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'buscar' && !e.reintentable,
   )
   assert.equal(llamadas.filter((l) => l.includes('dvhpedido')).length, 0)
+}
+
+// ── La falla real del 16/10: la pantalla de la obra carga sus datos DESPUÉS (wire:init) ───────────
+assert.equal(wireInitDe('<div wire:id="a" wire:init="cargarObra"><p>…</p></div>'), 'cargarObra')
+assert.equal(wireInitDe('<div wire:id="a"><p wire:init="x">…</p></div>'), null, 'sólo el del elemento raíz')
+assert.deepEqual(accionYParametros("cargar('obra', 3)"), { metodo: 'cargar', params: ['obra', '3'] })
+assert.deepEqual(accionYParametros('addPedido'), { metodo: 'addPedido', params: [] })
+assert.ok(ofreceCerrar(`<button wire:click="$toggle('confirmCloseOrder')">Cerrar Pedido</button>`))
+assert.ok(ofreceCerrar('<button class="x">  Cerrar   Pedido </button>'), 'por el texto, aunque cambie la acción')
+assert.ok(!ofreceCerrar(`<div wire:initial-data="{&quot;confirmCloseOrder&quot;:false}"></div>`), 'el estado del componente no es un botón')
+{
+  // La obra llega vacía y se completa con su wire:init: el robot hace esa llamada y lee el campo.
+  const obraVacia = html(
+    `<meta name="csrf-token" content="C"><div wire:id="obra-show" wire:init="cargarObra" wire:initial-data="${datos({ cargada: false }, 'obra-show')}"><div class="spinner"></div></div>`,
+  )
+  const llamadas = simular({
+    ...pedidoBien,
+    'GET /obra/4715': [obraVacia],
+    'POST /livewire/message/obra-show': [
+      json({ effects: { html: '<div wire:id="obra-show"><input id="id" readonly placeholder="4715"><button wire:click="addPedido">Agregar Pedido</button></div>' } }),
+      redirige('/dvhpedido/4715'),
+    ],
+  })
+  const avisos: AvanceTempoglass[] = []
+  const r = await cargarPedidoTempoglass(datosPedido(), (a) => avisos.push(a), rapido)
+  assert.equal(r.idIntObra, '4715')
+  assert.equal(llamadas.filter((l) => l === 'POST /livewire/message/obra-show').length, 2, 'wire:init y después Agregar Pedido')
+}
+{
+  // El campo no aparece nunca (lo arma el navegador): vale el número de la dirección /obra/4715.
+  simular({ ...pedidoBien, 'GET /obra/4715': [html(conComponente('obra-show', {}, '<button wire:click="addPedido">Agregar Pedido</button>'))] })
+  const r = await cargarPedidoTempoglass(datosPedido(), () => {}, rapido)
+  assert.equal(r.idIntObra, '4715')
+}
+{
+  // El campo dice una obra y la dirección otra: se frena ANTES de crear el pedido.
+  const llamadas = simular({ ...pedidoBien, 'GET /obra/4715': [html(conComponente('obra-show', {}, '<input id="id" placeholder="9999">'))] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'obra' && /9999/.test(e.message),
+  )
+  assert.equal(llamadas.filter((l) => l.includes('dvhpedido')).length, 0)
+}
+{
+  // El formulario no tiene "Confirmar": el error dice qué trae la pantalla, para ajustar sin adivinar.
+  simular({ ...pedidoBien, 'GET /dvhpedido/4715': [html(conComponente('dvh-pedido', {}, '<input id="pedido_detalle"><button wire:click="guardar">Guardar</button>'))] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido(), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && /componentes: dvh-pedido · acciones: guardar · campos: pedido_detalle/.test(e.message),
+  )
 }
 
 console.log('tempoglass: ok')

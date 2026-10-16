@@ -181,9 +181,27 @@ function componentesDePagina(html: string): { componente: ComponenteLivewire; ht
  * El componente que dibuja el botón con esa acción (`wire:click="saveCabecera"`). Si hay varios
  * anidados, el más interno: es el que atiende el clic.
  */
-export function componenteConAccion(html: string, accion: string): ComponenteLivewire | null {
-  const conBoton = componentesDePagina(html).filter((c) => c.html.includes(`wire:click="${accion}"`))
+export function componenteConAccion(
+  fuente: string | { componente: ComponenteLivewire; html: string }[],
+  accion: string,
+): ComponenteLivewire | null {
+  const lista = typeof fuente === 'string' ? componentesDePagina(fuente) : fuente
+  const conBoton = lista.filter((c) => c.html.includes(`wire:click="${accion}"`))
   return conBoton.length ? conBoton[conBoton.length - 1]!.componente : null
+}
+
+/** "loadData" o "loadData('x', 2)" → el método y sus parámetros, como los manda el navegador. */
+export function accionYParametros(texto: string): { metodo: string; params: string[] } | null {
+  const [, metodo, crudo] = /^\s*([\w$]+)\s*(?:\((.*)\))?\s*$/.exec(texto) ?? []
+  if (!metodo) return null
+  const params = crudo?.trim() ? crudo.split(',').map((p) => p.trim().replace(/^['"]|['"]$/g, '')) : []
+  return { metodo, params }
+}
+
+/** El `wire:init` del elemento raíz de un componente: lo que el navegador pide apenas lo dibuja. */
+export function wireInitDe(htmlComponente: string): string | null {
+  const $ = cheerio.load(htmlComponente, null, false)
+  return $.root().children().first().attr('wire:init')?.trim() || null
 }
 
 /** Una acción de Livewire 2: escribir en un campo o tocar un botón. */
@@ -486,14 +504,62 @@ export async function mensajeLivewire(
 }
 
 /** Abre una pantalla de Tempoglass ya logueado. Un 302 es la sesión perdida: se reintenta entero. */
-async function abrirPantalla(sesion: Sesion, ruta: string, paso: PasoTempoglass): Promise<{ html: string; csrf: string }> {
+/** Una pantalla de Tempoglass ya dibujada del todo: lo que vería una persona en el navegador. */
+export interface Pantalla {
+  ruta: string
+  csrf: string
+  /** La página más lo que cargaron después sus componentes (`wire:init`). */
+  html: string
+  /** Cada componente Livewire con su HTML al día (el de después de cargar). */
+  componentes: { componente: ComponenteLivewire; html: string }[]
+}
+
+/**
+ * Abre una pantalla de Tempoglass ya logueado, y la deja como la ve el navegador.
+ *
+ * Un componente Livewire con `wire:init` llega VACÍO en la página: el navegador lo dibuja y recién
+ * ahí le pide sus datos con otra llamada. Leer la página sin esa segunda llamada es leerla antes de
+ * que termine de cargar (lo que pasaba con el Id.Int.Obra). Acá se hace la misma llamada.
+ *
+ * Un 302 es la sesión perdida: se reintenta entero.
+ */
+async function abrirPantalla(sesion: Sesion, ruta: string, paso: PasoTempoglass): Promise<Pantalla> {
   const res = await sesion.pedir(ruta)
   if (res.status === 302) throw new ErrorTempoglass(paso, `Tempoglass no reconoció la sesión al abrir ${ruta}.`, true)
   if (!res.ok) throw new ErrorTempoglass(paso, `${ruta} respondió HTTP ${res.status}.`, statusReintentable(res.status))
   const html = await res.text()
   const csrf = csrfDePagina(html)
   if (!csrf) throw new ErrorTempoglass(paso, `${ruta} no trae el token de la página.`)
-  return { html, csrf }
+
+  const componentes = componentesDePagina(html)
+  const cargado: string[] = []
+  for (const c of componentes) {
+    const init = wireInitDe(c.html)
+    const accion = init ? accionYParametros(init) : null
+    if (!accion) continue
+    const r = await mensajeLivewire(sesion, csrf, c.componente, [tocar(accion.metodo, accion.params)], { paso, referer: ruta })
+    if (r.html) {
+      c.html = r.html
+      cargado.push(r.html)
+    }
+  }
+  return { ruta, csrf, html: [html, ...cargado].join('\n'), componentes }
+}
+
+/**
+ * Qué trae una pantalla, en una línea: para que un error de "no encontré X" diga también qué SÍ
+ * había, y se pueda ajustar el robot sin adivinar.
+ */
+export function describirPantalla(p: Pick<Pantalla, 'html' | 'componentes'>): string {
+  const $ = cheerio.load(p.html)
+  const nombres = p.componentes.map((c) => c.componente.fingerprint?.name).filter(Boolean)
+  const acciones = [...new Set($('[wire\\:click]').map((_, el) => $(el).attr('wire:click')).get())].slice(0, 8)
+  const campos = [...new Set($('input[id], textarea[id], select[id]').map((_, el) => $(el).attr('id')).get())].slice(0, 8)
+  return [
+    `componentes: ${nombres.join(', ') || 'ninguno'}`,
+    `acciones: ${acciones.join(', ') || 'ninguna'}`,
+    `campos: ${campos.join(', ') || 'ninguno'}`,
+  ].join(' · ')
 }
 
 /** La ruta de una dirección de Tempoglass ("https://tempoglass.ar/obra/4715" → "/obra/4715"). */
@@ -502,12 +568,23 @@ const rutaDe = (url: string) => (url.startsWith('/') ? url : new URL(url, BASE).
 /* ── La obra y su pedido ────────────────────────────────────────────────────────────────────── */
 
 /** Abre la obra (el clic en su fila) y lee su "Id.Int.Obra". */
-export async function abrirObra(sesion: Sesion, obra: ObraTempoglass): Promise<{ idInt: string; html: string; csrf: string; ruta: string }> {
+export async function abrirObra(sesion: Sesion, obra: ObraTempoglass): Promise<{ idInt: string; pantalla: Pantalla }> {
   const ruta = obra.url ? rutaDe(obra.url) : `/obra/${obra.id}`
-  const { html, csrf } = await abrirPantalla(sesion, ruta, 'obra')
-  const idInt = idIntDeObra(html)
-  if (!idInt) throw new ErrorTempoglass('obra', 'La pantalla de la obra no muestra el Id.Int.Obra.')
-  return { idInt, html, csrf, ruta }
+  const pantalla = await abrirPantalla(sesion, ruta, 'obra')
+  /* El Id.Int.Obra es el número de la obra en Tempoglass: el del campo de la pantalla, y el mismo de
+     su dirección (`/obra/4715`) y de la columna Id. de la tabla. Si el campo no lo trae (lo arma la
+     página en el navegador), vale el de la dirección. Si los dos están y no coinciden, algo cambió:
+     se frena antes de cargar el pedido en otra obra. */
+  const enPantalla = idIntDeObra(pantalla.html)
+  const enDireccion = /\/obra\/(\d+)/.exec(ruta)?.[1] ?? (/^\d+$/.test(obra.id) ? obra.id : null)
+  if (enPantalla && enDireccion && enPantalla !== enDireccion) {
+    throw new ErrorTempoglass('obra', `La obra muestra el Id.Int.Obra ${enPantalla} pero su dirección es la ${enDireccion}.`)
+  }
+  const idInt = enPantalla ?? enDireccion
+  if (!idInt) {
+    throw new ErrorTempoglass('obra', `No se encontró el Id.Int.Obra. La pantalla trae → ${describirPantalla(pantalla)}`)
+  }
+  return { idInt, pantalla }
 }
 
 /**
@@ -519,20 +596,25 @@ export async function abrirObra(sesion: Sesion, obra: ObraTempoglass): Promise<{
  */
 export async function crearPedido(
   sesion: Sesion,
-  obra: { html: string; csrf: string; ruta: string; idInt: string },
+  obra: { idInt: string; pantalla: Pantalla },
   datos: { comentario: string; fecha: string },
 ): Promise<string> {
   /* "Agregar Pedido": lleva al formulario del pedido nuevo (`/dvhpedido/<obra>`). No crea nada. */
   let rutaPedido = `/dvhpedido/${obra.idInt}`
-  const enObra = componenteConAccion(obra.html, 'addPedido')
+  const enObra = componenteConAccion(obra.pantalla.componentes, 'addPedido')
   if (enObra) {
-    const r = await mensajeLivewire(sesion, obra.csrf, enObra, [tocar('addPedido')], { paso: 'pedido', referer: obra.ruta })
+    const r = await mensajeLivewire(sesion, obra.pantalla.csrf, enObra, [tocar('addPedido')], {
+      paso: 'pedido',
+      referer: obra.pantalla.ruta,
+    })
     if (r.redirect) rutaPedido = rutaDe(r.redirect)
   }
 
   const formulario = await abrirPantalla(sesion, rutaPedido, 'pedido')
-  const componente = componenteConAccion(formulario.html, 'saveCabecera')
-  if (!componente) throw new ErrorTempoglass('pedido', 'El formulario del pedido no tiene el botón Confirmar.')
+  const componente = componenteConAccion(formulario.componentes, 'saveCabecera')
+  if (!componente) {
+    throw new ErrorTempoglass('pedido', `El formulario del pedido no tiene el botón Confirmar. Trae → ${describirPantalla(formulario)}`)
+  }
 
   const r = await mensajeLivewire(
     sesion,
@@ -613,10 +695,15 @@ export async function importarPlanilla(
  */
 export async function cerrarPedido(sesion: Sesion, pedido: string): Promise<void> {
   const ruta = `/dvhpedidorenglon/${pedido}`
-  const ABRIR = `$toggle('confirmCloseOrder')`
   const pantalla = await abrirPantalla(sesion, ruta, 'cerrar')
-  const componente = componenteConAccion(pantalla.html, ABRIR)
-  if (!componente) return // ya cerrado: no hay botón
+  /* "Ya cerrado" sólo si en la pantalla no queda NINGÚN "Cerrar Pedido": si el botón está pero con
+     otra forma, eso no es un pedido cerrado, es un robot que no lo reconoce. */
+  if (!ofreceCerrar(pantalla.html)) return
+  const conCierre = pantalla.componentes.filter((c) => accionesDe(c.html).some((a) => a.includes('confirmCloseOrder')))
+  const componente = conCierre[conCierre.length - 1]?.componente
+  if (!componente) {
+    throw new ErrorTempoglass('cerrar', `Está "Cerrar Pedido" pero no se reconoce su acción. Trae → ${describirPantalla(pantalla)}`)
+  }
 
   const r = await mensajeLivewire(sesion, pantalla.csrf, componente, [tocar('$toggle', ['confirmCloseOrder'])], {
     paso: 'cerrar',
@@ -625,15 +712,31 @@ export async function cerrarPedido(sesion: Sesion, pedido: string): Promise<void
   /* El botón que confirma, en la ventana que se abrió: el `wire:click` que no estaba antes. */
   const antes = new Set(accionesDe(pantalla.html))
   const confirmar = accionesDe(r.html ?? '').find((a) => !antes.has(a) && !a.startsWith('$toggle'))
-  if (!confirmar) throw new ErrorTempoglass('cerrar', 'No apareció la confirmación de "Cerrar Pedido".')
-
-  const [, metodo, crudo] = /^([\w$]+)(?:\((.*)\))?$/.exec(confirmar) ?? []
-  if (!metodo) throw new ErrorTempoglass('cerrar', `Acción de cierre inesperada: ${confirmar}`)
-  const params = crudo ? crudo.split(',').map((p) => p.trim().replace(/^['"]|['"]$/g, '')) : []
-  await mensajeLivewire(sesion, pantalla.csrf, componente, [tocar(metodo, params)], { paso: 'cerrar', referer: ruta })
+  const accion = confirmar ? accionYParametros(confirmar) : null
+  if (!accion) {
+    throw new ErrorTempoglass(
+      'cerrar',
+      `No apareció la confirmación de "Cerrar Pedido". Trae → ${describirPantalla({ html: r.html ?? '', componentes: [] })}`,
+    )
+  }
+  await mensajeLivewire(sesion, pantalla.csrf, componente, [tocar(accion.metodo, accion.params)], { paso: 'cerrar', referer: ruta })
 
   const despues = await abrirPantalla(sesion, ruta, 'cerrar')
-  if (componenteConAccion(despues.html, ABRIR)) throw new ErrorTempoglass('cerrar', 'El pedido sigue abierto después de cerrarlo.')
+  if (ofreceCerrar(despues.html)) throw new ErrorTempoglass('cerrar', 'El pedido sigue abierto después de cerrarlo.')
+}
+
+/**
+ * ¿La pantalla todavía ofrece cerrar el pedido? Por el texto de un botón o por una acción
+ * (`wire:click`) que abra la confirmación. NO por el texto suelto: `confirmCloseOrder` también viaja
+ * en el estado del componente (`wire:initial-data`), esté o no el botón.
+ */
+export function ofreceCerrar(html: string): boolean {
+  const $ = cheerio.load(html)
+  const textoBoton = $('button')
+    .map((_, b) => $(b).text().replace(/\s+/g, ' ').trim())
+    .get()
+    .some((t) => /^cerrar pedido$/i.test(t))
+  return textoBoton || accionesDe(html).some((a) => a.includes('confirmCloseOrder'))
 }
 
 /** Las acciones (`wire:click`) de un pedazo de HTML. */
