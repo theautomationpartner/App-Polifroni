@@ -37,7 +37,7 @@ import { ResumenOrdenCompra } from './ResumenOrdenCompra'
  *
  * Junta los vidrios de las órdenes elegidas en CORTES —misma composición y mismas medidas, con las
  * piezas sumadas—. A la izquierda, el resumen de la orden de compra con sus acciones (generar el
- * Excel, descargarlo y abrir Tempoglass); a la derecha, los cortes que lleva, del mismo alto.
+ * Excel y descargarlo); a la derecha, los cortes que lleva, del mismo alto.
  *
  * Tempoglass no tiene una API pública: es un sistema web con usuario y contraseña. Con el comentario
  * y la fecha de entrega completos, "Generar orden de compra" arma la orden de compra (ver

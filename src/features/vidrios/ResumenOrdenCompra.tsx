@@ -3,9 +3,6 @@ import { Avatar } from '@/components/ui/Avatar'
 import { faltantesPedido, hoyIso, type DatosPedidoTempoglass } from '@/lib/tempoglass'
 import type { Corte } from '@/lib/vidrios'
 
-/** El sistema de pedidos del proveedor de vidrio. */
-const TEMPOGLASS = 'https://tempoglass.ar/login'
-
 /** Un renglón del resumen: rótulo a la izquierda, valor a la derecha (el `Fila` de La Batea). */
 function Fila({ label, children }: { label: string; children: ReactNode }) {
   const vacio = children === '' || children == null
@@ -39,8 +36,7 @@ export interface ResumenOrdenCompraProps {
 /**
  * El resumen de la orden de compra de vidrios: quién la emite, para qué obra y qué órdenes, cuántos
  * cortes y piezas lleva; y sus acciones. "Generar orden de compra" arma el Excel en la app,
- * "Descargar Excel" baja el que se generó y "Abrir Tempoglass" lleva al sistema del proveedor.
- * Generada la orden, se guarda en la OP y el robot carga el pedido en Tempoglass con el comentario y
+ * "Descargar Excel" baja el que se generó. Generada la orden, se guarda en la OP y el robot carga el pedido en Tempoglass con el comentario y
  * la fecha de acá: cómo va se ve en el pie de la etapa (`EstadoRobot`).
  */
 export function ResumenOrdenCompra({
@@ -193,7 +189,7 @@ export function ResumenOrdenCompra({
         )}
       </button>
 
-      <div className="pres-pdf vid-acciones">
+      <div className="pres-pdf">
         <button
           type="button"
           className="btn btn-out pres-pdf-btn"
@@ -203,9 +199,6 @@ export function ResumenOrdenCompra({
         >
           <i className="fas fa-download" /> Descargar Excel
         </button>
-        <a className="btn btn-primary btn-marca pres-pdf-btn" href={TEMPOGLASS} target="_blank" rel="noreferrer">
-          <i className="fas fa-arrow-up-right-from-square" /> Abrir Tempoglass
-        </a>
       </div>
       {error && (
         <div className="pres-pdf-aviso" role="alert">

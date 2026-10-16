@@ -2610,17 +2610,6 @@
 .obras-v2 .vid-robot-reintentar:hover {
   background: rgba(220, 38, 38, 0.06);
 }
-/* Descargar y Abrir Tempoglass, uno al lado del otro debajo de Generar. */
-.obras-v2 .vid-acciones {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.obras-v2 .vid-acciones a.pres-pdf-btn {
-  display: inline-flex;
-  align-items: center;
-  text-decoration: none;
-}
 
 /* ── Solicitud de cortes · la tabla de vidrios desplegable ── */
 /* La columna del botón Editar / Guardar: las demás ceden un poco de ancho para que entre. */
