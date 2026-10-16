@@ -18,10 +18,11 @@ import {
   crearOrdenCompraVidrios,
   guardarIdObraTempoglass,
   guardarOrdenCompraGenerada,
-  idObraTempoglassDeOrden,
+  marcarVidriosSolicitados,
   ordenesDeObra,
   registrarSolicitudVidrios,
   vidriosDeOrdenes,
+  vidriosYaSolicitados,
   type ResumenOrden,
 } from '@/services/monday'
 import { cargarPedidoTempoglass, type AvanceTempoglass, type ObraTempoglass } from '@/services/tempoglass'
@@ -176,12 +177,16 @@ export function VidriosSolicitudView() {
       })
       return
     }
-    /* Nunca dos pedidos para la misma OP: si ya tiene el Id.Int.Obra, su pedido ya se cargó. */
+    /* Nunca dos pedidos para la misma OP. La marca es `🤖Estado Vidrios` en "Solicitados" (la pone
+       el robot al terminar), leída en Monday en este momento: la pantalla pudo quedar abierta desde
+       antes. El Id.Int.Obra NO sirve de marca: es el número de la OBRA en Tempoglass, no del pedido. */
     if (!retomar.current) {
       try {
-        const yaCargado = await idObraTempoglassDeOrden(idsOps[0]!)
-        if (yaCargado) {
-          setRobot({ fase: 'error', texto: `Esta OP ya tiene su pedido cargado en Tempoglass (Id.Int.Obra ${yaCargado}): no se carga otro.` })
+        if (await vidriosYaSolicitados(idsOps[0]!)) {
+          setRobot({
+            fase: 'error',
+            texto: 'Los vidrios de esta OP ya se solicitaron (🤖Estado Vidrios: Solicitados): no se carga otro pedido.',
+          })
           return
         }
       } catch (e) {
@@ -238,8 +243,9 @@ export function VidriosSolicitudView() {
   }
 
   /**
-   * El pedido ya está cargado y cerrado en Tempoglass: se registra en Monday. El Id.Int.Obra en la OP
-   * y el ítem en 🪞 Orden de Compra Vidrios. El ítem se crea UNA vez: un reintento no lo repite.
+   * El pedido ya está cargado y cerrado en Tempoglass: se registra en Monday. El Id.Int.Obra en la
+   * OP, el ítem en 🪞 Orden de Compra Vidrios y la OP en "Solicitados" (🤖Estado Vidrios). El ítem se
+   * crea UNA vez: un reintento no lo repite; lo demás se reescribe igual.
    */
   const registrarEnMonday = async () => {
     const c = cargado.current
@@ -258,6 +264,8 @@ export function VidriosSolicitudView() {
           fechaPedido: hoyIso(),
         })
       }
+      /* Con el ítem de 🪞 creado, la OP queda "Solicitados": ya tiene su pedido. */
+      await marcarVidriosSolicitados(op.id)
       setRobot({ fase: 'listo', pedido: c.pedido, renglones: c.renglones })
     } catch (e) {
       console.warn('[vidrios] el pedido quedó en Tempoglass pero no se registró en Monday', e)

@@ -885,15 +885,6 @@ export async function setEstadoOrden(ordenId: string, etiqueta: string): Promise
 }
 
 /**
- * Registra en la OP la solicitud de cortes en que entraron sus vidrios: sube la orden de compra (el
- * Excel) a `🤖Orden de Compra de Vidrios` y deja `🤖Estado Vidrios` en "Solicitados", con lo que la
- * orden deja de aparecer en la solicitud de cortes (ver `ordenParaCortes`).
- *
- * La columna se vacía antes de subir, como la OP final: un reintento después de una falla no deja
- * el Excel repetido. El estado va al final: si la subida falla, la OP sigue "Pend de Solicitar" y se
- * puede reintentar entera.
- */
-/**
  * Guarda en la OP la orden de compra recién generada (`Generar Orden Compra Vidrio`): la orden de
  * compra y la planilla que se importa en Tempoglass. Se reemplazan las anteriores: volver a generar
  * no deja archivos repetidos.
@@ -903,24 +894,42 @@ export async function guardarOrdenCompraGenerada(ordenId: string, archivos: File
   for (const archivo of archivos) await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraGenerada, archivo)
 }
 
-/** El "Id.Int.Obra" de Tempoglass que quedó en la OP (`text_mm86fm09`), o '' si todavía no se cargó. */
-export async function idObraTempoglassDeOrden(ordenId: string): Promise<string> {
-  const d = await mondayApi<{ items: { column_values: { text: string | null }[] }[] }>(
-    `query ($id: [ID!]) { items(ids: $id) { column_values(ids: ["${COL_OP.idObraTempoglass}"]) { text } } }`,
-    { id: [ordenId] },
-  )
-  return d.items[0]?.column_values[0]?.text?.trim() ?? ''
-}
-
-/** Deja en la OP el "Id.Int.Obra" de Tempoglass: la marca de que su pedido ya se cargó allá. */
+/** Deja en la OP el "Id.Int.Obra" de Tempoglass: en qué obra de allá quedó su pedido. */
 export async function guardarIdObraTempoglass(ordenId: string, idIntObra: string): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP.idObraTempoglass]: idIntObra })
 }
 
+/**
+ * ¿Los vidrios de la OP ya se solicitaron? Se lee `🤖Estado Vidrios` en el momento (no el de la
+ * pantalla). Es LA marca de que la OP ya tiene su pedido: el robot la pone al terminar, y una OP
+ * "Solicitados" ya no entra en la solicitud de cortes (ver `ordenParaCortes`).
+ */
+export async function vidriosYaSolicitados(ordenId: string): Promise<boolean> {
+  const d = await mondayApi<{ items: { column_values: { text: string | null }[] }[] }>(
+    `query ($id: [ID!]) { items(ids: $id) { column_values(ids: ["${COL_OP.estadoVidrios}"]) { text } } }`,
+    { id: [ordenId] },
+  )
+  return (d.items[0]?.column_values[0]?.text?.trim() ?? '') === SOLICITADOS
+}
+
+/** Deja `🤖Estado Vidrios` de la OP en "Solicitados": su pedido de vidrios ya está hecho. */
+export async function marcarVidriosSolicitados(ordenId: string): Promise<void> {
+  await cambiarColumnas(ordenId, { [COL_OP.estadoVidrios]: { label: SOLICITADOS } })
+}
+
+/**
+ * Registra en la OP la solicitud de cortes en que entraron sus vidrios: sube la orden de compra (el
+ * Excel) a `🤖Orden de Compra de Vidrios` y deja `🤖Estado Vidrios` en "Solicitados", con lo que la
+ * orden deja de aparecer en la solicitud de cortes (ver `ordenParaCortes`).
+ *
+ * La columna se vacía antes de subir, como la OP final: un reintento después de una falla no deja
+ * el Excel repetido. El estado va al final: si la subida falla, la OP sigue "Pend de Solicitar" y se
+ * puede reintentar entera.
+ */
 export async function registrarSolicitudVidrios(ordenId: string, ordenCompra: File): Promise<void> {
   await cambiarColumnas(ordenId, { [COL_OP_ARCHIVOS.ordenCompraVidrios]: { clear_all: true } }).catch(() => {})
   await subirArchivo(ordenId, COL_OP_ARCHIVOS.ordenCompraVidrios, ordenCompra)
-  await cambiarColumnas(ordenId, { [COL_OP.estadoVidrios]: { label: SOLICITADOS } })
+  await marcarVidriosSolicitados(ordenId)
 }
 
 /**
