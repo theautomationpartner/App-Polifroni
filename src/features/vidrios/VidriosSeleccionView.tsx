@@ -68,7 +68,7 @@ const cambiaronCapas = (b: Borrador, v: VidrioDeOrden) => {
 const COL_CAPA: Record<Capa, string> = { comp1: COL_OBS.comp1, camara: COL_OBS.camara, comp2: COL_OBS.comp2 }
 const TITULO_CAPA: Record<Capa, string> = { comp1: 'Vidrio 1', camara: 'Cámara', comp2: 'Vidrio 2' }
 
-/** Un vidrio nuevo de una orden de Aluminio: lo mismo que se edita, más su modelo y una clave para la fila. */
+/** Un vidrio nuevo de una orden: lo mismo que se edita, más su modelo y una clave para la fila. */
 type FilaAlta = Borrador & { clave: string; modelo: string }
 let claveAlta = 0
 const filaVacia = (): FilaAlta => ({
@@ -82,8 +82,6 @@ const filaVacia = (): FilaAlta => ({
   alto: '',
   cantidad: '',
 })
-/** Las órdenes de Aluminio no traen listado de vidrios: se los carga a mano (ver `agregarVidrios`). */
-const esAluminio = (o: ResumenOrden) => /aluminio/i.test(o.tipo)
 
 /**
  * Solicitud de cortes de vidrio · Etapa 2: qué vidrios se piden.
@@ -100,14 +98,13 @@ const esAluminio = (o: ResumenOrden) => /aluminio/i.test(o.tipo)
  * ancho, el alto y la cantidad— y el mismo botón —ahora "Guardar"— escribe en Monday sólo los
  * vidrios que cambiaron (sus subelementos, ver `actualizarVidrios`). Pasar un DVH a Simple borra su
  * Cámara y su Comp 2. En la edición, además, el tacho de cada fila quita ese vidrio y «Agregar
- * vidrios» suma filas nuevas, como en las de Aluminio: "Guardar" escribe los cambios, crea los nuevos
- * (ver `agregarVidrios`) y quita los borrados (ver `quitarVidrios`). Vale igual para las de PVC y para
- * las de Aluminio que ya tienen sus vidrios cargados.
+ * vidrios» suma filas nuevas: "Guardar" escribe los cambios, crea los nuevos (ver `agregarVidrios`) y
+ * quita los borrados (ver `quitarVidrios`). Vale igual para las de PVC y las de Aluminio.
  *
- * Las órdenes de Aluminio no traen vidrios: en vez de "Editar" llevan "Agregar vidrios", que abre la
- * misma tabla vacía para cargarlos a mano —el modelo, el tipo, las capas, las medidas y la cantidad,
- * como los de PVC—. "Guardar" los crea como subelementos de la OP (ver `agregarVidrios`) y la orden
- * queda elegida para la solicitud.
+ * Las órdenes sin vidrios (de PVC o de Aluminio) llevan "Agregar vidrios" en vez de "Editar": abre la
+ * misma tabla vacía para cargarlos a mano —el modelo, el tipo, las capas, las medidas y la cantidad—.
+ * "Guardar" los crea como subelementos de la OP (ver `agregarVidrios`) y la orden queda elegida para
+ * la solicitud.
  */
 export function VidriosSeleccionView() {
   const obra = useObra()
@@ -130,7 +127,7 @@ export function VidriosSeleccionView() {
   const [aviso, setAviso] = useState<{ titulo: string; texto: string } | null>(null)
   /** Las opciones de cada capa, por columna; se leen de Monday la primera vez que se edita. */
   const [opciones, setOpciones] = useState<Record<string, string[]> | null>(null)
-  /** Las órdenes de Aluminio a las que se les están agregando vidrios: por orden, sus filas nuevas. */
+  /** Las órdenes a las que se les están agregando vidrios: por orden, sus filas nuevas. */
   const [alta, setAlta] = useState<Record<string, FilaAlta[]>>({})
   /** Las órdenes en edición: por orden, los ids de los vidrios que se quitaron con el tacho. */
   const [quitados, setQuitados] = useState<Record<string, string[]>>({})
@@ -233,7 +230,7 @@ export function VidriosSeleccionView() {
     cerrarAlta(op)
   }
 
-  /** "Agregar vidrios" en una orden de Aluminio: abre la tabla con un vidrio vacío para cargar. */
+  /** "Agregar vidrios" en una orden sin vidrios: abre la tabla con un vidrio vacío para cargar. */
   const empezarAlta = (id: string) => {
     setAlta((a) => ({ ...a, [id]: [filaVacia()] }))
     cargarOpciones()
@@ -437,7 +434,7 @@ export function VidriosSeleccionView() {
     if (Object.keys(alta).length) {
       setAviso({
         titulo: 'Hay vidrios sin guardar',
-        texto: 'Tocá «Guardar» en las órdenes de Aluminio a las que les estás agregando vidrios, o «Cancelar» si no los vas a pedir.',
+        texto: 'Tocá «Guardar» en las órdenes a las que les estás agregando vidrios, o «Cancelar» si no los vas a pedir.',
       })
       return
     }
@@ -462,8 +459,8 @@ export function VidriosSeleccionView() {
           <p className="cobro-card-desc">
             Órdenes de {tipoObra ?? 'su tipo'} de {obra.nombre} que ya están en el taller y tienen sus vidrios pendientes de solicitar.
             Debajo de cada una, los vidrios que lleva: la composición, las medidas y la cantidad de piezas.
-            Las que no tienen vidrios se muestran apagadas y no se pueden elegir; a las de Aluminio se les
-            pueden cargar con «Agregar vidrios».
+            Las que no tienen vidrios se muestran apagadas y no se pueden elegir hasta que se les carguen
+            con «Agregar vidrios».
           </p>
 
           <div className="ant-tabla-wrap">
@@ -519,18 +516,18 @@ export function VidriosSeleccionView() {
                     const vs = vidrios[o.id] ?? []
                     const on = vidriosOps.includes(o.id)
                     const sinVidrios = vs.length === 0
-                    /* Una de Aluminio sin vidrios no se edita: se le agregan. */
-                    const paraAgregar = sinVidrios && esAluminio(o)
+                    /* Una orden sin vidrios (PVC o Aluminio) no se edita: se le agregan. */
+                    const paraAgregar = sinVidrios
                     const filasAlta = alta[o.id]
                     /* Elegida, se ve desplegada; recién destildada, se ve mientras se pliega. */
                     const abierta = !sinVidrios && (on || cerrando.has(o.id))
                     const escritos = edicion[o.id]
                     const enEdicion = !!escritos
-                    /* La carga de una de Aluminio sin vidrios; en la edición, las filas nuevas van en su tabla. */
+                    /* La carga de una orden sin vidrios; en la edición, las filas nuevas van en su tabla. */
                     const enAlta = !!filasAlta && !enEdicion
                     const borrados = quitados[o.id] ?? []
                     const guardandoEsta = guardando === o.id
-                    /** Una fila de vidrio nuevo: la de las de Aluminio sin vidrios y la de la edición. */
+                    /** Una fila de vidrio nuevo: la de las órdenes sin vidrios y la de la edición. */
                     const filaNueva = (f: FilaAlta, i: number) => {
                       const nombre = f.modelo.trim() || `el vidrio ${i + 1}`
                       return (
@@ -617,15 +614,7 @@ export function VidriosSeleccionView() {
                         {/* La casilla elige la orden y la despliega; destildarla la pliega. */}
                         <tr
                           className={`ant-row vid-fila ${on ? 'ant-row--on' : ''} ${sinVidrios && !enAlta ? 'ant-row--off' : ''} ${abierta || enAlta ? 'vid-fila--abierta' : ''}`}
-                          title={
-                            enAlta
-                              ? undefined
-                              : paraAgregar
-                                ? 'Esta orden de Aluminio no tiene vidrios: agregalos con «Agregar vidrios».'
-                                : sinVidrios
-                                  ? 'Esta orden no tiene vidrios cargados como subelementos.'
-                                  : undefined
-                          }
+                          title={!enAlta && paraAgregar ? 'Esta orden no tiene vidrios: agregalos con «Agregar vidrios».' : undefined}
                         >
                           <td className="ant-col-check">
                             <input
@@ -666,7 +655,7 @@ export function VidriosSeleccionView() {
                           </td>
                           <td className="ant-col-cen">
                             {paraAgregar ? (
-                              /* Aluminio: "Agregar vidrios" abre la tabla vacía; Guardar los crea. */
+                              /* Sin vidrios: "Agregar vidrios" abre la tabla vacía; Guardar los crea. */
                               <button
                                 type="button"
                                 className={`btn ${enAlta ? 'btn-primary btn-marca' : 'btn-out'} vid-editar`}

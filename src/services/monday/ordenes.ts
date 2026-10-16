@@ -1065,7 +1065,7 @@ export async function actualizarVidrios(cambios: CambioVidrio[]): Promise<void> 
   }
 }
 
-/** Un vidrio cargado a mano en una OP que no los trae (una de Aluminio): lo mismo que lee el ETMO de PVC. */
+/** Un vidrio cargado a mano en una OP (de PVC o de Aluminio): lo mismo que lee el ETMO de PVC. */
 export interface VidrioNuevo {
   modelo: string
   comp1: string
@@ -1078,7 +1078,7 @@ export interface VidrioNuevo {
 }
 
 /**
- * Agrega vidrios a una OP que no los tiene (las de Aluminio no traen listado de vidrios): un
+ * Agrega vidrios a una OP, de PVC o de Aluminio (las de Aluminio no traen listado de vidrios): un
  * subelemento por vidrio, nombrado como los de PVC ("V1 - Vidrio 1", "V1 - Vidrio 2"…), con sus capas,
  * medidas y cantidad. Después tilda `🤖Tiene Vidrios` y deja `🤖Estado Vidrios` en "Pend de
  * Solicitar", con lo que la orden entra en la solicitud de cortes (ver `ordenParaCortes`).
