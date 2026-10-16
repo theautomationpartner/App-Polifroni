@@ -42,11 +42,17 @@ export function FinalizarOperacion({
   registrar,
   textos,
   etiqueta = 'Finalizar Operación',
+  nombreItem,
 }: {
   /** El texto del botón ("Finalizar Edición"). */
   etiqueta?: string
   detalle?: string
-  registrar?: () => Promise<void>
+  registrar?: (nombre?: string) => Promise<void>
+  /**
+   * El nombre con que se va a crear el ítem en el tablero (el presupuesto): antes de registrar, la ventana
+   * lo pregunta con este valor precargado y `registrar` lo recibe ya editado. Sin él, no pregunta.
+   */
+  nombreItem?: string
   /** Otra operación que no es una OP (el presupuesto): sus propios textos. */
   textos?: TextosFinalizar
 }) {
@@ -55,6 +61,8 @@ export function FinalizarOperacion({
   const [preguntar, setPreguntar] = useState(false)
   const [registrando, setRegistrando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** El nombre del ítem mientras se le pregunta al usuario; `null` si no se está preguntando. */
+  const [nombre, setNombre] = useState<string | null>(null)
 
   useAccionEnCurso('Esperá a que termine de registrarse la orden.', registrando)
 
@@ -70,13 +78,17 @@ export function FinalizarOperacion({
     return () => clearTimeout(t)
   }, [enviado])
 
-  const cerrar = async () => {
+  const cerrar = async (nombreElegido?: string) => {
     if (registrando) return
     setPreguntar(false)
+    if (registrar && nombreItem !== undefined && nombreElegido === undefined) {
+      setNombre(nombreItem)
+      return
+    }
     if (registrar) {
       setRegistrando(true)
       try {
-        await registrar()
+        await registrar(nombreElegido)
       } catch (e) {
         /* El detalle técnico va a la consola; en pantalla, qué pasó y qué hacer. Lo que ya se
            escribió queda en el borrador: el reintento reusa la misma OP. */
@@ -146,6 +158,51 @@ export function FinalizarOperacion({
             : registrar
             ? 'La orden se registra en el sistema, pero no le llegó a nadie. Podés mandarla después desde «Consultar órdenes de producción».'
             : 'Lo que se cargó queda guardado en el tablero, pero la orden no le llegó a nadie. Podés mandarla después desde «Consultar órdenes de producción».'}
+        </Modal>
+      )}
+
+      {nombre !== null && (
+        <Modal
+          title="Registrando nuevo presupuesto cargado..."
+          icon={<i className="fas fa-file-circle-plus modal-icon--info" />}
+          onClose={() => {}}
+          cerrable={false}
+          actions={
+            <button
+              type="button"
+              className="btn btn-primary btn-marca"
+              disabled={!nombre.trim()}
+              onClick={() => {
+                const elegido = nombre.trim()
+                setNombre(null)
+                void cerrar(elegido)
+              }}
+            >
+              Continuar
+            </button>
+          }
+        >
+          <div className="med-campo" style={{ textAlign: 'left' }}>
+            <label className="med-l" htmlFor="nombre-item-presupuesto">
+              ¿Querés cambiarle el nombre al presupuesto?
+            </label>
+            <input
+              id="nombre-item-presupuesto"
+              className="med-input"
+              type="text"
+              autoComplete="off"
+              autoFocus
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && nombre.trim()) {
+                  const elegido = nombre.trim()
+                  setNombre(null)
+                  void cerrar(elegido)
+                }
+              }}
+            />
+          </div>
         </Modal>
       )}
 
