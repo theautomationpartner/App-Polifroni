@@ -2584,6 +2584,26 @@
   background: rgba(37, 99, 235, 0.08);
   color: #1d4ed8;
 }
+/* El relojito de arena mientras se genera el pedido: cae la arena y se da vuelta, una y otra vez. */
+.obras-v2 .vid-reloj {
+  display: inline-block;
+  animation: vid-reloj 2s ease-in-out infinite;
+}
+@keyframes vid-reloj {
+  0%,
+  40% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(180deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .obras-v2 .vid-reloj {
+    animation: none;
+  }
+}
 .obras-v2 .vid-robot--ok {
   background: rgba(22, 163, 74, 0.1);
   color: #15803d;

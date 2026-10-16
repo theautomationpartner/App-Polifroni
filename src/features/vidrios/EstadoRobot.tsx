@@ -65,43 +65,20 @@ export function errorDelPaso(paso: string, mensaje: string): EstadoRobot {
 /** ¿Está corriendo algo? Mientras tanto no se regenera ni se reintenta. */
 export const robotEnCurso = (e: EstadoRobot | null): boolean => e !== null && e.fase !== 'listo' && e.fase !== 'error'
 
-const GIRANDO = 'fas fa-circle-notch spin'
-
+/**
+ * Lo que ve la persona: UN solo mensaje mientras corre, con el relojito, aunque por detrás el robot
+ * pase por una docena de pasos —se suceden en segundos y, uno por uno, no se alcanzan a leer—. Al
+ * terminar, la tilde en verde; si algo falla, en rojo y diciendo dónde (`errorDelPaso`). Los pasos
+ * finos siguen existiendo (`EstadoRobot`): deciden qué se retoma en un reintento.
+ */
 function presentar(e: EstadoRobot): { texto: string; icono: string; tono: 'curso' | 'ok' | 'error' } {
-  const curso = (texto: string, icono = GIRANDO) => ({ texto, icono, tono: 'curso' as const })
   switch (e.fase) {
-    case 'guardando':
-      return curso('Guardando la orden de compra en la OP...')
-    case 'sesion':
-      return curso('Tempoglass · Iniciando sesión...')
-    case 'logueado':
-      return curso('Tempoglass · Logueado')
-    case 'buscando':
-      return curso(`Tempoglass · Buscando obra «${e.nombre}»...`)
-    case 'obraSeleccionada':
-      return curso(`Tempoglass · Obra seleccionada: ${e.nombre} (Id ${e.id})`)
-    case 'creandoPedido':
-      return curso('Tempoglass · Creando el pedido...')
-    case 'pedidoCreado':
-      return curso(`Tempoglass · Pedido ${e.pedido} creado`)
-    case 'importando':
-      return curso(`Tempoglass · Importando la planilla en el pedido ${e.pedido}...`)
-    case 'importado':
-      return curso(`Tempoglass · ${e.renglones} ${e.renglones === 1 ? 'renglón importado' : 'renglones importados'}`)
-    case 'cerrando':
-      return curso(`Tempoglass · Cerrando el pedido ${e.pedido}...`)
-    case 'registrando':
-      return curso('Registrando el pedido en Monday...')
-    case 'reintentando':
-      return curso(`Tempoglass · Reintentando (intento ${e.intento} de ${e.de}): ${e.motivo}`, 'fas fa-rotate spin')
     case 'listo':
-      return {
-        texto: `Pedido ${e.pedido} cargado y cerrado en Tempoglass (${e.renglones} renglones) · registrado en Monday`,
-        icono: 'fas fa-check',
-        tono: 'ok',
-      }
+      return { texto: `Pedido ${e.pedido} generado en Tempoglass y Monday`, icono: 'fas fa-check', tono: 'ok' }
     case 'error':
       return { texto: e.texto, icono: 'fas fa-triangle-exclamation', tono: 'error' }
+    default:
+      return { texto: 'Generando pedido en Tempoglass...', icono: 'fas fa-hourglass-half vid-reloj', tono: 'curso' }
   }
 }
 
