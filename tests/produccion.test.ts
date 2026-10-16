@@ -56,6 +56,7 @@ import { textoEdicion, textoReenvio, textoTaller } from '../api/_mensajeOp'
 import { conMm, filasSubelementos, modeloDeSubelemento, normalizarComponente, sinMm } from '../src/lib/subelementosOp'
 import { aModeloListado, aberturasNuevas, editarModelo, filasAberturas, filasVidrios, hayCambiosAberturas, hayCambiosVidrios, textoNueva, mismaAbertura, modelosDe, motivoEdicion, nombreConVersion, partirTipoVidrio } from '../src/lib/edicionOp'
 import { armarActividadEnvio } from '../src/lib/actividadEnvio'
+import { esObraDeTest, NRO_ORDEN_TEST } from '../src/lib/tipoObra'
 import type { Obra } from '../src/types'
 
 /* ── Un estado por OP ─────────────────────────────────────────────────────────────────────────── */
@@ -518,4 +519,13 @@ assert.equal(validarTelWsp('').success, false)
     '👋 Hola *Alfredo*\n\nAdjunto la *orden de producción* para:\n\n- 🏗️  *Obra:* OBRA TEST\n- 🔨  *Material:* PVC\n\n¡Cualquier duda comunicate con nosotros!\nPolifroni Aberturas\nAutomatizado por *The Automation Partner*',
     'el mensaje al taller, con el jefe, la obra y el material',
   )
+}
+
+// Obra de prueba: no usa la numeración de Neon.
+{
+  assert.ok(esObraDeTest('IDOP-053 - PVC 2282 TEST'))
+  assert.ok(esObraDeTest('obra test'))
+  assert.ok(esObraDeTest('Obra Test Aluminio'), 'sin importar mayúsculas')
+  assert.ok(!esObraDeTest('Casa Pérez - PVC 2291'))
+  assert.equal(NRO_ORDEN_TEST, 'TEST')
 }

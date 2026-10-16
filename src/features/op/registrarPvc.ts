@@ -1,4 +1,5 @@
 import { registrarNumero } from '@/services/numeracion'
+import { esObraDeTest } from '@/lib/tipoObra'
 import {
   COL,
   ESTADO_OP,
@@ -234,7 +235,7 @@ export async function registrarPvc({
     ])
   }
 
-  if (opFinal && nro) {
+  if (opFinal && nro && !esObraDeTest(obra.nombre)) {
     await registrarNumero('PVC', nro).catch((e) => console.warn('[pvc] no se pudo actualizar la numeración', e))
   }
   terminarVisita(obra.id)
