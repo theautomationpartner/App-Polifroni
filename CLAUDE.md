@@ -49,7 +49,7 @@ cada cosa y qué la usa sin abrir archivos. El CLI está en `C:\Users\tomas\.loc
 ## Reglas del repo
 
 - Se trabaja SIEMPRE en `dev`: los commits y los push van sólo a `dev`. A `main` se sube
-  únicamente cuando Tomas lo pide explícitamente, con `git push origin dev:main` (no se hace
+  únicamente cuando alguien con acceso al repositorio lo pide explícitamente, con `git push origin dev:main` (no se hace
   checkout de `main`). El grafo es uno solo y refleja `dev`.
 - No commitear: `.agents/`, `.claude/`, `skills-lock.json`, `pdfco-api-logs.csv`, `*.mp4`,
   `llamada.txt`, `graphify-out/`.
