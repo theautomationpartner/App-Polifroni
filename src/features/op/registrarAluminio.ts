@@ -1,4 +1,5 @@
 import { registrarNumero } from '@/services/numeracion'
+import { esObraDeTest } from '@/lib/tipoObra'
 import { completarOrden, renombrarOrdenEmitida, setEstadoEnvioOrden, subirEtmoAOrden, terminarVisita } from '@/services/monday'
 import type { BorradorOp } from '@/state/appState'
 import type { Obra } from '@/types'
@@ -71,6 +72,6 @@ export async function registrarAluminio({
     await setEstadoEnvioOrden(id, 'pendiente').catch((e) => console.warn('[aluminio] no se pudo marcar la OP como pendiente de enviar', e))
   }
 
-  await registrarNumero('Aluminio', nro).catch((e) => console.warn('[aluminio] no se pudo actualizar la numeración', e))
+  if (!esObraDeTest(obra.nombre)) await registrarNumero('Aluminio', nro).catch((e) => console.warn('[aluminio] no se pudo actualizar la numeración', e))
   terminarVisita(obra.id)
 }
