@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { MOTIVO_GENERAR_OP } from '@/lib/recuperacion'
+import { useApp } from '@/state/hooks'
 import { Modal } from './Modal'
+
+/** El pedido explícito de mostrar el aviso (ver `abrirModalErrorModulo`). */
+const EVENTO_ABRIR = 'polifroni:errorModulo'
+
+/**
+ * Muestra el aviso a pedido. Lo usa la generación de la OP final cuando NO puede recuperar la
+ * operación sola: ya recargó hace instantes (el módulo sigue sin bajar) o no pudo guardar lo cargado.
+ */
+export function abrirModalErrorModulo() {
+  window.dispatchEvent(new Event(EVENTO_ABRIR))
+}
 
 /**
  * Recarga la página de Monday, que es donde vive la app. Desde el iframe no siempre se puede tocar
@@ -20,14 +33,27 @@ function recargarMonday() {
  * Pasa cuando la pestaña quedó abierta con una versión vieja y se publicó una nueva: el navegador
  * pide un archivo con un nombre que el servidor ya no tiene. Vite lo anuncia con `vite:preloadError`.
  * NO se frena el evento: el error sigue su camino y la pantalla que lo disparó muestra también el suyo.
+ *
+ * Durante la generación de la OP final el evento se ignora: esa pantalla guarda lo cargado, recarga
+ * la app y retoma sola (ver `lib/recuperacion`). Si no puede, pide este aviso con `abrirModalErrorModulo`.
  */
 export function ModalErrorModulo() {
   const [abierto, setAbierto] = useState(false)
+  const { accionEnCurso } = useApp()
+  const accionRef = useRef(accionEnCurso)
+  accionRef.current = accionEnCurso
 
   useEffect(() => {
-    const alFallar = () => setAbierto(true)
+    const alFallar = () => {
+      if (accionRef.current !== MOTIVO_GENERAR_OP) setAbierto(true)
+    }
+    const alPedir = () => setAbierto(true)
     window.addEventListener('vite:preloadError', alFallar)
-    return () => window.removeEventListener('vite:preloadError', alFallar)
+    window.addEventListener(EVENTO_ABRIR, alPedir)
+    return () => {
+      window.removeEventListener('vite:preloadError', alFallar)
+      window.removeEventListener(EVENTO_ABRIR, alPedir)
+    }
   }, [])
 
   if (!abierto) return null

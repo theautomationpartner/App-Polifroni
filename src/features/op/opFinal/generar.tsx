@@ -36,7 +36,16 @@ export interface ResultadoGenerar {
   avisos: string[]
   /** El PDF armado. */
   archivo?: File
+  /**
+   * No se pudo bajar el generador de PDFs: la pestaña tiene una versión vieja de la app y el
+   * servidor ya no tiene ese archivo. Se arregla recargando (ver `lib/recuperacion`).
+   */
+  errorModulo?: boolean
 }
+
+/** ¿El error es un módulo que el navegador no pudo bajar? (Chrome/Firefox · Safari). */
+const esErrorDeModulo = (err: unknown) =>
+  err instanceof Error && /dynamically imported module|importing a module script failed/i.test(err.message)
 
 /** El logo como data URL: así el PDF no depende de que react-pdf pueda bajarlo por su cuenta. */
 async function cargarLogo(): Promise<string> {
@@ -104,6 +113,12 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
 
   /* ── El PDF ───────────────────────────────────────────────────────────── */
   let blob: Blob
+  /* Vite avisa con este evento cuando no pudo bajar un módulo (ver `ModalErrorModulo`). */
+  let fallaDeCarga = false
+  const alFallarCarga = () => {
+    fallaDeCarga = true
+  }
+  window.addEventListener('vite:preloadError', alFallarCarga)
   try {
     /* react-pdf pesa: se carga recién acá, cuando hay una orden para dibujar. */
     const [{ pdf }, { DocumentoOp }] = await Promise.all([
@@ -116,7 +131,10 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
       ok: false,
       errores: [`No se pudo armar el PDF: ${err instanceof Error ? err.message : String(err)}`],
       avisos,
+      errorModulo: fallaDeCarga || esErrorDeModulo(err),
     }
+  } finally {
+    window.removeEventListener('vite:preloadError', alFallarCarga)
   }
   if (blob.size > TOPE_BYTES) {
     return {

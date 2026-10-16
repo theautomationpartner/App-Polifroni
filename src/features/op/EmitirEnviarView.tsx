@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AvisoModal } from '@/components/ui/AvisoModal'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { ModalCargando } from '@/components/ui/ModalCargando'
+import { abrirModalErrorModulo } from '@/components/ui/ModalErrorModulo'
 import { EnviarOp, type OrdenLocal } from '@/features/envio/EnviarOp'
 import { coordinador } from '@/features/obras/coordinador'
 import { useObra } from '@/features/obras/useObra'
@@ -13,7 +14,15 @@ import { PieEtapa } from '@/features/shared/PieEtapa'
 import { useRefrescarObra } from '@/features/shared/PasoNav'
 import { useAccionEnCurso } from '@/features/shared/useAccionEnCurso'
 import { comoUsuario } from '@/services/monday'
-import { ErrorLecturaIA, leerListado } from '@/services/ia/hetmo'
+import {
+  MOTIVO_GENERAR_OP,
+  guardarFoto,
+  marcarRefresh,
+  recargarParaRecuperar,
+  recargoHacePoco,
+  trabajoDe,
+} from '@/lib/recuperacion'
+import { ErrorLecturaIA, leerListado, type LecturaListado } from '@/services/ia/hetmo'
 import { useApp, useDispatch } from '@/state/hooks'
 import { hoyLocal } from './DatosMedicion'
 import { generarOpFinal } from './opFinal/generar'
@@ -42,7 +51,8 @@ export function EmitirEnviarView() {
   const obra = useObra()
   const dispatch = useDispatch()
   const refrescar = useRefrescarObra()
-  const { borrador, usuario, usuarios, responsableId, enviado } = useApp()
+  const estado = useApp()
+  const { borrador, usuario, usuarios, responsableId, enviado, reanudar } = estado
   /** La IA está leyendo el listado completo. */
   const [leyendo, setLeyendo] = useState(false)
   /** Armando el PDF con la lectura que devolvió la IA. */
@@ -52,11 +62,45 @@ export function EmitirEnviarView() {
   const [errorGen, setErrorGen] = useState<string | null>(null)
   const [avisos, setAvisos] = useState<string[] | null>(null)
 
-  useAccionEnCurso('Esperá a que termine la generación de la OP.', leyendo || armando || guardando)
+  useAccionEnCurso(MOTIVO_GENERAR_OP, leyendo || armando || guardando)
 
   /* Lo último del borrador, para leerlo cuando la generación termina (fuera de este render). */
   const borradorRef = useRef(borrador)
   borradorRef.current = borrador
+  /* Lo último del estado entero: es la foto que se guarda si hay que recargar la app. */
+  const estadoRef = useRef(estado)
+  estadoRef.current = estado
+
+  /**
+   * Guarda lo cargado y la lectura de la IA, y recarga la app para bajar la versión vigente. Devuelve
+   * `false` —y se queda el aviso con Reintentar/Cancelar— si ya recargó hace instantes (el módulo
+   * sigue sin bajar: recargar otra vez sería un bucle) o si no pudo guardar.
+   */
+  const recuperarRecargando = async (lectura: LecturaListado): Promise<boolean> => {
+    const usuarioId = estadoRef.current.usuario?.id
+    const listo =
+      !!usuarioId &&
+      !recargoHacePoco() &&
+      (await guardarFoto(usuarioId, trabajoDe(estadoRef.current), lectura)) &&
+      marcarRefresh()
+    if (!listo) {
+      abrirModalErrorModulo()
+      return false
+    }
+    recargarParaRecuperar()
+    return true
+  }
+
+  /* Volvió de esa recarga con la operación restaurada: sigue desde el armado del PDF, sin la IA. */
+  const reanudado = useRef<typeof reanudar>(null)
+  useEffect(() => {
+    /* Una sola vez por recarga, aunque el efecto corra dos veces (StrictMode). */
+    if (!reanudar || reanudado.current === reanudar) return
+    reanudado.current = reanudar
+    dispatch({ type: 'limpiarReanudar' })
+    void armarYRegistrar(reanudar.lectura)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reanudar])
 
   const m = borrador.medicion
   const emisor =
@@ -110,7 +154,7 @@ export function EmitirEnviarView() {
     const pdf = borradorRef.current.hetmo
     if (!pdf) return
     setLeyendo(true)
-    let lectura: Awaited<ReturnType<typeof leerListado>>
+    let lectura: LecturaListado
     try {
       lectura = await leerListado(pdf)
     } catch (e) {
@@ -121,7 +165,17 @@ export function EmitirEnviarView() {
     } finally {
       setLeyendo(false)
     }
+    await armarYRegistrar(lectura)
+  }
 
+  /**
+   * Con la lectura de la IA: arma el PDF con React-PDF y guarda la OP en el tablero. Es también por
+   * donde se retoma después de recargar la app (ver `lib/recuperacion`), sin volver a leer.
+   */
+  const armarYRegistrar = async (lectura: LecturaListado) => {
+    const pdf = borradorRef.current.hetmo
+    if (!pdf) return
+    setErrorGen(null)
     setArmando(true)
     try {
       const b = borradorRef.current
@@ -141,6 +195,9 @@ export function EmitirEnviarView() {
         observacionOp: b.medicion.observacion,
         aberturas: b.aberturas,
       })
+      /* La pestaña quedó con una versión vieja y el generador de PDFs ya no está en el servidor: se
+         guarda lo cargado, se recarga la app y se sigue desde acá con esta misma lectura. */
+      if (r.errorModulo && (await recuperarRecargando(lectura))) return
       if (!r.ok || !r.archivo) {
         setErrorGen(`No se generó la OP final. ${r.errores.join(' · ')}`)
         return

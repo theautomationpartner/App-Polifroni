@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { esRecargaProgramada } from '@/lib/recuperacion'
 import { useDispatch } from '@/state/hooks'
 
 /**
@@ -17,6 +18,8 @@ export function useAccionEnCurso(motivo: string, activo: boolean) {
     /* Recargar o cerrar la pestaña a mitad de camino deja el trabajo cortado —p. ej. una OP creada
        en Monday sin sus archivos ni su estado—: el navegador pregunta antes de salir. */
     const avisar = (e: BeforeUnloadEvent) => {
+      /* La recarga que recupera la operación ya guardó lo cargado: no se pregunta. */
+      if (esRecargaProgramada()) return
       e.preventDefault()
       e.returnValue = ''
     }
