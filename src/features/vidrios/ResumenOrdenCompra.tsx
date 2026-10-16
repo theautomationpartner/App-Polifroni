@@ -71,7 +71,10 @@ export function ResumenOrdenCompra({
         <Fila label="Usuario emisor">
           {emisor && (
             <>
-              <Avatar ini={emisor.ini} color={emisor.color} size="sm" /> {emisor.name}
+              <Avatar ini={emisor.ini} color={emisor.color} size="sm" />{' '}
+              <span className="rvalue-txt" title={emisor.name}>
+                {emisor.name}
+              </span>
             </>
           )}
         </Fila>

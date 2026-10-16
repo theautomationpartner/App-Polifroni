@@ -2499,8 +2499,35 @@
   border: 1px solid var(--o-border, #e2e8f0);
   border-radius: 10px;
 }
-/* Apiladas en pantallas angostas, el resumen ya no está al lado: la lista tiene su propio tope. */
+/* Resumen | cortes, SIEMPRE lado a lado en compu y tablet: la regla general de `.emision-grid` apila
+   desde 1279px, pero acá el formulario y la tabla se usan juntos. Sólo el celular las apila. En
+   tablet el resumen toma 5 partes y la tabla 7; si la tabla no entra, se recorre de costado en su
+   propio scroll. */
 @media (max-width: 1279px) {
+  .obras-v2 .emision-grid.vid-solicitud {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+/* En tablet la tabla entra entera (Tipo, Composición, Ancho, Alto y Piezas) con celdas y card más
+   ajustadas: a 820px le faltaban 18px y la columna Piezas quedaba cortada. */
+@media (max-width: 1000px) {
+  .obras-v2 .emision-grid.vid-solicitud {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+  .obras-v2 .vid-cortes-card.card-pad {
+    padding: 16px;
+  }
+  .anticipos-v2 .vid-cortes th,
+  .anticipos-v2 .vid-cortes td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+@media (max-width: 560px) {
+  .obras-v2 .emision-grid.vid-solicitud {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Apiladas, el resumen ya no está al lado: la lista tiene su propio tope. */
   .obras-v2 .vid-cortes-card {
     contain: none;
   }
