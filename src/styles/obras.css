@@ -98,6 +98,21 @@
 .btn-secundario:hover {
   background: #f5f6f8;
 }
+.modal-advertencia {
+  margin-top: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: #8a5a00;
+  background: #fff8e6;
+  border: 1px solid #ffe2a0;
+  border-radius: 8px;
+}
+.modal-advertencia i {
+  color: var(--yellow);
+  margin-right: 6px;
+}
 .modal-detalle {
   margin-top: 14px;
   font-size: 12px;

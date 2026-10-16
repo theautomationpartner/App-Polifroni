@@ -3,6 +3,7 @@ import { CargandoAcceso } from '@/components/ui/PantallaAcceso'
 import { MfaGuard } from '@/components/ui/MfaGuard'
 import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ModalErrorSeguridad } from '@/components/ui/ModalErrorSeguridad'
+import { ModalErrorModulo } from '@/components/ui/ModalErrorModulo'
 import { CierreOperacion } from '@/components/ui/CierreOperacion'
 import { EnviarOpView } from '@/features/envio/EnviarOpView'
 import { SeleccionarOpView } from '@/features/envio/SeleccionarOpView'
@@ -235,6 +236,9 @@ export function App() {
       {/* Un solo aviso a la vez, y el de seguridad manda: el otro invita a reintentar, y un rechazo
           del borde no se arregla reintentando. */}
       {!rechazada && errorSeguridad && avisoVisible ? <ModalErrorSeguridad error={errorSeguridad} /> : !rechazada && <ModalErrorMonday />}
+      {/* Un módulo que no se pudo bajar (pestaña con una versión vieja de la app): se recarga. */}
+      <ModalErrorModulo />
+
     </div>
   )
 }
