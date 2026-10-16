@@ -14,12 +14,16 @@ export interface ObraTempoglass {
   descripcion: string
 }
 
-/** Por dónde va el robot. */
-export type AvanceTempoglass = { etapa: 'sesion' } | { etapa: 'logueado' } | { etapa: 'buscando'; nombre: string }
+/** Por dónde va el robot. `reintentando`: falló algo que se arregla entrando de nuevo, y entra de nuevo. */
+export type AvanceTempoglass =
+  | { etapa: 'sesion' }
+  | { etapa: 'logueado' }
+  | { etapa: 'buscando'; nombre: string }
+  | { etapa: 'reintentando'; intento: number; de: number; motivo: string }
 
 export type ResultadoTempoglass =
   | { etapa: 'fin'; ok: true; buscado: string; resultados: ObraTempoglass[]; encontrada: ObraTempoglass | null }
-  /** Tempoglass no respondió lo esperado en `paso` (credenciales, login, obras, buscar, conexion). */
+  /** Tempoglass no respondió lo esperado en `paso` (credenciales, login, obras, buscar, conexion, robot). */
   | { etapa: 'error'; paso: string; mensaje: string }
 
 /** Entra a Tempoglass y busca la obra por su nombre. Sólo lee: no crea nada allá. */
@@ -52,6 +56,7 @@ export async function buscarObraTempoglass(
     }
     if (done) break
   }
-  if (!resultado) throw new Error('Tempoglass: el robot terminó sin resultado')
+  /* Sin resultado: la conexión se cortó a mitad (la red, o la función que llegó a su tope). */
+  if (!resultado) throw new Error('Tempoglass: se cortó la conexión con el robot')
   return resultado
 }

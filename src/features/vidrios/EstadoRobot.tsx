@@ -8,6 +8,7 @@ export type EstadoRobot =
   | { fase: 'sesion' }
   | { fase: 'logueado' }
   | { fase: 'buscando'; nombre: string }
+  | { fase: 'reintentando'; intento: number; de: number; motivo: string }
   | { fase: 'seleccionada'; nombre: string; id: string }
   | { fase: 'noEncontrada'; nombre: string }
   | { fase: 'error'; texto: string }
@@ -19,7 +20,12 @@ const FALLA_DEL_PASO: Record<string, string> = {
   obras: 'No se pudo abrir Obras en Tempoglass',
   buscar: 'Falló la búsqueda en Tempoglass',
   conexion: 'Tempoglass no respondió',
+  robot: 'Falló el robot de Tempoglass',
 }
+
+/** ¿Está corriendo algo? Mientras tanto no se regenera ni se reintenta. */
+export const robotEnCurso = (e: EstadoRobot | null): boolean =>
+  e !== null && ['guardando', 'sesion', 'logueado', 'buscando', 'reintentando'].includes(e.fase)
 
 export function errorDelPaso(paso: string, mensaje: string): EstadoRobot {
   return { fase: 'error', texto: `${FALLA_DEL_PASO[paso] ?? 'Error en Tempoglass'}: ${mensaje}` }
@@ -35,6 +41,12 @@ function presentar(e: EstadoRobot): { texto: string; icono: string; tono: 'curso
       return { texto: 'Tempoglass · Logueado', icono: 'fas fa-circle-notch spin', tono: 'curso' }
     case 'buscando':
       return { texto: `Tempoglass · Buscando obra «${e.nombre}»...`, icono: 'fas fa-circle-notch spin', tono: 'curso' }
+    case 'reintentando':
+      return {
+        texto: `Tempoglass · Reintentando (intento ${e.intento} de ${e.de}): ${e.motivo}`,
+        icono: 'fas fa-rotate spin',
+        tono: 'curso',
+      }
     case 'seleccionada':
       return { texto: `Tempoglass · Obra seleccionada: ${e.nombre} (Id ${e.id})`, icono: 'fas fa-check', tono: 'ok' }
     case 'noEncontrada':
@@ -44,12 +56,18 @@ function presentar(e: EstadoRobot): { texto: string; icono: string; tono: 'curso
   }
 }
 
-export function EstadoRobotPill({ estado }: { estado: EstadoRobot }) {
+/** `onReintentar`: si falló o no encontró la obra, se ofrece volver a correr el robot desde acá. */
+export function EstadoRobotPill({ estado, onReintentar }: { estado: EstadoRobot; onReintentar?: () => void }) {
   const { texto, icono, tono } = presentar(estado)
   return (
     <div className={`vid-robot vid-robot--${tono}`} role="status" aria-live="polite" title={texto}>
       <i className={icono} />
       <span>{texto}</span>
+      {tono === 'error' && onReintentar && (
+        <button type="button" className="vid-robot-reintentar" onClick={onReintentar}>
+          <i className="fas fa-rotate-right" /> Reintentar
+        </button>
+      )}
     </div>
   )
 }

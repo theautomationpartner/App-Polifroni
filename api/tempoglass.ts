@@ -8,11 +8,17 @@
  *   { "etapa": "sesion" }                                 iniciando sesión
  *   { "etapa": "logueado" }                               entró
  *   { "etapa": "buscando", "nombre": "…" }                en Obras, escribiendo en el buscador
+ *   { "etapa": "reintentando", intento, de, motivo }      falló algo que se arregla con un login nuevo
  *   { "etapa": "fin", "ok": true, buscado, resultados, encontrada }
  *   { "etapa": "error", "paso": "login", "mensaje": "…" } Tempoglass no respondió lo esperado
  *
- * La sesión de Tempoglass vive sólo acá: al navegador le llegan los avisos, nunca las cookies.
- * Por ahora sólo BUSCA la obra: no crea ni cambia nada en Tempoglass.
+ * La sesión de Tempoglass vive sólo acá: al navegador le llegan los avisos, nunca las cookies. Cada
+ * corrida entra de cero, y si la sesión se pierde a mitad de camino se reintenta todo con un login
+ * nuevo (ver `conReintentos`).
+ *
+ * Por ahora sólo BUSCA la obra: no crea ni cambia nada en Tempoglass, así que reintentar es seguro.
+ * Cuando el robot cree la obra o el pedido, cada paso que crea tiene que buscar ANTES si ya existe:
+ * un reintento después de una creación que sí llegó no puede dejar dos.
  *
  * Sólo admin: la solicitud de cortes de vidrio, desde donde se llama, es una operación del admin.
  */
@@ -57,8 +63,9 @@ export default async function handler(req: Pedido, res: ServerResponse): Promise
     if (e instanceof ErrorTempoglass) {
       enviar({ etapa: 'error', paso: e.paso, mensaje: e.message })
     } else {
-      console.warn('[tempoglass] falla inesperada', e)
-      enviar({ etapa: 'error', paso: 'conexion', mensaje: 'Tempoglass no respondió.' })
+      /* Lo que no es de Tempoglass es un bug del robot: se registra entero para encontrarlo. */
+      console.error('[tempoglass] falla inesperada del robot', e)
+      enviar({ etapa: 'error', paso: 'robot', mensaje: 'Falla inesperada del robot (ver los logs de Vercel).' })
     }
   }
   res.end()

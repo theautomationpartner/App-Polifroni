@@ -18,7 +18,7 @@ import { buscarObraTempoglass } from '@/services/tempoglass'
 import { useApp, useDispatch } from '@/state/hooks'
 import { CortesOrdenCompra } from './CortesOrdenCompra'
 import { ordenCompraExcel } from './ordenCompraExcel'
-import { errorDelPaso, EstadoRobotPill, type EstadoRobot } from './EstadoRobot'
+import { errorDelPaso, EstadoRobotPill, robotEnCurso, type EstadoRobot } from './EstadoRobot'
 import { ResumenOrdenCompra } from './ResumenOrdenCompra'
 
 /**
@@ -55,7 +55,9 @@ export function VidriosSolicitudView() {
   const [errorExcel, setErrorExcel] = useState(false)
   /** Lo que pasa después de generar: guardar en la OP y el robot de Tempoglass (ver `EstadoRobot`). */
   const [robot, setRobot] = useState<EstadoRobot | null>(null)
-  const robotOcupado = robot !== null && ['guardando', 'sesion', 'logueado', 'buscando'].includes(robot.fase)
+  const robotOcupado = robotEnCurso(robot)
+  /** El Excel que ya quedó guardado en las OP: si es el actual, "Reintentar" no lo vuelve a subir. */
+  const [guardadoEnOp, setGuardadoEnOp] = useState<Blob | null>(null)
   const [finalizando, setFinalizando] = useState(false)
   const [errorFinal, setErrorFinal] = useState(false)
 
@@ -120,25 +122,54 @@ export function VidriosSolicitudView() {
     try {
       const archivo = new File([blob], nombreExcel, { type: blob.type })
       await Promise.all(idsOps.map((id) => guardarOrdenCompraGenerada(id, archivo)))
+      setGuardadoEnOp(blob)
     } catch (e) {
       console.warn('[vidrios] no se pudo guardar la orden de compra en las OP', e)
-      setRobot({ fase: 'error', texto: 'No se pudo guardar la orden de compra en la OP. Volvé a generarla.' })
+      setRobot({ fase: 'error', texto: 'No se pudo guardar la orden de compra en la OP' })
       return
     }
+    await buscarEnTempoglass()
+  }
 
-    try {
-      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). Cada aviso del robot llega
-         en vivo y se muestra en el pie. */
-      const r = await buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS, (avance) =>
-        setRobot(avance.etapa === 'buscando' ? { fase: 'buscando', nombre: avance.nombre } : { fase: avance.etapa }),
+  /**
+   * Corre el robot y muestra cada aviso en vivo en el pie. El servidor ya reintenta lo que se
+   * arregla con un login nuevo; acá se cubre lo que el servidor no puede: que el pedido mismo no
+   * llegue o se corte a mitad (la red del usuario, un corte de Vercel). Eso se reintenta UNA vez
+   * más, sin preguntar: el robot sólo lee, así que repetirlo no puede dejar nada duplicado.
+   */
+  const buscarEnTempoglass = async () => {
+    const correr = () =>
+      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
+      buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS, (avance) =>
+        setRobot(
+          avance.etapa === 'buscando'
+            ? { fase: 'buscando', nombre: avance.nombre }
+            : avance.etapa === 'reintentando'
+              ? { fase: 'reintentando', intento: avance.intento, de: avance.de, motivo: avance.motivo }
+              : { fase: avance.etapa },
+        ),
       )
+    setRobot({ fase: 'sesion' })
+    try {
+      const r = await correr().catch(async (e) => {
+        console.warn('[vidrios] el pedido al robot de Tempoglass falló; se reintenta una vez', e)
+        setRobot({ fase: 'reintentando', intento: 2, de: 2, motivo: 'se cortó la conexión con el robot' })
+        await new Promise((listo) => setTimeout(listo, 2000))
+        return correr()
+      })
       if (r.etapa === 'error') setRobot(errorDelPaso(r.paso, r.mensaje))
       else if (r.encontrada) setRobot({ fase: 'seleccionada', nombre: r.encontrada.nombre, id: r.encontrada.id })
       else setRobot({ fase: 'noEncontrada', nombre: r.buscado })
     } catch (e) {
       console.warn('[vidrios] el robot de Tempoglass no respondió', e)
-      setRobot(errorDelPaso('conexion', 'no se pudo llamar al robot.'))
+      setRobot(errorDelPaso('conexion', 'no se pudo hablar con el robot. Revisá la conexión.'))
     }
+  }
+
+  /** "Reintentar" del pie: repite sólo lo que falló. Si el Excel ya quedó en las OP, no se resube. */
+  const reintentar = () => {
+    if (!excel || robotOcupado) return
+    void (guardadoEnOp === excel ? buscarEnTempoglass() : guardarYBuscar(excel))
   }
 
   const descargar = () => {
@@ -200,7 +231,7 @@ export function VidriosSolicitudView() {
       </div>
 
       <PieEtapa>
-        {robot && <EstadoRobotPill estado={robot} />}
+        {robot && <EstadoRobotPill estado={robot} onReintentar={reintentar} />}
         <button
           type="button"
           className="btn btn-primary"
