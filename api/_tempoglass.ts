@@ -261,10 +261,19 @@ export async function buscarEnObras(sesion: Sesion, pantalla: PantallaObras, tex
   return filasDeObras(html)
 }
 
+/** Por dónde va el robot. Se avisa al empezar cada paso, para que la pantalla lo muestre en vivo. */
+export type AvanceTempoglass = { etapa: 'sesion' } | { etapa: 'logueado' } | { etapa: 'buscando'; nombre: string }
+
 /** Todo el recorrido: entrar, abrir Obras, buscar. Sólo lee: no crea ni cambia nada en Tempoglass. */
-export async function buscarObraTempoglass(nombre: string): Promise<BusquedaObra> {
+export async function buscarObraTempoglass(
+  nombre: string,
+  avisar: (avance: AvanceTempoglass) => void = () => {},
+): Promise<BusquedaObra> {
+  avisar({ etapa: 'sesion' })
   const sesion = await iniciarSesion()
+  avisar({ etapa: 'logueado' })
   const pantalla = await abrirObras(sesion)
+  avisar({ etapa: 'buscando', nombre })
   const resultados = await buscarEnObras(sesion, pantalla, nombre)
   return { buscado: nombre, resultados, encontrada: obraExacta(resultados, nombre) }
 }

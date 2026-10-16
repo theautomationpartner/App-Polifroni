@@ -18,7 +18,8 @@ import { buscarObraTempoglass } from '@/services/tempoglass'
 import { useApp, useDispatch } from '@/state/hooks'
 import { CortesOrdenCompra } from './CortesOrdenCompra'
 import { ordenCompraExcel } from './ordenCompraExcel'
-import { ResumenOrdenCompra, type EstadoTempoglass } from './ResumenOrdenCompra'
+import { errorDelPaso, EstadoRobotPill, type EstadoRobot } from './EstadoRobot'
+import { ResumenOrdenCompra } from './ResumenOrdenCompra'
 
 /**
  * Solicitud de cortes de vidrio · Etapa 3: la orden de compra al proveedor.
@@ -52,8 +53,9 @@ export function VidriosSolicitudView() {
   const [excel, setExcel] = useState<Blob | null>(null)
   const [generando, setGenerando] = useState(false)
   const [errorExcel, setErrorExcel] = useState(false)
-  const [guardado, setGuardado] = useState<'subiendo' | 'ok' | 'error' | null>(null)
-  const [tempoglass, setTempoglass] = useState<EstadoTempoglass | null>(null)
+  /** Lo que pasa después de generar: guardar en la OP y el robot de Tempoglass (ver `EstadoRobot`). */
+  const [robot, setRobot] = useState<EstadoRobot | null>(null)
+  const robotOcupado = robot !== null && ['guardando', 'sesion', 'logueado', 'buscando'].includes(robot.fase)
   const [finalizando, setFinalizando] = useState(false)
   const [errorFinal, setErrorFinal] = useState(false)
 
@@ -96,8 +98,7 @@ export function VidriosSolicitudView() {
   const generar = async () => {
     setGenerando(true)
     setErrorExcel(false)
-    setGuardado(null)
-    setTempoglass(null)
+    setRobot(null)
     let blob: Blob
     try {
       blob = await armarExcel()
@@ -115,24 +116,28 @@ export function VidriosSolicitudView() {
   /** Guarda la orden generada en cada OP y, ya guardada, llama al robot de Tempoglass. Si Monday
       falla, el robot no corre: lo que se carga allá tiene que ser lo que quedó registrado acá. */
   const guardarYBuscar = async (blob: Blob) => {
-    setGuardado('subiendo')
+    setRobot({ fase: 'guardando' })
     try {
       const archivo = new File([blob], nombreExcel, { type: blob.type })
       await Promise.all(idsOps.map((id) => guardarOrdenCompraGenerada(id, archivo)))
-      setGuardado('ok')
     } catch (e) {
       console.warn('[vidrios] no se pudo guardar la orden de compra en las OP', e)
-      setGuardado('error')
+      setRobot({ fase: 'error', texto: 'No se pudo guardar la orden de compra en la OP. Volvé a generarla.' })
       return
     }
 
-    setTempoglass({ estado: 'buscando' })
     try {
-      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). */
-      setTempoglass({ estado: 'listo', busqueda: await buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS) })
+      /* PROVISORIO: la obra de prueba (ver `OBRA_PRUEBA_TEMPOGLASS`). Cada aviso del robot llega
+         en vivo y se muestra en el pie. */
+      const r = await buscarObraTempoglass(OBRA_PRUEBA_TEMPOGLASS, (avance) =>
+        setRobot(avance.etapa === 'buscando' ? { fase: 'buscando', nombre: avance.nombre } : { fase: avance.etapa }),
+      )
+      if (r.etapa === 'error') setRobot(errorDelPaso(r.paso, r.mensaje))
+      else if (r.encontrada) setRobot({ fase: 'seleccionada', nombre: r.encontrada.nombre, id: r.encontrada.id })
+      else setRobot({ fase: 'noEncontrada', nombre: r.buscado })
     } catch (e) {
       console.warn('[vidrios] el robot de Tempoglass no respondió', e)
-      setTempoglass({ estado: 'listo', busqueda: { ok: false, paso: 'conexion', mensaje: 'No se pudo llamar al robot.' } })
+      setRobot(errorDelPaso('conexion', 'no se pudo llamar al robot.'))
     }
   }
 
@@ -187,8 +192,7 @@ export function VidriosSolicitudView() {
           generando={generando}
           generada={!!excel}
           error={errorExcel}
-          guardado={guardado}
-          tempoglass={tempoglass}
+          ocupado={robotOcupado}
           onGenerar={() => void generar()}
           onDescargar={descargar}
         />
@@ -196,6 +200,7 @@ export function VidriosSolicitudView() {
       </div>
 
       <PieEtapa>
+        {robot && <EstadoRobotPill estado={robot} />}
         <button
           type="button"
           className="btn btn-primary"

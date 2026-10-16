@@ -2536,11 +2536,35 @@
   font-weight: 600;
   color: #b45309;
 }
-/* Debajo de las acciones: si la orden quedó guardada en la OP y qué contestó el robot de Tempoglass. */
+/* En el pie, al lado de "Volver": por dónde va el robot de Tempoglass (ver `EstadoRobot`). El
+   `margin-right: auto` lo pega a "Volver" y deja "Finalizar Operación" a la derecha. */
 .obras-v2 .vid-robot {
-  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 560px;
+  margin-right: auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
 }
-.obras-v2 .vid-robot-falla {
+.obras-v2 .vid-robot span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.obras-v2 .vid-robot--curso {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+}
+.obras-v2 .vid-robot--ok {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+}
+.obras-v2 .vid-robot--error {
+  background: rgba(220, 38, 38, 0.08);
   color: var(--red);
 }
 /* Descargar y Abrir Tempoglass, uno al lado del otro debajo de Generar. */
