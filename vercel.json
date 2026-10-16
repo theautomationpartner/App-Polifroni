@@ -34,6 +34,12 @@
     "api/whatsapp-texto.ts": {
       "maxDuration": 120
     },
+    "api/factura-drive.ts": {
+      "maxDuration": 60
+    },
+    "api/tempoglass.ts": {
+      "maxDuration": 60
+    },
     "api/confirmar.ts": {
       "maxDuration": 120
     },

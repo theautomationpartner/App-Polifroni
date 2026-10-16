@@ -26,6 +26,10 @@ export interface ComprobanteEnCurso {
   error: string | null
   /** Lo que devolvió el tablero al emitirse: número, CAE, PDF… */
   leido: ComprobanteLeido | null
+  /** El día en que ARCA lo emitió ("2026-10-14"): es la carpeta del día en Drive. */
+  emitidoEl?: string
+  /** El PDF ya quedó en el Drive de Polifroni (<año> / Facturas Obras / <fecha>). */
+  drive?: { ruta: string; webViewLink: string } | null
 }
 
 /**
@@ -48,6 +52,8 @@ export interface BorradorFactura {
   tipo: TipoFacturacion | null
   /** Nota de crédito: la factura de la obra que anula (su CAE va en el comprobante). */
   asociada: FacturaEmitida | null
+  /** Nota de crédito: por qué se emite. Va en ✋ Observaciones del comprobante. */
+  motivo: string
   /** La obra que se factura, con su monto. Vacío mientras no se eligió qué facturar. */
   elegidas: ObraElegida[]
   /** El CUIT/CUIL/DNI a facturar. Arranca con el del cliente; vacío = Consumidor Final. */
@@ -64,6 +70,7 @@ export const facturaInicial = (): BorradorFactura => ({
   obras: [],
   tipo: null,
   asociada: null,
+  motivo: '',
   elegidas: [],
   documento: '',
   comprobantes: [],

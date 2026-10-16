@@ -98,3 +98,119 @@ export async function subirYCompartir(datos: Uint8Array<ArrayBuffer>, nombre: st
     webViewLink: archivo.webViewLink ?? `https://drive.google.com/file/d/${archivo.id}/view`,
   }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────────
+ * Facturas de obra: el PDF de cada comprobante emitido, guardado (no compartido) en
+ * <año> / Facturas Obras / <AAAA-MM-DD>, en el mismo Drive de Polifroni.
+ * ──────────────────────────────────────────────────────────────────────────────── */
+
+const CARPETA = 'application/vnd.google-apps.folder'
+/** La carpeta de las facturas de obra, dentro de la del año. */
+export const CARPETA_FACTURAS = 'Facturas Obras'
+
+/** Lo que queda en Drive: el archivo y la carpeta, para mostrarlos. */
+export interface FacturaEnDrive {
+  id: string
+  webViewLink: string
+  /** "2026 / Facturas Obras / 2026-10-14". */
+  ruta: string
+  /** Ya estaba (un reintento): no se volvió a subir. */
+  yaEstaba: boolean
+}
+
+/** Las comillas simples van escapadas en la consulta de Drive. */
+const literal = (v: string) => `'${v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+
+async function buscar(acceso: string, q: string): Promise<{ id: string; name: string }[]> {
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q, fields: 'files(id,name)', pageSize: '20', orderBy: 'createdTime' })}`,
+    { headers: { authorization: `Bearer ${acceso}` } },
+  )
+  const j = (await r.json().catch(() => ({}))) as { files?: { id: string; name: string }[]; error?: { message?: string } }
+  if (!r.ok) throw new ErrorDrive(`no se pudo buscar en Drive (${j.error?.message ?? r.status})`)
+  return j.files ?? []
+}
+
+/** Las carpetas con ese nombre (dentro de `padre`, si se dice). Sólo las propias y sin borrar. */
+const carpetas = (acceso: string, nombre: string, padre?: string) =>
+  buscar(
+    acceso,
+    `mimeType='${CARPETA}' and name=${literal(nombre)} and trashed=false and 'me' in owners${padre ? ` and ${literal(padre)} in parents` : ''}`,
+  )
+
+async function crearCarpeta(acceso: string, nombre: string, padre: string): Promise<string> {
+  const r = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${acceso}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: nombre, mimeType: CARPETA, parents: [padre] }),
+  })
+  const j = (await r.json().catch(() => ({}))) as { id?: string; error?: { message?: string } }
+  if (!r.ok || !j.id) throw new ErrorDrive(`no se pudo crear la carpeta "${nombre}" en Drive (${j.error?.message ?? r.status})`)
+  return j.id
+}
+
+/** La carpeta `nombre` dentro de `padre`: la que ya existe (la más vieja, si hubiera dos) o una nueva. */
+async function carpetaEn(acceso: string, nombre: string, padre: string): Promise<string> {
+  const hay = await carpetas(acceso, nombre, padre)
+  return hay[0]?.id ?? (await crearCarpeta(acceso, nombre, padre))
+}
+
+/**
+ * La carpeta del año ("2026"). Con `GOOGLE_DRIVE_FACTURAS_ID` (la carpeta "Facturas Obras" fija) no se
+ * busca nada. Si hay varias carpetas con el nombre del año, se usa la que ya tiene "Facturas Obras";
+ * si no se puede decidir, no se adivina: se avisa.
+ */
+async function carpetaFacturas(acceso: string, anio: string): Promise<{ id: string; ruta: string }> {
+  const fija = process.env.GOOGLE_DRIVE_FACTURAS_ID?.trim()
+  if (fija) return { id: fija, ruta: CARPETA_FACTURAS }
+  const anios = await carpetas(acceso, anio)
+  if (!anios.length) throw new ErrorDrive(`no está la carpeta "${anio}" en el Drive de Polifroni`)
+  let elegida = anios.length === 1 ? anios[0] : null
+  if (!elegida) {
+    for (const a of anios) {
+      if ((await carpetas(acceso, CARPETA_FACTURAS, a.id)).length) {
+        elegida = a
+        break
+      }
+    }
+  }
+  if (!elegida) {
+    throw new ErrorDrive(
+      `hay ${anios.length} carpetas "${anio}" en el Drive y ninguna tiene "${CARPETA_FACTURAS}": definí GOOGLE_DRIVE_FACTURAS_ID con la carpeta correcta`,
+    )
+  }
+  return { id: await carpetaEn(acceso, CARPETA_FACTURAS, elegida.id), ruta: `${anio} / ${CARPETA_FACTURAS}` }
+}
+
+/**
+ * Guarda el PDF de una factura de obra en <año> / Facturas Obras / <fecha> (la fecha, "2026-10-14"). La
+ * carpeta del día se crea sólo si no existe. Si en ella ya hay un archivo con ese nombre (un reintento),
+ * no se sube otro. El archivo queda privado: no se comparte con nadie.
+ */
+export async function guardarFacturaObra(datos: Uint8Array<ArrayBuffer>, nombre: string, fecha: string): Promise<FacturaEnDrive> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new ErrorDrive(`fecha inválida: ${fecha}`)
+  const acceso = await token()
+  const base = await carpetaFacturas(acceso, fecha.slice(0, 4))
+  const dia = await carpetaEn(acceso, fecha, base.id)
+  const ruta = `${base.ruta} / ${fecha}`
+
+  const existente = (await buscar(acceso, `name=${literal(nombre)} and ${literal(dia)} in parents and trashed=false`))[0]
+  if (existente) return { id: existente.id, webViewLink: `https://drive.google.com/file/d/${existente.id}/view`, ruta, yaEstaba: true }
+
+  const limite = `polifroni${Date.now()}`
+  const meta = JSON.stringify({ name: nombre, parents: [dia] })
+  const cuerpo = new Blob([
+    `--${limite}\r\ncontent-type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`,
+    `--${limite}\r\ncontent-type: application/pdf\r\n\r\n`,
+    datos,
+    `\r\n--${limite}--`,
+  ])
+  const subida = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${acceso}`, 'content-type': `multipart/related; boundary=${limite}` },
+    body: cuerpo,
+  })
+  const archivo = (await subida.json().catch(() => ({}))) as { id?: string; webViewLink?: string; error?: { message?: string } }
+  if (!subida.ok || !archivo.id) throw new ErrorDrive(`no se pudo subir la factura a Drive (${archivo.error?.message ?? subida.status})`)
+  return { id: archivo.id, webViewLink: archivo.webViewLink ?? `https://drive.google.com/file/d/${archivo.id}/view`, ruta, yaEstaba: false }
+}

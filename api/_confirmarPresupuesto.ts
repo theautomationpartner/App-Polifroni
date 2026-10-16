@@ -60,6 +60,8 @@ export const COL_BOLSA = {
   creadoPor: 'multiple_person_mm83jvyr',
   /** 🤖Ubicación de la obra: la dirección que indicó quien confirmó (columnas del 15/10/2026). */
   ubicacionObra: 'text_mm85trcv',
+  /** 🤖Nombre de la obra: el que eligió quien confirmó (columna del 16/10/2026); sin él, el nombre de la bolsa. */
+  nombreObra: 'text_mm861cme',
   /** 🤖Coordinador de la obra: "Nombre (Cliente)" o "Nombre (Arquitecto)". */
   coordinadorObra: 'text_mm85ye3y',
 } as const
@@ -265,6 +267,8 @@ export interface Confirmado {
   /** Lo que dejó la confirmación en la bolsa: la dirección de la obra y quién la coordina. */
   ubicacionObra: string
   coordinadorObra: string
+  /** El nombre de obra que dejó la confirmación (vacío: se usa el de la bolsa). */
+  nombreObra: string
 }
 
 export async function leerConfirmado(consulta: Consulta, subId: string): Promise<Confirmado | null> {
@@ -289,6 +293,7 @@ export async function leerConfirmado(consulta: Consulta, subId: string): Promise
         COL_BOLSA.estado,
         COL_BOLSA.ubicacionObra,
         COL_BOLSA.coordinadorObra,
+        COL_BOLSA.nombreObra,
       ],
     },
   )
@@ -312,6 +317,7 @@ export async function leerConfirmado(consulta: Consulta, subId: string): Promise
     estadoIndice: indiceDe(b[COL_BOLSA.estado]),
     ubicacionObra: txt(b[COL_BOLSA.ubicacionObra]),
     coordinadorObra: txt(b[COL_BOLSA.coordinadorObra]),
+    nombreObra: txt(b[COL_BOLSA.nombreObra]),
   }
 }
 
@@ -524,6 +530,7 @@ export async function completarConfirmacion(
     titulo,
     contenido,
     ubicacion = '',
+    nombreObra = '',
     coordinador = null,
     total = null,
     cuando = new Date(),
@@ -535,6 +542,8 @@ export async function completarConfirmacion(
     contenido: string
     /** La dirección de la obra que escribió quien confirmó. */
     ubicacion?: string
+    /** El nombre de la obra que eligió quien confirmó (vacío: el de la bolsa). */
+    nombreObra?: string
     /** Quién coordina la obra, según el formulario. */
     coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null
     /** Confirmar desde la app: el total pactado, para ganarlo en el mismo paso. */
@@ -571,6 +580,7 @@ export async function completarConfirmacion(
       [COL_BOLSA.pdf]: { clear_all: true },
     }
     if (ubicacion.trim()) v[COL_BOLSA.ubicacionObra] = ubicacion.trim()
+    if (nombreObra.trim()) v[COL_BOLSA.nombreObra] = nombreObra.trim()
     if (coordinador) v[COL_BOLSA.coordinadorObra] = textoCoordinador(coordinador)
     await escribir(BOARD_PRESUPUESTOS, p.bolsaId, v, true)
     for (const pdf of pdfs) await archivos.subir(p.bolsaId, COL_BOLSA.pdf, pdf)
@@ -599,7 +609,7 @@ export async function completarConfirmacion(
 
   /* Confirmar desde la app: con el total, se gana en el mismo paso. */
   if (completo && total !== null) {
-    await ganarPresupuesto({ subId, total, cuando, confirmadoRecien: true }, consulta, archivos, geocodificar, enSegundoPlano)
+    await ganarPresupuesto({ subId, total, nombreObra, cuando, confirmadoRecien: true }, consulta, archivos, geocodificar, enSegundoPlano)
   }
 }
 
@@ -614,6 +624,7 @@ export async function ganarPresupuesto(
     subId,
     total,
     ubicacion,
+    nombreObra,
     coordinador,
     cuando = new Date(),
     confirmadoRecien = false,
@@ -622,6 +633,7 @@ export async function ganarPresupuesto(
     total: number
     /** Corregidos al ganar (si no, los de la bolsa). */
     ubicacion?: string
+    nombreObra?: string
     coordinador?: { nombre: string; rol: 'Cliente' | 'Arquitecto' } | null
     cuando?: Date
     /** Recién confirmado en el mismo pedido: la bolsa ya se sabe "Pend de Cerrar". */
@@ -648,6 +660,9 @@ export async function ganarPresupuesto(
   /* La bolsa: el total y "Ganado" (y lo que se haya corregido al ganar). */
   const v: Record<string, unknown> = { [COL_BOLSA.total]: String(total), [COL_BOLSA.estado]: { index: INDICE.ganado } }
   if (ubicacion !== undefined && direccion !== p.ubicacionObra) v[COL_BOLSA.ubicacionObra] = direccion
+  /* El nombre de la obra: el de ahora, el que dejó la confirmación o, sin ninguno, el de la bolsa. */
+  const nombreFinal = (nombreObra ?? p.nombreObra).trim() || p.bolsaNombre
+  if (nombreObra?.trim() && nombreFinal !== p.nombreObra) v[COL_BOLSA.nombreObra] = nombreFinal
   if (coord) v[COL_BOLSA.coordinadorObra] = textoCoordinador(coord)
   await escribir(BOARD_PRESUPUESTOS, p.bolsaId, v)
 
@@ -699,7 +714,7 @@ export async function ganarPresupuesto(
         `mutation ($nombre: String!, $valores: JSON!) {
           create_item(board_id: ${BOARD_OBRAS}, group_id: "${GRUPO_OBRAS}", item_name: $nombre, column_values: $valores, create_labels_if_missing: false) { id }
         }`,
-        { nombre: p.bolsaNombre, valores: JSON.stringify(o) },
+        { nombre: nombreFinal, valores: JSON.stringify(o) },
         { escritura: true },
       )
       obraId = String(d.create_item.id)

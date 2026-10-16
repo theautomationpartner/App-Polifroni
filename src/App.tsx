@@ -3,6 +3,7 @@ import { CargandoAcceso } from '@/components/ui/PantallaAcceso'
 import { MfaGuard } from '@/components/ui/MfaGuard'
 import { ModalErrorMonday } from '@/components/ui/ModalErrorMonday'
 import { ModalErrorSeguridad } from '@/components/ui/ModalErrorSeguridad'
+import { ModalErrorModulo } from '@/components/ui/ModalErrorModulo'
 import { CierreOperacion } from '@/components/ui/CierreOperacion'
 import { EnviarOpView } from '@/features/envio/EnviarOpView'
 import { SeleccionarOpView } from '@/features/envio/SeleccionarOpView'
@@ -32,6 +33,7 @@ import { puedeOperar } from '@/lib/permisos'
 import { useErrorSeguridad } from '@/hooks/useErrorSeguridad'
 import { bloqueaLaApp, notificarErrorSeguridad, type ErrorSeguridad } from '@/lib/errorSeguridad'
 import { enMonday, getSessionToken, resumenSessionToken } from '@/lib/mondayAuth'
+import { consumirRefresh, hayRefresh, tomarFoto } from '@/lib/recuperacion'
 import { estadoSegundoFactor } from '@/services/mfa'
 import { getUsuarioActual, getUsuarios } from '@/services/monday'
 import { useApp, useDispatch } from '@/state/hooks'
@@ -120,6 +122,31 @@ export function App() {
   const [acceso, setAcceso] = useState<'verificando' | 'mfa' | 'permitido' | 'rechazado'>(() =>
     import.meta.env.DEV || enMonday() ? 'verificando' : 'rechazado',
   )
+
+  /*
+   * La app arranca de una recarga que recupera la operación (un módulo que no bajó al generar la OP
+   * final, ver `lib/recuperacion`). Las tres capas corren igual; lo único que cambia es lo que se ve:
+   * mientras se verifica y se restaura la pantalla queda en blanco, para que el usuario vuelva a su
+   * operación sin pasar por "Verificando acceso" ni por el inicio. El muro del segundo factor y el
+   * rechazo se muestran como siempre: ésos no se pueden saltear.
+   */
+  const [recuperando, setRecuperando] = useState(hayRefresh)
+  /* La foto es de un solo uso: se toma una vez aunque el efecto corra de nuevo (StrictMode). */
+  const fotoTomada = useRef(false)
+
+  useEffect(() => {
+    if (!recuperando || acceso === 'verificando' || acceso === 'mfa' || fotoTomada.current) return
+    fotoTomada.current = true
+    consumirRefresh()
+    if (acceso !== 'permitido' || !usuario) {
+      setRecuperando(false)
+      return
+    }
+    void tomarFoto(usuario.id).then((foto) => {
+      if (foto) dispatch({ type: 'restaurar', foto })
+      setRecuperando(false)
+    })
+  }, [recuperando, acceso, usuario, dispatch])
 
   /* Fuera del iframe no hay a quién preguntarle: el rechazo ya es la respuesta. Se avisa una sola
      vez, al montar. */
@@ -211,8 +238,8 @@ export function App() {
   return (
     <div className="scroll" ref={scrollRef}>
       {/* La app se dibuja SÓLO con los tres pasos superados. */}
-      {acceso === 'permitido' && !bloqueada && <Vista />}
-      {acceso === 'verificando' && <CargandoAcceso mensaje="Verificando acceso" />}
+      {acceso === 'permitido' && !bloqueada && !recuperando && <Vista />}
+      {acceso === 'verificando' && !recuperando && <CargandoAcceso mensaje="Verificando acceso" />}
       {/* Rechazado: UN solo mensaje, la ventana del aviso de seguridad, fija sobre el fondo de la
           marca —no una pantalla en blanco que parece rota, ni una segunda tarjeta con otro texto—. */}
       {rechazada && (
@@ -235,6 +262,9 @@ export function App() {
       {/* Un solo aviso a la vez, y el de seguridad manda: el otro invita a reintentar, y un rechazo
           del borde no se arregla reintentando. */}
       {!rechazada && errorSeguridad && avisoVisible ? <ModalErrorSeguridad error={errorSeguridad} /> : !rechazada && <ModalErrorMonday />}
+      {/* Un módulo que no se pudo bajar (pestaña con una versión vieja de la app): se recarga. */}
+      <ModalErrorModulo />
+
     </div>
   )
 }

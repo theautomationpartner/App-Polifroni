@@ -13,6 +13,8 @@ import { presupuestoInicial, type BorradorPresupuesto } from '@/features/presupu
 import { edicionInicial, type BorradorEdicion } from '@/features/editar/borrador'
 import { facturaInicial, type BorradorFactura } from '@/features/facturacion/borrador'
 import type { OrdenEditable } from '@/services/monday/edicionOp'
+import type { LecturaListado } from '@/services/ia/hetmo'
+import type { Foto } from '@/lib/recuperacion'
 import { puedeEntrar, puedeOperar } from '@/lib/permisos'
 import type { Destino, Obra, Operacion, Paso, Proceso, Rol, Usuario, UsuarioActual } from '@/types'
 
@@ -188,6 +190,11 @@ export interface AppState {
   /** Hay un envío o una generación corriendo: no se puede salir a mitad de camino. */
   accionEnCurso: string | null
   errorMonday: string | null
+  /**
+   * La operación se restauró después de recargar la app (ver `lib/recuperacion`): la pantalla de
+   * emisión sigue desde el armado del PDF con esta lectura, sin volver a leer con la IA.
+   */
+  reanudar: { lectura: LecturaListado } | null
   usuario: UsuarioActual | null
   usuarios: Usuario[]
   responsableId: string | null
@@ -210,6 +217,7 @@ export const initialState: AppState = {
   exito: null,
   accionEnCurso: null,
   errorMonday: null,
+  reanudar: null,
   usuario: null,
   usuarios: [],
   responsableId: null,
@@ -242,6 +250,9 @@ export type Action =
   | { type: 'errorMonday'; accion: string }
   | { type: 'cerrarError' }
   | { type: 'reset' }
+  /** Volver a la operación que se cortó al recargar la app (ver `lib/recuperacion`). */
+  | { type: 'restaurar'; foto: Foto }
+  | { type: 'limpiarReanudar' }
   | { type: 'setUsuario'; usuario: UsuarioActual | null }
   | { type: 'setUsuarios'; usuarios: Usuario[] }
   | { type: 'setResponsable'; id: string }
@@ -358,6 +369,18 @@ export function reducer(state: AppState, action: Action): AppState {
     /* Volver al inicio es volver a la pantalla de las tres secciones. */
     case 'reset':
       return { ...initialState, ...sesionDe(state) }
+
+    /* La sesión es la recién validada, no la de la foto. */
+    case 'restaurar':
+      return {
+        ...initialState,
+        ...action.foto.trabajo,
+        ...sesionDe(state),
+        reanudar: { lectura: action.foto.lectura },
+      }
+
+    case 'limpiarReanudar':
+      return state.reanudar ? { ...state, reanudar: null } : state
 
     case 'setUsuario':
       return { ...state, usuario: action.usuario, responsableId: state.responsableId ?? action.usuario?.id ?? null }

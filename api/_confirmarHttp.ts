@@ -65,7 +65,7 @@ function enlaceDe(url: URL): { enlace: EnlaceLeido; accion: string } | null {
 
 /** El formulario de confirmación del documento (el de la OP o el del presupuesto). */
 const formulario = (doc: Documento, accion: string) =>
-  paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion, coordinadores: doc.coordinadores })
+  paginaFormulario({ documento: doc.documento, nombre: doc.nombre, accion, coordinadores: doc.coordinadores, nombreObra: doc.bolsaNombre })
 
 /**
  * Lo que se muestra de un documento que ya no espera respuesta: si ya se respondió, el agradecimiento

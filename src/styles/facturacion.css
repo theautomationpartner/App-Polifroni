@@ -208,12 +208,6 @@
   background: #fdeaec;
   color: var(--red);
 }
-/* La factura que anula la nota de crédito. */
-.facturar-v2 .fac-asociada {
-  display: block;
-  max-width: 640px;
-  margin: 0;
-}
 
 /* La ventana para corregir el CUIT/DNI a facturar (desde el resumen). */
 .facturar-v2 .fac-doc-modal,
@@ -233,4 +227,231 @@
 }
 .facturar-v2 .emision-col > .resumen-emision {
   flex: 1 1 auto;
+}
+
+/* ── Nota de crédito: la tabla de las facturas de la obra. El aspecto es el de las tablas de la app
+   (`ant-tabla`, como la de órdenes y la de obras de la Agenda); el comportamiento, el de la tabla de
+   ventas pendientes de cobro de La Batea: un `tbody` por factura que, tildada, se despliega con su
+   panel. ── */
+.facturar-v2 .fac-nc-ayuda {
+  margin: 0;
+}
+.facturar-v2 .fac-nc-tabla col.fac-nc-w-tipo {
+  width: 130px;
+}
+.facturar-v2 .fac-nc-tabla col.fac-nc-w-monto {
+  width: 150px;
+}
+.facturar-v2 .fac-nc-tabla col.fac-nc-w-pdf {
+  width: 90px;
+}
+.facturar-v2 .fac-nc-tabla col.fac-nc-w-estado {
+  width: 140px;
+}
+.facturar-v2 .fac-nc-tabla .ant-col-der,
+.facturar-v2 .fac-nc-tabla thead th.ant-col-der {
+  text-align: right;
+}
+/* La fila tildada se une a su panel: sin borde entre las dos. */
+.facturar-v2 .fac-nc-grupo--on .ant-row td {
+  border-bottom-color: transparent;
+}
+/* La fila desplegada: el mismo azul con filete lateral de la obra tildada en la Agenda. */
+.facturar-v2 .fac-nc-exp > td {
+  padding: 0 16px 0 56px;
+  background: #eef4ff;
+  border-left: 3px solid #0073ea;
+  border-bottom: 1px solid var(--border-suave);
+}
+/* El despliegue se anima con la grilla (0fr → 1fr): hacia el alto REAL del panel, sin adivinarlo. */
+.facturar-v2 .fact-exp-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.facturar-v2 .fact-exp-wrap--abriendo {
+  animation: fact-desplegar 0.24s ease-out;
+}
+.facturar-v2 .fact-exp-in {
+  overflow: hidden;
+}
+@keyframes fact-desplegar {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+.facturar-v2 .fact-exp-wrap--cerrando {
+  animation: fact-plegar 0.2s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes fact-plegar {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .facturar-v2 .fact-exp-wrap--abriendo,
+  .facturar-v2 .fact-exp-wrap--cerrando {
+    animation: none;
+  }
+}
+/* El panel del importe (el `PanelImputacion` de La Batea). */
+.facturar-v2 .fact-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 32px;
+  padding: 16px 18px;
+  margin: 4px 0 16px;
+  background: #fff;
+  border: 1px solid #bcd6f5;
+  border-radius: 12px;
+}
+.facturar-v2 .fact-panel-pago {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 300px;
+  max-width: 300px;
+  min-width: 0;
+}
+.facturar-v2 .fact-panel-lbl {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-gray);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.facturar-v2 .fact-input-wrap {
+  display: flex;
+  align-items: center;
+  height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+.facturar-v2 .fact-input-wrap:focus-within {
+  border-color: var(--primary-blue);
+}
+.facturar-v2 .fact-input-wrap--error,
+.facturar-v2 .fact-input-wrap--error:focus-within {
+  border-color: #d92d20;
+  box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.12);
+}
+.facturar-v2 .fact-input-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #d92d20;
+}
+.facturar-v2 .fact-input-signo {
+  padding: 0 10px 0 14px;
+  font-weight: 700;
+  color: var(--text-gray);
+}
+.facturar-v2 .fact-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 14px 0 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-dark);
+  text-align: right;
+}
+.facturar-v2 .fact-panel-acciones {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.facturar-v2 .fact-panel-tope {
+  font-size: 12px;
+  color: var(--text-gray);
+}
+.facturar-v2 .fact-panel-todo {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-blue);
+  cursor: pointer;
+}
+.facturar-v2 .fact-panel-todo:disabled {
+  color: #b9b3cf;
+  cursor: default;
+}
+.facturar-v2 .fact-panel-graf {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.facturar-v2 .fact-panel-graf-in {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.facturar-v2 .fact-panel-metricas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+.facturar-v2 .fact-panel-metricas > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.facturar-v2 .fact-panel-metricas dt {
+  color: var(--text-gray);
+  min-width: 170px;
+}
+.facturar-v2 .fact-panel-metricas dd {
+  margin: 0;
+  font-weight: 800;
+}
+@media (max-width: 900px) {
+  .facturar-v2 .fac-nc-exp > td {
+    padding-left: 16px;
+  }
+  .facturar-v2 .fact-panel {
+    gap: 20px;
+  }
+  .facturar-v2 .fact-panel-pago {
+    flex: 1 1 240px;
+    max-width: none;
+  }
+}
+
+/* El motivo de la nota de crédito, debajo de la tabla de facturas: a todo el ancho. */
+.facturar-v2 .fac-motivo {
+  display: block;
+  margin: 4px 0 0;
+}
+.facturar-v2 .fac-motivo .med-area {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+.facturar-v2 .fac-motivo .fact-input-error {
+  margin-top: 6px;
 }

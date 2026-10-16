@@ -78,6 +78,7 @@ export default defineConfig(({ mode }) => {
         'GOOGLE_CLIENT_SECRET',
         'GOOGLE_REFRESH_TOKEN',
         'GOOGLE_DRIVE_FOLDER_ID',
+        'GOOGLE_DRIVE_FACTURAS_ID',
         'CONFIRMACION_URL',
         'CONFIRMACION_SECRET',
         /* El WhatsApp del taller de fabricación: a donde sale la OP confirmada. */
@@ -121,6 +122,11 @@ export default defineConfig(({ mode }) => {
         await mod.manejarArcaPadron(req, res)
       })
 
+      /* El PDF de la factura de obra emitida, al Drive de Polifroni (<año> / Facturas Obras / <fecha>). */
+      server.middlewares.use('/api/factura-drive', async (req, res) => {
+        const mod = await server.ssrLoadModule('/api/_facturaDriveHttp.ts')
+        await mod.manejarFacturaDrive(req, res)
+      })
       /* Va ANTES de '/api/whatsapp': un mensaje de texto suelto (los avisos de la Agenda). */
       server.middlewares.use('/api/whatsapp-texto', async (req, res) => {
         const mod = await server.ssrLoadModule('/api/_whatsappHttp.ts')

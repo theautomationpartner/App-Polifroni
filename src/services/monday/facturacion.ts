@@ -108,6 +108,8 @@ const COL_FACT = {
   cae: 'text_mm3k93vs',
   /** ✋CAE de Fact a NC/ND: en una nota de crédito, el CAE de la factura que anula. */
   caeAsociado: 'numeric_mm3kqm31',
+  /** ✋ Observaciones: en una nota de crédito, su motivo. */
+  observaciones: 'long_text_mm3kfam',
   obra: 'board_relation_mm3ksj4p',
   estadoEnvio: 'color_mm3kg5dm',
   sobre: 'color_mm3x1kd',
@@ -378,7 +380,7 @@ export async function obrasDeCuenta(obraIds: string[], constructorId: string | n
  * ──────────────────────────────────────────────────────────────────────────────── */
 
 /** Qué comprobante se emite: una factura, o una nota de crédito con el CAE de la factura que anula. */
-export type ComprobanteAEmitir = { tipo: 'factura' } | { tipo: 'notaCredito'; caeAsociado: string }
+export type ComprobanteAEmitir = { tipo: 'factura' } | { tipo: 'notaCredito'; caeAsociado: string; motivo: string }
 
 /**
  * 1. El ítem del comprobante, como lo crea el botón "Emitir Factura": Factura (o Nota de Credito, con
@@ -405,7 +407,12 @@ export async function crearComprobante(
       nombre: 'fact',
       valores: JSON.stringify({
         [COL_FACT.tipo]: { ids: [nc ? OPCION.notaCredito : OPCION.factura] },
-        ...(nc ? { [COL_FACT.caeAsociado]: comprobante.caeAsociado.replace(/\D/g, '') } : {}),
+        ...(nc
+          ? {
+              [COL_FACT.caeAsociado]: comprobante.caeAsociado.replace(/\D/g, ''),
+              [COL_FACT.observaciones]: { text: comprobante.motivo.trim() },
+            }
+          : {}),
         [COL_FACT.moneda]: { ids: [OPCION.pesos] },
         [COL_FACT.condicionVenta]: { ids: [OPCION.cuentaCorriente] },
         [COL_FACT.sobre]: { index: OPCION.sobreObra },
@@ -431,6 +438,12 @@ export interface FacturaEmitida {
   id: string
   /** "Factura A N° 0007-00000336". */
   nombre: string
+  /** El nombre completo de su movimiento en la obra ("Obra - Factura A N° 0007-00000336"). */
+  movimiento: string
+  /** Letra del comprobante: A, B o C. */
+  letra: string
+  /** El PDF que devolvió ARCA (para verlo desde la tabla). */
+  pdf: ArchivoObra | null
   /** "2026-10-07". */
   fecha: string
   cae: string
@@ -450,13 +463,25 @@ const COL_OBRA_FACTURAS = 'board_relation_mm3kepvg'
  * CAE lleva en ✋CAE de Fact a NC/ND, salvo que su emisión haya fallado.
  */
 export async function facturasDeObra(obraId: string): Promise<FacturaEmitida[]> {
-  const r = await mondayApi<{ items: { column_values: CV[] }[] }>(
-    `query ($ids: [ID!]) { items(ids: $ids) { column_values(ids: ["${COL_OBRA_FACTURAS}"]) { ${CAMPOS} } } }`,
+  /* Los comprobantes de la obra y sus movimientos (subelementos): de ahí sale el nombre completo. */
+  const r = await mondayApi<{ items: { column_values: CV[]; subitems: { name: string; column_values: CV[] }[] }[] }>(
+    `query ($ids: [ID!]) {
+      items(ids: $ids) {
+        column_values(ids: ["${COL_OBRA_FACTURAS}"]) { ${CAMPOS} }
+        subitems { name column_values(ids: ["${COL_SUB_OBRA.factura}"]) { ${CAMPOS} } }
+      }
+    }`,
     { ids: [obraId] },
   )
   const compIds = ids(r.items[0]?.column_values?.[0])
   if (!compIds.length) return []
-  const cols = [COL_FACT.tipo, COL_FACT.estado, COL_FACT.cae, COL_FACT.caeAsociado, COL_FACT.emision]
+  const movimientos = r.items[0]?.subitems ?? []
+  /** El movimiento de la obra de un comprobante: el que lo vincula o, si no, el que lleva su nombre. */
+  const movimientoDe = (id: string, nombre: string) =>
+    movimientos.find((m) => ids(m.column_values[0]).includes(id))?.name ??
+    movimientos.find((m) => m.name.trim() === `Obra - ${nombre}`)?.name ??
+    `Obra - ${nombre}`
+  const cols = [COL_FACT.tipo, COL_FACT.estado, COL_FACT.cae, COL_FACT.caeAsociado, COL_FACT.emision, COL_FACT.letra, COL_FACT.pdf]
   const d = await mondayApi<{ items: { id: string; name: string; column_values: CV[]; subitems: { column_values: CV[] }[] }[] }>(
     `query ($ids: [ID!]) {
       items(ids: $ids, limit: 100) {
@@ -476,6 +501,9 @@ export async function facturasDeObra(obraId: string): Promise<FacturaEmitida[]> 
       cae: valor(c[COL_FACT.cae]).replace(/\D/g, ''),
       caeAsociado: valor(c[COL_FACT.caeAsociado]).replace(/\D/g, ''),
       fecha: valor(c[COL_FACT.emision]).slice(0, 10),
+      /* La letra la escribe ARCA; si faltara, se toma del nombre ("Factura A N° …"). */
+      letra: (valor(c[COL_FACT.letra]).trim() || (/factura\s+([abc])\b/i.exec(i.name)?.[1] ?? '')).toUpperCase(),
+      pdf: archivosDeColumna(c[COL_FACT.pdf])[0] ?? null,
       monto: aCentavos((i.subitems ?? []).reduce((s, x) => s + (numONull(x.column_values[0]) ?? 0), 0)),
     }
   })
@@ -484,7 +512,18 @@ export async function facturasDeObra(obraId: string): Promise<FacturaEmitida[]> 
     .filter((c) => c.tipo === 'factura' && c.indice === INDICE_COMPROBANTE.creado && c.cae)
     .map((f) => {
       const acreditado = aCentavos(notas.filter((n) => n.caeAsociado === f.cae).reduce((s, n) => s + n.monto, 0))
-      return { id: f.id, nombre: f.nombre, fecha: f.fecha, cae: f.cae, monto: f.monto, acreditado, disponible: aCentavos(Math.max(0, f.monto - acreditado)) }
+      return {
+        id: f.id,
+        nombre: f.nombre,
+        movimiento: movimientoDe(f.id, f.nombre),
+        letra: f.letra,
+        pdf: f.pdf,
+        fecha: f.fecha,
+        cae: f.cae,
+        monto: f.monto,
+        acreditado,
+        disponible: aCentavos(Math.max(0, f.monto - acreditado)),
+      }
     })
     .sort((a, b) => b.fecha.localeCompare(a.fecha) || Number(b.id) - Number(a.id))
 }

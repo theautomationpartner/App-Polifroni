@@ -1,4 +1,4 @@
-import { aCentavos, documentoFiscal, faseComprobante, pesos } from '@/lib/facturacion'
+import { aCentavos, documentoFiscal, faseComprobante, fechaIso, pesos } from '@/lib/facturacion'
 import {
   crearComprobante,
   crearRenglon,
@@ -8,9 +8,11 @@ import {
   leerComprobante,
   pedirEmision,
   renglonesDe,
+  pdfDelComprobante,
   type ComprobanteAEmitir,
   type ComprobanteLeido,
 } from '@/services/monday'
+import { guardarFacturaEnDrive } from '@/services/facturasDrive'
 import type { BorradorFactura, ComprobanteEnCurso } from './borrador'
 
 /** Cuánto se espera a ARCA por cada comprobante (hoy tarda unos 15 s). */
@@ -146,7 +148,7 @@ export async function emitirComprobantes({
       const fase = faseComprobante(leido?.indice)
       /* "Comprobante Creado" llega junto con el PDF; se espera a tenerlo para poder enviarlo. */
       if (fase === 'emitido' && leido?.pdf) {
-        guardar(i, { fase, leido, error: null })
+        guardar(i, { fase, leido, error: null, emitidoEl: fechaIso(new Date()) })
         return true
       }
       if (fase === 'error') {
@@ -165,4 +167,34 @@ export async function emitirComprobantes({
     })
     return false
   }
+}
+
+/**
+ * Guarda en el Drive de Polifroni el PDF de cada comprobante ya emitido que todavía no está (en
+ * <año> / Facturas Obras / <día de emisión>). No corta nada: lo que no se pudo guardar se devuelve
+ * para avisarlo, y queda pendiente para el próximo intento (al finalizar se vuelve a probar).
+ */
+export async function guardarEnDrive({
+  comprobantes,
+  avanzar,
+}: {
+  comprobantes: ComprobanteEnCurso[]
+  avanzar: (lista: ComprobanteEnCurso[]) => void
+}): Promise<{ lista: ComprobanteEnCurso[]; errores: string[] }> {
+  let lista = [...comprobantes]
+  const errores: string[] = []
+  for (let i = 0; i < lista.length; i++) {
+    const c = lista[i]
+    const pdf = c.fase === 'emitido' ? c.leido?.pdf : null
+    if (!pdf || c.drive) continue
+    try {
+      const archivo = await pdfDelComprobante(pdf)
+      const r = await guardarFacturaEnDrive(archivo, c.emitidoEl ?? fechaIso(new Date()))
+      lista = lista.map((x, j) => (j === i ? { ...x, drive: { ruta: r.ruta, webViewLink: r.webViewLink } } : x))
+      avanzar(lista)
+    } catch (e) {
+      errores.push(e instanceof Error ? e.message : String(e))
+    }
+  }
+  return { lista, errores }
 }

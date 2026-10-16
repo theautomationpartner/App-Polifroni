@@ -34,6 +34,7 @@ export const config = {
     '/api/produccion-completada',
     '/api/obras-indice',
     '/api/hetmo',
+    '/api/tempoglass',
     '/api/whatsapp',
     '/api/whatsapp-texto',
     '/api/usuario',

@@ -174,6 +174,15 @@ export function problemaMonto(texto: string, pendiente: number): string | null {
   return null
 }
 
+/** El motivo de la nota de crédito: obligatorio (queda en ✋ Observaciones del comprobante). */
+export const MAX_MOTIVO = 500
+export function problemaMotivo(texto: string): string | null {
+  const t = String(texto ?? '').trim()
+  if (!t) return 'Escribí el motivo de la nota de crédito.'
+  if (t.length > MAX_MOTIVO) return `El motivo admite ${MAX_MOTIVO} caracteres como máximo.`
+  return null
+}
+
 /**
  * Lo mismo para la nota de crédito: mayor a cero, dos decimales a lo sumo, y sin pasar lo que se puede
  * anular de la factura asociada (su importe menos las notas de crédito que ya tiene).

@@ -38,6 +38,8 @@ const COL_CIERRE = {
   /** 🤖Ubicación de la obra y 🤖Coordinador de la obra: los que indicó quien confirmó. */
   ubicacionObra: 'text_mm85trcv',
   coordinadorObra: 'text_mm85ye3y',
+  /** 🤖Nombre de la obra: el que eligió quien confirmó (vacío: la obra se llama como la bolsa). */
+  nombreObra: 'text_mm861cme',
 } as const
 
 /** El recordatorio que manda Make a los 5 días del envío. */
@@ -65,6 +67,8 @@ export interface PresupuestoGestion extends BolsaPresupuesto {
   /** La dirección de la obra y quién la coordina, como los dejó la confirmación. */
   ubicacionObra: string
   coordinadorObra: string
+  /** El nombre de obra que dejó la confirmación (vacío: el de la bolsa). */
+  nombreObra: string
 }
 
 type ItemGestion = ItemBolsa & { gestion: CV[] }
@@ -76,6 +80,7 @@ const CAMPOS_GESTION = `${CAMPOS_CABECERA_BOLSA} gestion: column_values(ids: ${J
   COL_CIERRE.total,
   COL_CIERRE.ubicacionObra,
   COL_CIERRE.coordinadorObra,
+  COL_CIERRE.nombreObra,
 ])}) { id text }`
 
 const deItem = (i: ItemGestion, colores: Record<string, string>): PresupuestoGestion => {
@@ -90,6 +95,7 @@ const deItem = (i: ItemGestion, colores: Record<string, string>): PresupuestoGes
     total: valor(g[COL_CIERRE.total]).trim() ? Number(valor(g[COL_CIERRE.total])) : null,
     ubicacionObra: valor(g[COL_CIERRE.ubicacionObra]),
     coordinadorObra: valor(g[COL_CIERRE.coordinadorObra]),
+    nombreObra: valor(g[COL_CIERRE.nombreObra]),
   }
 }
 
@@ -230,9 +236,9 @@ export class RespuestaRechazada extends Error {
 
 export type RespuestaPresupuesto =
   /** Desde la app, Confirmar pide el total y gana el presupuesto en el mismo paso. */
-  | { tipo: 'confirmar'; ubicacion: string; coordinador: string; total: number }
+  | { tipo: 'confirmar'; ubicacion: string; nombreObra: string; coordinador: string; total: number }
   /** Uno que el cliente confirmó por WhatsApp ("Confirmado - Pend de Cerrar"): el total, y si se corrigen, dirección y coordinador. */
-  | { tipo: 'ganar'; total: number; ubicacion: string; coordinador: string }
+  | { tipo: 'ganar'; total: number; ubicacion: string; nombreObra: string; coordinador: string }
 
 /**
  * Confirma o gana un presupuesto desde la app, por el MISMO camino que el cliente en el

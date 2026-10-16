@@ -2,9 +2,9 @@
  * La ruta de `/api/presupuesto-respuesta`, sin el guardián: la usa la función de Vercel (que autoriza
  * antes) y el servidor de Vite en desarrollo.
  *
- *   POST { subId, tipo: "confirmar", ubicacion, coordinador, total }  → { ok: true }
+ *   POST { subId, tipo: "confirmar", ubicacion, nombreObra?, coordinador, total }  → { ok: true }
  *   POST { subId, tipo: "rechazar", motivo? }                         → { ok: true }
- *   POST { subId, tipo: "ganar", total, ubicacion?, coordinador? }    → { ok: true }
+ *   POST { subId, tipo: "ganar", total, ubicacion?, nombreObra?, coordinador? }    → { ok: true }
  *
  * Es "Confirmar" y "Perdido" de Consultar y Gestionar Presupuestos (regla del usuario, 13/10/2026):
  * hacen EXACTAMENTE lo que hace la respuesta del cliente por el enlace de WhatsApp
@@ -31,6 +31,7 @@ interface Cuerpo {
   subId?: unknown
   tipo?: unknown
   ubicacion?: unknown
+  nombreObra?: unknown
   coordinador?: unknown
   motivo?: unknown
   total?: unknown
@@ -77,7 +78,8 @@ export async function manejarRespuestaPresupuesto(req: Pedido, res: ServerRespon
       const coordinador = cuerpo.coordinador ? doc.coordinadores.find((c) => c.nombre === String(cuerpo.coordinador)) : undefined
       if (cuerpo.coordinador && !coordinador) return responderJson(res, 422, { error: 'El coordinador tiene que ser uno de los de la lista.' })
       const ubicacion = cuerpo.ubicacion === undefined ? undefined : String(cuerpo.ubicacion).trim().slice(0, LIMITES.ubicacion)
-      await ganarPresupuesto({ subId, total, ubicacion, coordinador: coordinador ?? null }, consultaMonday, undefined, undefined, (tarea) => {
+      const nombreObra = cuerpo.nombreObra === undefined ? undefined : String(cuerpo.nombreObra).trim().slice(0, LIMITES.nombreObra)
+      await ganarPresupuesto({ subId, total, ubicacion, nombreObra, coordinador: coordinador ?? null }, consultaMonday, undefined, undefined, (tarea) => {
         waitUntil(tarea)
       })
       return responderJson(res, 200, { ok: true })
@@ -99,7 +101,7 @@ export async function manejarRespuestaPresupuesto(req: Pedido, res: ServerRespon
       /* La misma validación del formulario del enlace: ubicación y coordinador (de la lista). */
       const leida = leerRespuesta(
         'presupuesto',
-        { estado_obra: 'Confirmar', ubicacion: cuerpo.ubicacion, coordinador: cuerpo.coordinador },
+        { estado_obra: 'Confirmar', ubicacion: cuerpo.ubicacion, nombre_obra: cuerpo.nombreObra, coordinador: cuerpo.coordinador },
         doc.coordinadores,
       )
       if (!leida.ok) return responderJson(res, 422, { error: leida.error })

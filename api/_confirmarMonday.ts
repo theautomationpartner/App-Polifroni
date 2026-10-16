@@ -129,13 +129,15 @@ export function situacionPresupuesto(etiqueta: string, indice: number | null = n
   return 'confirmada'
 }
 
-export const LIMITES = { motivo: 1000, ubicacion: 300, coordinador: 200 } as const
+export const LIMITES = { motivo: 1000, ubicacion: 300, coordinador: 200, nombreObra: 200 } as const
 
 /** Presupuesto: al confirmar, su formulario pide además la ubicación y el coordinador de la obra. */
 export type Respuesta =
   | {
       tipo: 'confirmar'
       ubicacion?: string
+      /** El nombre de la obra (el formulario lo trae con el de la bolsa); vacío: el de la bolsa. */
+      nombreObra?: string
       coordinador?: string
       /** Sólo desde la app: el total pactado, para ganarlo en el mismo paso (regla del usuario, 15/10/2026). */
       total?: number
@@ -181,7 +183,9 @@ export function leerRespuesta(
   if (coordinadores.length && !coordinadores.some((o) => o.nombre === coordinador)) {
     return { ok: false, error: 'El coordinador tiene que ser uno de los de la lista.' }
   }
-  return { ok: true, respuesta: { tipo: 'confirmar', ubicacion, coordinador } }
+  const nombreObra = limpio(campos.nombre_obra)
+  if (nombreObra.length > LIMITES.nombreObra) return { ok: false, error: 'El nombre de la obra es demasiado largo.' }
+  return { ok: true, respuesta: { tipo: 'confirmar', ubicacion, nombreObra, coordinador } }
 }
 
 /* ────────────────────────────────────────────────────────────────────────────────
@@ -215,6 +219,8 @@ export interface Documento {
    * - Pend de Cerrar"). Gana uno solo (regla del usuario, 15/10/2026): éste ya no se confirma. OP: false.
    */
   otroConfirmado: boolean
+  /** Presupuesto: el nombre de la bolsa, que el formulario ofrece como nombre de la obra. OP: vacío. */
+  bolsaNombre: string
 }
 
 export interface Coordinador {
@@ -341,6 +347,7 @@ export async function buscarDocumento(
       motivo,
       coordinadores: [],
       otroConfirmado: false,
+      bolsaNombre: '',
     }
   }
   const i = await porClave(
@@ -395,6 +402,7 @@ function documentoPresupuesto(i: ItemLeido, rol: RolConfirmacion, nombreDelEnlac
     motivo: txt(c[COL_SUB_PRES.motivo]),
     coordinadores: coordinadoresDe(bolsa),
     otroConfirmado: indiceBolsa !== null && INDICES_BOLSA_CONFIRMADA.includes(indiceBolsa),
+    bolsaNombre: i.parent_item?.name ?? '',
   }
 }
 
@@ -450,6 +458,7 @@ export function textoUpdate(
   ]
   if (r.tipo === 'rechazar' && r.motivo) renglones.push(`<p><b>Motivo:</b> ${escaparHtml(r.motivo).replace(/\n/g, '<br>')}</p>`)
   if (r.tipo === 'confirmar' && r.ubicacion) renglones.push(`<p><b>Ubicación de la obra:</b> ${escaparHtml(r.ubicacion)}</p>`)
+  if (r.tipo === 'confirmar' && r.nombreObra) renglones.push(`<p><b>Nombre de la obra:</b> ${escaparHtml(r.nombreObra)}</p>`)
   if (r.tipo === 'confirmar' && r.coordinador) renglones.push(`<p><b>Coordinador de la obra:</b> ${escaparHtml(r.coordinador)}</p>`)
   renglones.push(
     desdeApp === null
@@ -520,6 +529,7 @@ export async function registrarRespuesta(
         titulo: `Confirmación de ${doc.titulo}`,
         contenido: textoUpdate(doc, nombre, r, new Date(), desdeApp),
         ubicacion: r.ubicacion ?? '',
+        nombreObra: r.nombreObra ?? '',
         /* El coordinador se eligió de la lista: con su rol (✋Coordinar Entrega de la obra). */
         coordinador: doc.coordinadores.find((c) => c.nombre === r.coordinador) ?? null,
         total: r.tipo === 'confirmar' && r.total ? r.total : null,
