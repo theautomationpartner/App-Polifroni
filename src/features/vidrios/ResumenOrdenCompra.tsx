@@ -1,22 +1,9 @@
 import type { ReactNode } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import type { Corte } from '@/lib/vidrios'
-import type { BusquedaTempoglass } from '@/services/tempoglass'
 
 /** El sistema de pedidos del proveedor de vidrio. */
 const TEMPOGLASS = 'https://tempoglass.ar/login'
-
-/** Lo que va contestando el robot de Tempoglass después de generar la orden de compra. */
-export type EstadoTempoglass = { estado: 'buscando' } | { estado: 'listo'; busqueda: BusquedaTempoglass }
-
-/** El texto del renglón "Tempoglass": qué encontró el robot, o en qué paso falló. */
-function textoTempoglass(t: EstadoTempoglass): { texto: string; falla: boolean } {
-  if (t.estado === 'buscando') return { texto: 'Buscando la obra...', falla: false }
-  const b = t.busqueda
-  if (!b.ok) return { texto: `Falló (${b.paso}): ${b.mensaje}`, falla: true }
-  if (b.encontrada) return { texto: `Obra encontrada · Id ${b.encontrada.id}`, falla: false }
-  return { texto: `No existe la obra «${b.buscado}»`, falla: true }
-}
 
 /** Un renglón del resumen: rótulo a la izquierda, valor a la derecha (el `Fila` de La Batea). */
 function Fila({ label, children }: { label: string; children: ReactNode }) {
@@ -39,9 +26,6 @@ export interface ResumenOrdenCompraProps {
   generando: boolean
   generada: boolean
   error: boolean
-  /** La orden generada, guardándose en `Generar Orden Compra Vidrio` de cada OP. */
-  guardado: 'subiendo' | 'ok' | 'error' | null
-  tempoglass: EstadoTempoglass | null
   onGenerar: () => void
   onDescargar: () => void
 }
@@ -49,9 +33,8 @@ export interface ResumenOrdenCompraProps {
 /**
  * El resumen de la orden de compra de vidrios: quién la emite, para qué obra y qué órdenes, cuántos
  * cortes y piezas lleva; y sus acciones. "Generar orden de compra" arma el Excel en la app,
- * "Descargar Excel" baja el que se generó y "Abrir Tempoglass" lleva al sistema del proveedor.
- * Generada la orden, se guarda en cada OP y el robot de Tempoglass busca la obra: debajo se ve cómo
- * va cada cosa.
+ * "Descargar Excel" baja el que se generó y "Abrir Tempoglass" lleva al sistema del proveedor, donde
+ * se carga a mano (no tiene API).
  */
 export function ResumenOrdenCompra({
   emisor,
@@ -61,8 +44,6 @@ export function ResumenOrdenCompra({
   generando,
   generada,
   error,
-  guardado,
-  tempoglass,
   onGenerar,
   onDescargar,
 }: ResumenOrdenCompraProps) {
@@ -121,8 +102,7 @@ export function ResumenOrdenCompra({
         type="button"
         className="btn-generar btn-mayus"
         onClick={onGenerar}
-        /* Mientras se guarda o busca, no se regenera: dos tandas cruzadas dejarían un Excel viejo. */
-        disabled={generando || !lista.length || guardado === 'subiendo' || tempoglass?.estado === 'buscando'}
+        disabled={generando || !lista.length}
         aria-busy={generando}
         title={generada ? 'Tocá para volver a generar la orden de compra' : undefined}
         style={
@@ -169,38 +149,6 @@ export function ResumenOrdenCompra({
       {error && (
         <div className="pres-pdf-aviso" role="alert">
           <i className="fas fa-circle-exclamation" /> No se pudo armar la orden de compra. Volvé a intentar.
-        </div>
-      )}
-
-      {(guardado || tempoglass) && (
-        <div className="rgroup vid-robot">
-          {guardado && (
-            <Fila label="Guardada en la OP">
-              {guardado === 'subiendo' ? (
-                <>
-                  <i className="fas fa-circle-notch spin" /> Guardando...
-                </>
-              ) : guardado === 'ok' ? (
-                <>
-                  <i className="fas fa-check" /> Sí
-                </>
-              ) : (
-                <span className="vid-robot-falla">No se pudo guardar. Volvé a generar.</span>
-              )}
-            </Fila>
-          )}
-          {tempoglass && (
-            <Fila label="Tempoglass">
-              {(() => {
-                const { texto, falla } = textoTempoglass(tempoglass)
-                return (
-                  <span className={`rvalue-txt${falla ? ' vid-robot-falla' : ''}`} title={texto}>
-                    {tempoglass.estado === 'buscando' && <i className="fas fa-circle-notch spin" />} {texto}
-                  </span>
-                )
-              })()}
-            </Fila>
-          )}
         </div>
       )}
     </div>

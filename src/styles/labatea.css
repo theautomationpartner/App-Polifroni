@@ -2536,13 +2536,6 @@
   font-weight: 600;
   color: #b45309;
 }
-/* Debajo de las acciones: si la orden quedó guardada en la OP y qué contestó el robot de Tempoglass. */
-.obras-v2 .vid-robot {
-  margin-top: 14px;
-}
-.obras-v2 .vid-robot-falla {
-  color: var(--red);
-}
 /* Descargar y Abrir Tempoglass, uno al lado del otro debajo de Generar. */
 .obras-v2 .vid-acciones {
   display: grid;
