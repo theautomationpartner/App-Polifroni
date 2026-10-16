@@ -120,6 +120,12 @@ export async function generarOpFinal(e: EntradaGenerar): Promise<ResultadoGenera
   }
   window.addEventListener('vite:preloadError', alFallarCarga)
   try {
+    /* TEMPORAL (prueba): simula el error de módulo. 'una' falla una vez, 'siempre' falla siempre. */
+    const simular = sessionStorage.getItem('polifroni:simularErrorModulo')
+    if (simular) {
+      if (simular !== 'siempre') sessionStorage.removeItem('polifroni:simularErrorModulo')
+      throw new TypeError('Failed to fetch dynamically imported module (simulado)')
+    }
     /* react-pdf pesa: se carga recién acá, cuando hay una orden para dibujar. */
     const [{ pdf }, { DocumentoOp }] = await Promise.all([
       import('@react-pdf/renderer'),
