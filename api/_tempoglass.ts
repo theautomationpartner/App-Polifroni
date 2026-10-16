@@ -265,12 +265,29 @@ export function filasDeObras(html: string): ObraTempoglass[] {
   return filas
 }
 
-/** El "Id.Int.Obra" de la pantalla de la obra: `<input id="id" readonly placeholder="4715">`. */
+/**
+ * El "Id.Int.Obra" de la pantalla de la obra: `<input id="id" readonly placeholder="4715">`.
+ *
+ * OJO: Tempoglass repite el `id="id"` —el campo "Nombre" también lo tiene, con el nombre de la obra—
+ * (visto en la pantalla real el 16/10/2026). Por eso no sirve "el primer #id": se toma el campo cuya
+ * etiqueta dice "Id.Int.Obra" y, si no se encuentra la etiqueta, el `#id` que tenga un número.
+ */
 export function idIntDeObra(html: string): string | null {
   const $ = cheerio.load(html)
-  const campo = $('input#id')
-  const valor = (campo.attr('value') || campo.attr('placeholder') || '').trim()
-  return /^\d+$/.test(valor) ? valor : null
+  const numero = (el: Parameters<typeof $>[0]) => {
+    const v = ($(el).attr('value') || $(el).attr('placeholder') || '').trim()
+    return /^\d+$/.test(v) ? v : null
+  }
+  const etiqueta = $('label')
+    .filter((_, l) => /id\.?\s*int\.?\s*obra/i.test($(l).text()))
+    .first()
+  const conEtiqueta = etiqueta.length ? numero(etiqueta.parent().find('input').first()) : null
+  if (conEtiqueta) return conEtiqueta
+  for (const el of $('input[id="id"]').toArray()) {
+    const v = numero(el)
+    if (v) return v
+  }
+  return null
 }
 
 /** El número de pedido de la dirección a la que lleva "Confirmar": `/dvhpedidorenglon/4938`. */
@@ -523,7 +540,7 @@ export interface Pantalla {
  *
  * Un 302 es la sesión perdida: se reintenta entero.
  */
-async function abrirPantalla(sesion: Sesion, ruta: string, paso: PasoTempoglass): Promise<Pantalla> {
+export async function abrirPantalla(sesion: Sesion, ruta: string, paso: PasoTempoglass): Promise<Pantalla> {
   const res = await sesion.pedir(ruta)
   if (res.status === 302) throw new ErrorTempoglass(paso, `Tempoglass no reconoció la sesión al abrir ${ruta}.`, true)
   if (!res.ok) throw new ErrorTempoglass(paso, `${ruta} respondió HTTP ${res.status}.`, statusReintentable(res.status))
@@ -689,64 +706,65 @@ export async function importarPlanilla(
 }
 
 /**
- * "Cerrar Pedido": abre la confirmación (`$toggle('confirmCloseOrder')`) y la acepta.
+ * "Cerrar Pedido" y su "Confirmar" (`closeOrder`).
  *
- * Seguro de repetir: si la pantalla ya no ofrece "Cerrar Pedido", el pedido ya está cerrado.
+ * Cómo es la pantalla real (vista el 16/10/2026 en pedidos de Tempoglass):
+ *  · las ventanas de confirmación —Cerrar, Enviar, Reabrir— están SIEMPRE en la página, ocultas
+ *    (`x-show`); lo que de verdad ofrece la pantalla es la barra de botones visible;
+ *  · un pedido ABIERTO ofrece "Agregar Producto" e "Importar" (y "Cerrar Pedido" si tiene
+ *    renglones); uno cerrado o enviado sólo "Imprimir", "Ver Obra" y "Volver".
+ *  · Cerrar NO es enviar: Tempoglass dice "se completa el pedido y se prepara para enviarlo"; el
+ *    envío es otro botón ("Enviar Pedido"), que el robot no toca.
+ *
+ * El navegador abre la ventana (`confirmCloseOrder` en true) y "Confirmar" llama a `closeOrder`: el
+ * robot manda las dos cosas juntas, como el navegador al confirmar. Seguro de repetir: un pedido que
+ * ya no está abierto no se toca. Y se verifica después: si sigue abierto, es un error.
  */
 export async function cerrarPedido(sesion: Sesion, pedido: string): Promise<void> {
   const ruta = `/dvhpedidorenglon/${pedido}`
   const pantalla = await abrirPantalla(sesion, ruta, 'cerrar')
-  /* "Ya cerrado" sólo si en la pantalla no queda NINGÚN "Cerrar Pedido": si el botón está pero con
-     otra forma, eso no es un pedido cerrado, es un robot que no lo reconoce. */
-  if (!ofreceCerrar(pantalla.html)) return
-  const conCierre = pantalla.componentes.filter((c) => accionesDe(c.html).some((a) => a.includes('confirmCloseOrder')))
-  const componente = conCierre[conCierre.length - 1]?.componente
+  if (!pedidoAbierto(pantalla.html)) return
+  if (!ofreceCerrar(pantalla.html)) {
+    throw new ErrorTempoglass('cerrar', `El pedido está abierto pero no ofrece "Cerrar Pedido". Trae → ${describirPantalla(pantalla)}`)
+  }
+  const componente = componenteConAccion(pantalla.componentes, 'closeOrder')
   if (!componente) {
-    throw new ErrorTempoglass('cerrar', `Está "Cerrar Pedido" pero no se reconoce su acción. Trae → ${describirPantalla(pantalla)}`)
+    throw new ErrorTempoglass('cerrar', `No se encontró el "Confirmar" de Cerrar Pedido. Trae → ${describirPantalla(pantalla)}`)
   }
 
-  const r = await mensajeLivewire(sesion, pantalla.csrf, componente, [tocar('$toggle', ['confirmCloseOrder'])], {
+  const r = await mensajeLivewire(sesion, pantalla.csrf, componente, [escribir('confirmCloseOrder', true), tocar('closeOrder')], {
     paso: 'cerrar',
     referer: ruta,
   })
-  /* El botón que confirma, en la ventana que se abrió: el `wire:click` que no estaba antes. */
-  const antes = new Set(accionesDe(pantalla.html))
-  const confirmar = accionesDe(r.html ?? '').find((a) => !antes.has(a) && !a.startsWith('$toggle'))
-  const accion = confirmar ? accionYParametros(confirmar) : null
-  if (!accion) {
-    throw new ErrorTempoglass(
-      'cerrar',
-      `No apareció la confirmación de "Cerrar Pedido". Trae → ${describirPantalla({ html: r.html ?? '', componentes: [] })}`,
-    )
-  }
-  await mensajeLivewire(sesion, pantalla.csrf, componente, [tocar(accion.metodo, accion.params)], { paso: 'cerrar', referer: ruta })
+  if (r.errores.length) throw new ErrorTempoglass('cerrar', `Tempoglass no cerró el pedido: ${r.errores.join(' · ')}`)
 
   const despues = await abrirPantalla(sesion, ruta, 'cerrar')
-  if (ofreceCerrar(despues.html)) throw new ErrorTempoglass('cerrar', 'El pedido sigue abierto después de cerrarlo.')
+  if (pedidoAbierto(despues.html)) throw new ErrorTempoglass('cerrar', 'El pedido sigue abierto después de cerrarlo.')
 }
 
 /**
- * ¿La pantalla todavía ofrece cerrar el pedido? Por el texto de un botón o por una acción
- * (`wire:click`) que abra la confirmación. NO por el texto suelto: `confirmCloseOrder` también viaja
- * en el estado del componente (`wire:initial-data`), esté o no el botón.
+ * Los botones VISIBLES de la pantalla: sus `wire:click`, sin los de las ventanas ocultas (`x-show`),
+ * que están siempre en la página aunque no se vean.
  */
-export function ofreceCerrar(html: string): boolean {
-  const $ = cheerio.load(html)
-  const textoBoton = $('button')
-    .map((_, b) => $(b).text().replace(/\s+/g, ' ').trim())
-    .get()
-    .some((t) => /^cerrar pedido$/i.test(t))
-  return textoBoton || accionesDe(html).some((a) => a.includes('confirmCloseOrder'))
-}
-
-/** Las acciones (`wire:click`) de un pedazo de HTML. */
-function accionesDe(html: string): string[] {
+export function barraDeAcciones(html: string): string[] {
   const $ = cheerio.load(html)
   return $('[wire\\:click]')
+    .filter((_, el) => $(el).closest('[x-show]').length === 0)
     .map((_, el) => ($(el).attr('wire:click') ?? '').trim())
     .get()
     .filter(Boolean)
 }
+
+/** ¿El pedido está abierto? Sólo uno abierto deja agregar productos o importar. */
+export function pedidoAbierto(html: string): boolean {
+  return barraDeAcciones(html).some((a) => a === 'openCreateForm' || a.includes('showUploadForm'))
+}
+
+/** ¿La barra ofrece "Cerrar Pedido"? (El de la ventana oculta no cuenta.) */
+export function ofreceCerrar(html: string): boolean {
+  return barraDeAcciones(html).some((a) => a.includes('confirmCloseOrder'))
+}
+
 
 /** Por dónde va el robot. Se avisa al empezar cada paso, para que la pantalla lo muestre en vivo. */
 export type AvanceTempoglass =

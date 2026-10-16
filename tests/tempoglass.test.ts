@@ -29,6 +29,7 @@ import {
   buscarObraTempoglass,
   cargarPedidoTempoglass,
   ofreceCerrar,
+  pedidoAbierto,
   wireInitDe,
   type AvanceTempoglass,
   idIntDeObra,
@@ -335,9 +336,23 @@ const conComponente = (nombre: string, data: unknown, cuerpo: string) =>
   `<meta name="csrf-token" content="CSRF-${nombre}"><div wire:id="${nombre}" wire:initial-data="${datos(data, nombre)}">${cuerpo}</div>`
 const pantallaObra = html(conComponente('obra-show', { obra: { id: 4715 } }, '<input id="id" readonly placeholder="4715"><button wire:click="addPedido">Agregar Pedido</button>'))
 const pantallaPedidoNuevo = html(conComponente('dvh-pedido', { pedido: { detalle: '', fecha_entrega: '' } }, '<textarea wire:model="pedido.detalle"></textarea><button wire:click="saveCabecera">Confirmar</button>'))
+/* Como la pantalla REAL de un pedido (vista el 16/10): las ventanas de confirmación están siempre en
+   la página, ocultas con x-show; lo que ofrece de verdad es la barra visible. Abierto: Agregar
+   Producto, Importar y —con renglones— Cerrar Pedido. Cerrado/enviado: Imprimir y Volver. */
+const VENTANAS = `<div x-show="show"><h3>Cerrar Pedido</h3><button wire:click="$toggle('confirmCloseOrder')">Cancelar</button><button wire:click="closeOrder">Confirmar</button></div>
+  <div x-show="show"><h3>Enviar Pedido</h3><button wire:click="$toggle('confirmSendOrder')">Cancelar</button><button wire:click="sendOrder">Confirmar</button></div>`
 const BOTON_CERRAR = `<button wire:click="$toggle('confirmCloseOrder')">Cerrar Pedido</button>`
-const renglonPedido = (filas: [string, number][], abierto = true) =>
-  html(conComponente('dvh-pedido-renglon', { confirmCloseOrder: false }, `<div>Pedido 4938</div>${abierto ? BOTON_CERRAR : ''}${detalle(filas)}`))
+const barraAbierto = (conCerrar: boolean) =>
+  `<button wire:click="openCreateForm">Agregar Producto</button>${conCerrar ? BOTON_CERRAR : ''}<button wire:click="$set('showUploadForm', true)">Importar</button>`
+const BARRA_CERRADO = `<button wire:click="printOrder">Imprimir</button><button wire:click="goBack">Volver</button>`
+const renglonPedido = (filas: [string, number][], abierto = true, conCerrar = filas.length > 0) =>
+  html(
+    conComponente(
+      'dvh-pedido-renglon',
+      { confirmCloseOrder: false, confirmSendOrder: false, cant_renglones: filas.length },
+      `<div>Pedido 4938</div>${abierto ? barraAbierto(conCerrar) : BARRA_CERRADO}${VENTANAS}${detalle(filas)}`,
+    ),
+  )
 const dosRenglones: [string, number][] = [['18228', 1], ['18229', 10]]
 const redirige = (a: string) => json({ effects: { html: null, redirect: `https://tempoglass.ar${a}` }, serverMemo: { checksum: 'c2' } })
 
@@ -350,10 +365,8 @@ const pedidoBien = {
   'POST /livewire/message/dvh-pedido': [redirige('/dvhpedidorenglon/4938')],
   'GET /dvhpedidorenglon/4938': [renglonPedido([]), renglonPedido(dosRenglones), renglonPedido(dosRenglones), renglonPedido(dosRenglones, false)],
   'POST /importpedido': [redirigir('/dvhpedidorenglon/4938')],
-  'POST /livewire/message/dvh-pedido-renglon': [
-    json({ effects: { html: `${BOTON_CERRAR}<div class="modal"><button wire:click="closeOrder">Sí, cerrar</button></div>` }, serverMemo: { data: { confirmCloseOrder: true } } }),
-    json({ effects: { html: '' }, serverMemo: {} }),
-  ],
+  /* Cerrar: un solo mensaje, confirmCloseOrder=true + closeOrder (como el navegador al confirmar). */
+  'POST /livewire/message/dvh-pedido-renglon': [json({ effects: { html: '' }, serverMemo: { data: { confirmCloseOrder: false } } })],
 }
 const datosPedido = (o: Partial<Parameters<typeof cargarPedidoTempoglass>[0]> = {}) => ({
   nombre: 'IDOP-053 - PVC 2282 TEST',
@@ -464,9 +477,32 @@ assert.equal(wireInitDe('<div wire:id="a" wire:init="cargarObra"><p>…</p></div
 assert.equal(wireInitDe('<div wire:id="a"><p wire:init="x">…</p></div>'), null, 'sólo el del elemento raíz')
 assert.deepEqual(accionYParametros("cargar('obra', 3)"), { metodo: 'cargar', params: ['obra', '3'] })
 assert.deepEqual(accionYParametros('addPedido'), { metodo: 'addPedido', params: [] })
-assert.ok(ofreceCerrar(`<button wire:click="$toggle('confirmCloseOrder')">Cerrar Pedido</button>`))
-assert.ok(ofreceCerrar('<button class="x">  Cerrar   Pedido </button>'), 'por el texto, aunque cambie la acción')
+assert.ok(ofreceCerrar(barraAbierto(true) + VENTANAS), 'el Cerrar Pedido de la barra')
+assert.ok(!ofreceCerrar(barraAbierto(false) + VENTANAS), 'el de la ventana oculta no cuenta (pedido sin renglones)')
 assert.ok(!ofreceCerrar(`<div wire:initial-data="{&quot;confirmCloseOrder&quot;:false}"></div>`), 'el estado del componente no es un botón')
+assert.ok(pedidoAbierto(barraAbierto(false) + VENTANAS) && !pedidoAbierto(BARRA_CERRADO + VENTANAS), 'abierto = Agregar Producto / Importar visibles')
+{
+  // Abierto, con renglones, pero sin "Cerrar Pedido" visible: no se da por cerrado, se avisa.
+  simular({ ...pedidoBien, 'GET /dvhpedidorenglon/4938': [renglonPedido(dosRenglones, true, false)] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido({ retomar: { pedido: '4938', obra: filasDeObras(tablaReal)[0]!, idIntObra: '4715' } }), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && e.paso === 'cerrar' && /no ofrece "Cerrar Pedido"/.test(e.message),
+  )
+}
+{
+  // Tempoglass acepta el cierre pero el pedido sigue abierto: es un error, no un éxito.
+  simular({ ...pedidoBien, 'GET /dvhpedidorenglon/4938': [renglonPedido(dosRenglones)] })
+  await assert.rejects(
+    cargarPedidoTempoglass(datosPedido({ retomar: { pedido: '4938', obra: filasDeObras(tablaReal)[0]!, idIntObra: '4715' } }), () => {}, rapido),
+    (e: unknown) => e instanceof ErrorTempoglass && /sigue abierto/.test(e.message),
+  )
+}
+// El campo "Nombre" de la obra REAL también tiene id="id": se toma el de la etiqueta Id.Int.Obra.
+assert.equal(
+  idIntDeObra(`<label for="id">Nombre</label><div><input id="id" readonly placeholder="IDOP-053 - PVC 2282 TEST"/></div>
+    <div><label for="id">Id.Int.Obra</label><input id="id" type="text" readonly placeholder="4715"/></div>`),
+  '4715',
+)
 {
   // La obra llega vacía y se completa con su wire:init: el robot hace esa llamada y lee el campo.
   const obraVacia = html(
