@@ -131,8 +131,18 @@ assert.equal(leerRespuesta('op', { estado_obra: 'otra' }).ok, false)
 assert.equal(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: 'Av. 1' }).ok, false, 'el presupuesto pide el coordinador')
 assert.deepEqual(leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: ' Av. 1 ', coordinador: 'Ana' }), {
   ok: true,
-  respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', coordinador: 'Ana' },
+  respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', nombreObra: '', coordinador: 'Ana' },
 })
+assert.deepEqual(
+  leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: 'Av. 1', coordinador: 'Ana', nombre_obra: '  Casa Pérez ' }),
+  { ok: true, respuesta: { tipo: 'confirmar', ubicacion: 'Av. 1', nombreObra: 'Casa Pérez', coordinador: 'Ana' } },
+  'el nombre de la obra viaja limpio',
+)
+assert.equal(
+  leerRespuesta('presupuesto', { estado_obra: 'Confirmar', ubicacion: 'Av. 1', coordinador: 'Ana', nombre_obra: 'x'.repeat(201) }).ok,
+  false,
+  'el nombre de la obra tiene tope',
+)
 {
   /* Con opciones de coordinador, sólo vale una de ellas: no se acepta un nombre escrito a mano. */
   const opciones = [
@@ -310,6 +320,7 @@ const op = (estado: string, clave = CLAVE, motivo = '') => ({
     nombre: '',
     motivo: '',
     coordinadores: [],
+    bolsaNombre: '',
   }
   const u = textoUpdate(doc, '<b>Juan</b>', { tipo: 'rechazar', motivo: '<script>alert(1)</script>' })
   assert.ok(!u.includes('<script>') && u.includes('&lt;script&gt;') && !u.includes('<b>Juan</b>'))

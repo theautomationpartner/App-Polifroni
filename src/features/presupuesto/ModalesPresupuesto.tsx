@@ -108,23 +108,28 @@ function CampoTotal({ id, valor, falta, onCambiar }: { id: string; valor: string
 function useCierre(f: FilaGestion, previo: boolean) {
   const opciones = coordinadoresDe(f.bolsa)
   const [ubicacion, setUbicacion] = useState(previo ? f.bolsa.ubicacionObra : '')
+  /* El nombre de la obra arranca con el de la bolsa (o el que dejó la confirmación). */
+  const [nombreObra, setNombreObra] = useState((previo && f.bolsa.nombreObra) || f.bolsa.nombre)
   const [coordinador, setCoordinador] = useState(
     previo ? coordinadorPrevio(f.bolsa.coordinadorObra, opciones) : opciones.length === 1 ? opciones[0].nombre : '',
   )
   const [total, setTotal] = useState('')
   const [faltan, setFaltan] = useState<string[]>([])
-  const validar = (): { ubicacion: string; coordinador: string; total: number } | null => {
+  const validar = (): { ubicacion: string; nombreObra: string; coordinador: string; total: number } | null => {
     const importe = importeDe(total)
     const falta = [
+      ...(!nombreObra.trim() ? ['Ingresá el nombre de la obra.'] : []),
       ...(!ubicacion.trim() ? ['Ingresá la dirección de la obra (calle y número).'] : []),
       ...(!coordinador ? ['Elegí quién coordina la obra.'] : []),
       ...(importe === null || importe <= 0 ? ['Ingresá el total pactado (un importe mayor a cero).'] : []),
     ]
     setFaltan(falta)
-    return falta.length || importe === null ? null : { ubicacion: ubicacion.trim(), coordinador, total: importe }
+    return falta.length || importe === null
+      ? null
+      : { ubicacion: ubicacion.trim(), nombreObra: nombreObra.trim(), coordinador, total: importe }
   }
   const limpiar = () => setFaltan([])
-  return { opciones, ubicacion, setUbicacion, coordinador, setCoordinador, total, setTotal, faltan, limpiar, validar }
+  return { opciones, ubicacion, setUbicacion, nombreObra, setNombreObra, coordinador, setCoordinador, total, setTotal, faltan, limpiar, validar }
 }
 
 /** Los campos de dirección, coordinador y total, en bordó (`carga-grid`), como en la carga del presupuesto. */
@@ -137,6 +142,27 @@ function CamposCierre({ f, c }: { f: FilaGestion; c: ReturnType<typeof useCierre
           <Dato l="Tipo de carpintería" v={f.p.tipo} />
           <Dato l="Color" v={f.p.color} />
           <Dato l="Cliente" v={f.bolsa.cliente?.nombre ?? ''} />
+        </div>
+
+        <div className="med-campo">
+          <label className="campo-l" htmlFor={`${uid}-nombre`}>
+            Nombre de la obra *
+          </label>
+          <div className={`med-conic ${c.faltan.some((x) => x.includes('nombre')) ? 'pres-falta' : ''}`}>
+            <i className="fas fa-building" aria-hidden="true" />
+            <input
+              id={`${uid}-nombre`}
+              className="med-input"
+              type="text"
+              maxLength={200}
+              placeholder="Nombre con el que se crea la obra"
+              value={c.nombreObra}
+              onChange={(e) => {
+                c.setNombreObra(e.target.value)
+                c.limpiar()
+              }}
+            />
+          </div>
         </div>
 
         <div className="med-campo">
@@ -214,7 +240,7 @@ export function ModalConfirmarPresupuesto({
 }: {
   fila: FilaGestion
   onClose: () => void
-  onConfirmar: (datos: { ubicacion: string; coordinador: string; total: number }) => void
+  onConfirmar: (datos: { ubicacion: string; nombreObra: string; coordinador: string; total: number }) => void
 }) {
   const c = useCierre(f, false)
   const confirmar = () => {
@@ -303,7 +329,7 @@ export function ModalGanarPresupuesto({
 }: {
   fila: FilaGestion
   onClose: () => void
-  onGanar: (datos: { ubicacion: string; coordinador: string; total: number }) => void
+  onGanar: (datos: { ubicacion: string; nombreObra: string; coordinador: string; total: number }) => void
 }) {
   const c = useCierre(f, true)
   const ganar = () => {
@@ -392,6 +418,8 @@ export function FichaPresupuesto({
         )}
         {s === 'confirmado' && (
           <>
+            <dt>Nombre de la obra</dt>
+            <dd>{bolsa.nombreObra || bolsa.nombre}</dd>
             <dt>Dirección de la obra</dt>
             <dd>{bolsa.ubicacionObra || <span className="ant-sd">Sin dirección</span>}</dd>
             <dt>Coordinador</dt>

@@ -904,6 +904,19 @@ export const PRESUPUESTO_CONFIRMACION = String.raw`<!DOCTYPE html>
           </div>
 
           <div class="motivo">
+            <label for="nombre_obra">Nombre de la obra</label>
+            <input
+              type="text"
+              id="nombre_obra"
+              name="nombre_obra"
+              class="input-text"
+              value="{{NOMBRE_OBRA}}"
+              maxlength="200"
+              placeholder="Ej.: Casa Pérez"
+            />
+          </div>
+
+          <div class="motivo">
             <label for="ubicacion">Dirección de la obra (ingresa nombre de calle y número)</label>
             <div class="con-icono">
               <svg class="con-icono__icono" viewBox="0 0 24 24" aria-hidden="true">

@@ -74,10 +74,12 @@ export interface DatosFormulario {
   accion: string
   /** Presupuesto: entre quiénes se elige el coordinador de la obra. */
   coordinadores?: Coordinador[]
+  /** Presupuesto: el nombre con el que arranca el campo «Nombre de la obra» (el de la bolsa). */
+  nombreObra?: string
 }
 
 /** El formulario de confirmación del documento: el de la OP o el del presupuesto. */
-export function paginaFormulario({ documento, nombre, accion, coordinadores = [] }: DatosFormulario): string {
+export function paginaFormulario({ documento, nombre, accion, coordinadores = [], nombreObra = '' }: DatosFormulario): string {
   const plantilla = documento === 'op' ? OP_CONFIRMACION : PRESUPUESTO_CONFIRMACION
   const html = rellenar(
     plantilla,
@@ -87,6 +89,7 @@ export function paginaFormulario({ documento, nombre, accion, coordinadores = []
       /* El ítem lo dice el enlace, no el formulario: el campo queda vacío y el servidor lo ignora. */
       '{{1.itemId}}': '',
       '{{CAMPO_COORDINADOR}}': campoCoordinador(coordinadores),
+      '{{NOMBRE_OBRA}}': esc(nombreObra),
     },
     esc(accion),
   )
