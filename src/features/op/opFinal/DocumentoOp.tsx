@@ -344,7 +344,7 @@ export interface PropsDocumentoOp {
 export function DocumentoOp({ datos, logo, dibujos }: PropsDocumentoOp) {
   let n = 0
   return (
-    <Document title={`Orden de Produccion ${datos.nroOrden} - ${datos.obra}`} author="Polifroni">
+    <Document title={`Orden de Produccion ${datos.nroOrden} - ${datos.obra}`} author="Polifroni · prueba de hashes">
       {datos.paginas.map((pagina) => (
         <Page key={pagina.nro} size="A4" orientation="portrait" style={s.pagina}>
           <View style={s.head}>
